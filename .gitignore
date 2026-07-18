@@ -10,3 +10,4 @@ server/data/*.db-shm
 
 # Generated for the Vercel demo deployment
 api/_data/
+.vercel/

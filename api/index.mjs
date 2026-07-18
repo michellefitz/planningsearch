@@ -150,7 +150,10 @@ function send(res, code, body) {
 export default function handler(req, res) {
   const url = new URL(req.url, "http://localhost");
   const p = url.searchParams;
-  const route = url.pathname.replace(/\/$/, "");
+  // Normalise the path: Build Output API may invoke this function with the
+  // original path (/api/meta) or a rewritten one (/meta); accept both.
+  let route = url.pathname.replace(/\/$/, "");
+  if (!route.startsWith("/api")) route = "/api" + route;
 
   if (route === "/api/meta") {
     return send(res, 200, {
