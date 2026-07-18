@@ -53,6 +53,7 @@ export interface AppDetail extends AppSummary {
   agent_name: string | null;
   eircode: string | null;
   source_url: string | null;
+  scanned_files_url: string | null;
   last_synced: string | null;
   documents: Array<{
     id: number;
@@ -139,6 +140,12 @@ export const api = {
   suggest: (q: string) =>
     getJson<{ suggestions: string[] }>(`/api/suggest?q=${encodeURIComponent(q)}`),
   detail: (id: number) => getJson<AppDetail>(`/api/applications/${id}`),
+  files: (id: number) =>
+    getJson<{
+      supported: boolean;
+      list_url: string | null;
+      files: Array<{ title: string; url: string }> | null;
+    }>(`/api/applications/${id}/files`),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
 };

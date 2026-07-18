@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { AUTHORITY_BY_ID } from "./config/authorities.js";
 import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
+import { deriveScannedFilesUrl, fetchScannedFileList } from "./documents.js";
 
 function csv(v: unknown): string[] | undefined {
   if (typeof v !== "string" || !v.trim()) return undefined;
@@ -58,6 +59,10 @@ function publicApplication(row: Record<string, unknown>) {
       (row.source_url as string | null) ??
       auth?.portalUrlForReference(String(row.planning_reference)) ??
       null,
+    scanned_files_url: deriveScannedFilesUrl(
+      String(row.authority_id),
+      row.source_url as string | null
+    ),
   };
 }
 
@@ -119,6 +124,23 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
           },
         })),
     };
+  });
+
+  // On-demand scanned-file listing (Kildare/eplanning for now): fetches the
+  // council's public file-list page only when a user asks, never cached or
+  // mirrored (PRD §7.3 deep-link tier plus).
+  app.get("/api/applications/:id/files", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare("SELECT authority_id, source_url FROM applications WHERE id = ?")
+      .get(id) as { authority_id: string; source_url: string | null } | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url);
+    if (!listUrl) {
+      return { supported: false, files: null, list_url: null };
+    }
+    const files = await fetchScannedFileList(listUrl);
+    return { supported: true, list_url: listUrl, files };
   });
 
   app.get("/api/applications/:id", (req, reply) => {

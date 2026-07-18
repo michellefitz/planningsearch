@@ -460,6 +460,16 @@ body {
   text-decoration: none;
 }
 
+.scanned-files {
+  margin-top: 0.6rem;
+}
+
+.scanned-files .portal {
+  text-decoration: none;
+  display: inline-block;
+  margin-bottom: 0.4rem;
+}
+
 .link-btn {
   border: 0;
   background: none;

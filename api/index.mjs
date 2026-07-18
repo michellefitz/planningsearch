@@ -40,6 +40,66 @@ function haversineKm(aLat, aLng, bLat, bLng) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+/**
+ * Kildare/eplanning: the id in .../AppFileRefDetails/{id}/0 is the same id the
+ * council's iDocs scanned-file listing uses.
+ */
+function scannedFilesUrl(authorityId, sourceUrl) {
+  if (authorityId !== "kildare" || !sourceUrl) return null;
+  const m = sourceUrl.match(/AppFileRefDetails\/(\d+)/i);
+  return m
+    ? `https://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id=${m[1]}`
+    : null;
+}
+
+/** Tolerant anchor-scrape of a council file-listing page; [] means "fall back to deep link". */
+function parseFileListHtml(html, baseUrl) {
+  const files = [];
+  const seen = new Set();
+  const anchorRe = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const docHref = /\.(pdf|tiff?|jpe?g|png|doc|docx)([?#]|$)|getfile|getdocument|viewdocument|download|openfile|docid=|fileid=/i;
+  let m;
+  while ((m = anchorRe.exec(html)) !== null) {
+    const href = m[1].trim();
+    if (!href || href.startsWith("#") || href.toLowerCase().startsWith("javascript:")) continue;
+    if (!docHref.test(href)) continue;
+    let abs;
+    try {
+      abs = new URL(href, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    const title =
+      m[2].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() ||
+      decodeURIComponent(abs.split("/").pop() ?? "Document");
+    files.push({ title, url: abs });
+  }
+  return files;
+}
+
+async function fetchScannedFileList(listUrl) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(listUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "PlanView/0.1 (planning register viewer; respectful on-demand fetch)",
+        Accept: "text/html",
+      },
+    });
+    if (!res.ok) return null;
+    const files = parseFileListHtml(await res.text(), listUrl);
+    return files.length > 0 ? files : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function publicApp(a) {
   const auth = AUTH.get(a.authority_id);
   return {
@@ -50,6 +110,7 @@ function publicApp(a) {
     authority_name: auth?.name ?? a.authority_id,
     authority_short_name: auth?.short_name ?? a.authority_id,
     portal_url: a.source_url ?? null,
+    scanned_files_url: scannedFilesUrl(a.authority_id, a.source_url),
   };
 }
 
@@ -147,7 +208,7 @@ function send(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   const url = new URL(req.url, "http://localhost");
   const p = url.searchParams;
   // Normalise the path: Build Output API may invoke this function with the
@@ -215,6 +276,16 @@ export default function handler(req, res) {
           },
         })),
     });
+  }
+
+  const fm = route.match(/^\/api\/applications\/(\d+)\/files$/);
+  if (fm) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(fm[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    const listUrl = scannedFilesUrl(app.authority_id, app.source_url);
+    if (!listUrl) return send(res, 200, { supported: false, files: null, list_url: null });
+    const files = await fetchScannedFileList(listUrl);
+    return send(res, 200, { supported: true, list_url: listUrl, files });
   }
 
   const m = route.match(/^\/api\/applications\/(\d+)$/);

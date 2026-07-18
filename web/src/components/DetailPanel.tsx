@@ -1,4 +1,5 @@
-import type { AppDetail, Meta } from "../api";
+import { useEffect, useState } from "react";
+import { api, type AppDetail, type Meta } from "../api";
 import { StatusBadge } from "./ResultsList";
 
 /**
@@ -77,6 +78,59 @@ function withGlossary(text: string, glossary: Record<string, string>): JSX.Eleme
         );
       })}
     </>
+  );
+}
+
+type FilesState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "loaded"; files: Array<{ title: string; url: string }> }
+  | { phase: "failed" };
+
+function ScannedFiles({ detail: d }: { detail: AppDetail }) {
+  const [state, setState] = useState<FilesState>({ phase: "idle" });
+  useEffect(() => setState({ phase: "idle" }), [d.id]);
+  if (!d.scanned_files_url) return null;
+
+  const load = async () => {
+    setState({ phase: "loading" });
+    try {
+      const res = await api.files(d.id);
+      if (res.files?.length) setState({ phase: "loaded", files: res.files });
+      else setState({ phase: "failed" });
+    } catch {
+      setState({ phase: "failed" });
+    }
+  };
+
+  return (
+    <div className="scanned-files">
+      <a className="btn portal" href={d.scanned_files_url} target="_blank" rel="noopener noreferrer">
+        View scanned files on council viewer ↗
+      </a>{" "}
+      {state.phase === "idle" && (
+        <button type="button" className="btn" onClick={load}>
+          List files here
+        </button>
+      )}
+      {state.phase === "loading" && <span className="hint">Fetching file list from the council…</span>}
+      {state.phase === "failed" && (
+        <p className="list-note">
+          Couldn't read the council's file list just now — use the scanned-files link above.
+        </p>
+      )}
+      {state.phase === "loaded" && (
+        <ul className="doc-list">
+          {state.files.map((f) => (
+            <li key={f.url}>
+              <a href={f.url} target="_blank" rel="noopener noreferrer">
+                {f.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -176,6 +230,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
             View on official {d.authority_short_name} portal ↗
           </a>
         )}
+        <ScannedFiles detail={d} />
       </section>
 
       {d.related.length > 0 && (
