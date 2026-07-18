@@ -125,6 +125,68 @@ function MapLinks({ detail: d }: { detail: AppDetail }) {
   );
 }
 
+const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
+
+/**
+ * Inline Street View + satellite thumbnails via Google's static image APIs
+ * (needs VITE_GOOGLE_MAPS_KEY; renders nothing without it). The free
+ * metadata endpoint gates the Street View pane so places with no coverage
+ * don't show Google's grey placeholder.
+ */
+function PropertyMedia({ detail: d }: { detail: AppDetail }) {
+  const [hasPano, setHasPano] = useState<boolean | null>(null);
+  const hasCoords = d.lat != null && d.lng != null;
+
+  useEffect(() => {
+    setHasPano(null);
+    if (!GMAPS_KEY || !hasCoords) return;
+    const ctrl = new AbortController();
+    fetch(
+      `https://maps.googleapis.com/maps/api/streetview/metadata?location=${d.lat},${d.lng}&key=${GMAPS_KEY}`,
+      { signal: ctrl.signal }
+    )
+      .then((r) => r.json())
+      .then((m: { status: string }) => setHasPano(m.status === "OK"))
+      .catch(() => setHasPano(false));
+    return () => ctrl.abort();
+  }, [d.id, d.lat, d.lng, hasCoords]);
+
+  if (!GMAPS_KEY || !hasCoords) return null;
+  const loc = `${d.lat},${d.lng}`;
+  return (
+    <div className="media-row">
+      {hasPano && (
+        <a
+          href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${loc}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="media-tile"
+        >
+          <img
+            src={`https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${loc}&key=${GMAPS_KEY}`}
+            alt={`Street View of ${d.address_text ?? "the property"}`}
+            loading="lazy"
+          />
+          <span className="media-label">Street View</span>
+        </a>
+      )}
+      <a
+        href={`https://maps.google.com/?q=${loc}&t=k&z=19`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="media-tile"
+      >
+        <img
+          src={`https://maps.googleapis.com/maps/api/staticmap?center=${loc}&zoom=18&maptype=satellite&size=640x360&markers=color:red%7C${loc}&key=${GMAPS_KEY}`}
+          alt={`Aerial view of ${d.address_text ?? "the property"}`}
+          loading="lazy"
+        />
+        <span className="media-label">Aerial</span>
+      </a>
+    </div>
+  );
+}
+
 const DAY_MS = 86_400_000;
 
 /** Key figures worth surfacing as tiles; only render what the record has. */
@@ -256,8 +318,9 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           )}
         </p>
         {d.ai_summary && <p className="detail-summary">✦ {d.ai_summary}</p>}
+        <PropertyMedia detail={d} />
         <div className="action-row">
-          <MapLinks detail={d} />
+          {(!GMAPS_KEY || d.lat == null) && <MapLinks detail={d} />}
           {d.portal_url && (
             <a className="btn btn-primary" href={d.portal_url} target="_blank" rel="noopener noreferrer">
               Official {d.authority_short_name} portal ↗
