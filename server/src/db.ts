@@ -93,7 +93,19 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_tri USING fts5(
 );
 `;
 
-export function openDb(dbPath: string = DB_PATH): Database.Database {
+export interface OpenDbOptions {
+  /**
+   * Open an existing database without writing (serverless deployments bundle
+   * a pre-built DB on a read-only filesystem). Skips schema creation and the
+   * WAL pragma — the bundled file must be in a non-WAL journal mode.
+   */
+  readonly?: boolean;
+}
+
+export function openDb(dbPath: string = DB_PATH, opts: OpenDbOptions = {}): Database.Database {
+  if (opts.readonly) {
+    return new Database(dbPath, { readonly: true, fileMustExist: true });
+  }
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");

@@ -148,7 +148,7 @@ function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function main() {
+export function seedDemoData() {
   const db = openDb();
   const rand = mulberry32(20260718);
   const now = new Date().toISOString();
@@ -220,4 +220,6 @@ function main() {
   console.log("(Fixture data — run `npm run ingest` against the national service for real data.)");
 }
 
-main();
+if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+  seedDemoData();
+}

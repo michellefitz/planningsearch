@@ -1,0 +1,15 @@
+# Render Blueprint — deploy PlanView as a single web service.
+# In Render: New + > Blueprint > connect this repository. The free plan works;
+# note its disk is ephemeral, so the database re-bootstraps on each deploy.
+services:
+  - type: web
+    name: planview
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/meta
+    envVars:
+      # "seed" = fictional demo data (always works).
+      # "ingest" = pull live data from the national ArcGIS service on first
+      # boot, falling back to seed if the pull fails.
+      - key: PLANVIEW_BOOTSTRAP
+        value: seed

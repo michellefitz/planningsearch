@@ -52,6 +52,24 @@ rate-limited, idempotent upserts. Configure with:
 > live service (`curl "<SERVICE_URL>?f=json"`) and adjust in one place if
 > needed. The seed fixture (`npm run seed`) is clearly-fictional demo data.
 
+## Deploying to a public URL
+
+**Vercel (recommended if connected):** import the repo at vercel.com/new — all
+configuration is in `vercel.json`. The build compiles both workspaces, seeds
+the SQLite database, converts it out of WAL mode, and bundles it read-only
+with a single serverless function (`api/index.mjs`) that serves every
+`/api/*` route; the SPA is served statically from `web/dist`. To ship live
+register data instead of the demo fixture, change `buildCommand`'s
+`npm run seed` to `npm run ingest` once the ArcGIS field map is verified —
+the data is rebuilt on every deploy, so redeploy (or a scheduled deploy hook)
+is the refresh mechanism.
+
+**Docker hosts (Render / Fly.io / Railway):** `Dockerfile` runs the
+long-running server (API + SPA on one port) and bootstraps the database on
+first boot — `PLANVIEW_BOOTSTRAP=seed` (default) or `ingest` with automatic
+fallback to seed. `render.yaml` is a ready Render Blueprint
+(New + → Blueprint → connect this repo, free plan works).
+
 ## What's deliberately deferred (per PRD phasing)
 
 - **Phase 0 spike** — per-council document access mode (embed / fetch+cache /

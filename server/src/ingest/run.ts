@@ -14,7 +14,7 @@ import { buildWhereClause, featureToRecord, fetchPage, SERVICE_URL } from "./arc
 const PAGE_SIZE = 1000;
 const PAGE_DELAY_MS = 500; // be polite to the public service
 
-async function main() {
+export async function runIngest() {
   const since = process.env.PLANVIEW_INGEST_SINCE ?? "2019-01-01";
   const db = openDb();
   const where = buildWhereClause(since);
@@ -51,7 +51,9 @@ async function main() {
   console.log(`Done: ${totalUpserted} applications upserted, ${totalSkipped} outside scope/unmappable.`);
 }
 
-main().catch((err) => {
-  console.error("Ingest failed:", err);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+  runIngest().catch((err) => {
+    console.error("Ingest failed:", err);
+    process.exitCode = 1;
+  });
+}
