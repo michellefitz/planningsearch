@@ -59,6 +59,9 @@ export interface AppDetail extends AppSummary {
   floor_area_sqm: number | null;
   site_area_ha: number | null;
   expiry_date: string | null;
+  ppr_last_sale_date?: string;
+  ppr_last_sale_price?: number;
+  ppr_sale_count?: number;
   source_url: string | null;
   scanned_files_url: string | null;
   last_synced: string | null;

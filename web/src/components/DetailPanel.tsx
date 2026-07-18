@@ -214,6 +214,14 @@ function buildStats(d: AppDetail): Array<{ label: string; value: string }> {
   if (d.expiry_date) {
     stats.push({ label: "Permission expires", value: d.expiry_date });
   }
+  if (d.ppr_last_sale_price && d.ppr_last_sale_date) {
+    stats.push({
+      label: `Last sold ${d.ppr_last_sale_date}${
+        d.ppr_sale_count && d.ppr_sale_count > 1 ? ` · ${d.ppr_sale_count} sales` : ""
+      }`,
+      value: `€${d.ppr_last_sale_price.toLocaleString()}`,
+    });
+  }
   return stats;
 }
 
@@ -436,6 +444,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         <p className="caveat">
           Data as of {d.last_synced?.slice(0, 10) ?? "unknown"}. This is a viewer over public
           register data — the {d.authority_name} register is the authoritative source.
+          {d.ppr_last_sale_price != null &&
+            " Sale figures come from the PSRA Property Price Register, matched by address — check the register before relying on them; new-build prices may exclude VAT."}
         </p>
       </footer>
     </aside>

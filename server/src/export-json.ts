@@ -11,6 +11,7 @@ import { AUTHORITIES } from "./config/authorities.js";
 import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
 import { generateSeedRecords } from "./seed.js";
 import { featureToRecord, fetchAllSince, SERVICE_URL } from "./ingest/arcgis.js";
+import { buildPprIndex, isSpecificAddress, normalizeAddress } from "./ingest/ppr.js";
 import type { ApplicationRecord } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -75,8 +76,39 @@ async function main() {
     dataSource = "seed";
   }
   // Assign stable ids by generation order (matches SQLite rowid ordering).
-  const apps = records.map((r, i) => ({ id: i + 1, ...r }));
+  type BundledApp = ApplicationRecord & {
+    id: number;
+    ppr_last_sale_date?: string;
+    ppr_last_sale_price?: number;
+    ppr_sale_count?: number;
+  };
+  const apps: BundledApp[] = records.map((r, i) => ({ id: i + 1, ...r }));
   const now = new Date().toISOString();
+
+  // Join Property Price Register sales by normalized address — only for
+  // addresses with a house/unit number (townland-only addresses are shared
+  // by many properties). Live data only; the fictional seed won't match.
+  if (dataSource === "live") {
+    const days = Number(process.env.PLANVIEW_EXPORT_DAYS ?? 1825);
+    const fromYear = new Date(Date.now() - days * 86400_000).getFullYear();
+    const years = [];
+    for (let y = fromYear; y <= new Date().getFullYear(); y++) years.push(y);
+    console.log(`Fetching Property Price Register (Dublin, Kildare; ${fromYear}–now) …`);
+    const ppr = await buildPprIndex(["Dublin", "Kildare"], years, console.log);
+    let matched = 0;
+    for (const app of apps) {
+      if (!app.address_text) continue;
+      const key = normalizeAddress(app.address_text);
+      if (!isSpecificAddress(key)) continue;
+      const sales = ppr.get(key);
+      if (!sales?.length) continue;
+      app.ppr_last_sale_date = sales[0].date;
+      app.ppr_last_sale_price = sales[0].price;
+      app.ppr_sale_count = sales.length;
+      matched++;
+    }
+    console.log(`Matched PPR sales for ${matched} of ${apps.length} applications.`);
+  }
 
   const counts = new Map<string, number>();
   for (const a of apps) counts.set(a.authority_id, (counts.get(a.authority_id) ?? 0) + 1);
