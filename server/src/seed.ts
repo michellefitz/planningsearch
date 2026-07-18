@@ -148,11 +148,15 @@ function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function seedDemoData() {
-  const db = openDb();
+/**
+ * Deterministically generate the demo application records without touching the
+ * database. Shared by the SQLite seed (below) and the JSON export used by the
+ * dependency-free serverless deployment (export-json.ts).
+ */
+export function generateSeedRecords(): ApplicationRecord[] {
   const rand = mulberry32(20260718);
   const now = new Date().toISOString();
-  let count = 0;
+  const records: ApplicationRecord[] = [];
 
   for (const [authorityId, towns] of Object.entries(TOWNS)) {
     const auth = AUTHORITY_BY_ID.get(authorityId)!;
@@ -211,12 +215,19 @@ export function seedDemoData() {
         last_synced: now,
       };
       rec.source_url = auth.portalUrlForReference(rec.planning_reference);
-      upsertApplication(db, rec);
-      count++;
+      records.push(rec);
     }
-    setAuthoritySynced(db, authorityId, now);
   }
-  console.log(`Seeded ${count} demo applications across ${Object.keys(TOWNS).length} authorities.`);
+  return records;
+}
+
+export function seedDemoData() {
+  const db = openDb();
+  const now = new Date().toISOString();
+  const records = generateSeedRecords();
+  for (const rec of records) upsertApplication(db, rec);
+  for (const authorityId of Object.keys(TOWNS)) setAuthoritySynced(db, authorityId, now);
+  console.log(`Seeded ${records.length} demo applications across ${Object.keys(TOWNS).length} authorities.`);
   console.log("(Fixture data — run `npm run ingest` against the national service for real data.)");
 }
 

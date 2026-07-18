@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "seed": "tsx src/seed.ts",
     "ingest": "tsx src/ingest/run.ts",
-    "db:static": "node -e \"const D=require('better-sqlite3');const db=new D(process.env.PLANVIEW_DB||'data/planview.db');db.pragma('journal_mode = DELETE');db.close();console.log('DB converted to static (non-WAL) journal mode')\"",
+    "export:json": "tsx src/export-json.ts",
     "test": "vitest run"
   },
   "dependencies": {
