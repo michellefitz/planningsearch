@@ -864,6 +864,51 @@ body {
   text-underline-offset: 2px;
 }
 
+/* ---------- Property price register ---------- */
+
+.sale-list {
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+}
+
+.sale-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  padding: 0.45rem 0;
+}
+
+.sale-row + .sale-row {
+  border-top: 1px solid var(--line);
+}
+
+.sale-price {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  min-width: 6.2rem;
+}
+
+.sale-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+
+.sale-date {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.sale-info .tag {
+  margin-left: 0;
+}
+
 .objection-flag {
   display: inline-flex;
   align-items: center;

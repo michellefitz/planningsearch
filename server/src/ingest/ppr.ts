@@ -11,6 +11,10 @@ export interface PprSale {
   date: string; // ISO yyyy-mm-dd
   price: number; // euro, rounded
   address: string;
+  /** e.g. "New Dwelling house /Apartment", "Second-Hand Dwelling house /Apartment" */
+  description: string | null;
+  vatExclusive: boolean;
+  notFullMarket: boolean;
 }
 
 const PPR_BASE =
@@ -86,7 +90,16 @@ export function parsePprCsv(text: string): PprSale[] {
     const date = parseDmy(row[0]);
     const price = parsePrice(row[4]);
     const address = row[1]?.trim();
-    if (date && price && address) sales.push({ date, price, address });
+    if (date && price && address) {
+      sales.push({
+        date,
+        price,
+        address,
+        description: row[7]?.trim() || null,
+        vatExclusive: /^yes$/i.test(row[6]?.trim() ?? ""),
+        notFullMarket: /^yes$/i.test(row[5]?.trim() ?? ""),
+      });
+    }
   }
   return sales;
 }

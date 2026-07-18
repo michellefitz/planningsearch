@@ -32,7 +32,14 @@ describe("parsePprCsv", () => {
   it("parses quoted fields with embedded commas, euro prices and dd/mm/yyyy dates", () => {
     const sales = parsePprCsv(CSV);
     expect(sales).toEqual([
-      { date: "2026-01-05", price: 409692, address: "1 Beechtree Place, Curragh Farm, Ballymany" },
+      {
+        date: "2026-01-05",
+        price: 409692,
+        address: "1 Beechtree Place, Curragh Farm, Ballymany",
+        description: "New Dwelling house /Apartment",
+        vatExclusive: true,
+        notFullMarket: false,
+      },
     ]);
   });
 

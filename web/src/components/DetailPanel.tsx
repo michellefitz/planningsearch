@@ -201,9 +201,6 @@ function buildStats(d: AppDetail): Array<{ label: string; value: string }> {
   if (d.floor_area_sqm) {
     stats.push({ label: "Floor area", value: `${d.floor_area_sqm.toLocaleString()} m²` });
   }
-  if (d.site_area_ha) {
-    stats.push({ label: "Site area", value: `${d.site_area_ha} ha` });
-  }
   if (d.decision_date && d.received_date) {
     const days = Math.round((Date.parse(d.decision_date) - Date.parse(d.received_date)) / DAY_MS);
     if (days > 0) stats.push({ label: "Decided in", value: `${days} days` });
@@ -213,14 +210,6 @@ function buildStats(d: AppDetail): Array<{ label: string; value: string }> {
   }
   if (d.expiry_date) {
     stats.push({ label: "Permission expires", value: d.expiry_date });
-  }
-  if (d.ppr_last_sale_price && d.ppr_last_sale_date) {
-    stats.push({
-      label: `Last sold ${d.ppr_last_sale_date}${
-        d.ppr_sale_count && d.ppr_sale_count > 1 ? ` · ${d.ppr_sale_count} sales` : ""
-      }`,
-      value: `€${d.ppr_last_sale_price.toLocaleString()}`,
-    });
   }
   return stats;
 }
@@ -424,6 +413,31 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         <ScannedFiles detail={d} />
       </section>
 
+      {d.ppr_sales && d.ppr_sales.length > 0 && (
+        <section aria-labelledby="ppr-h">
+          <h3 id="ppr-h">Property price register</h3>
+          <ul className="sale-list">
+            {d.ppr_sales.map((s) => (
+              <li key={`${s.date}-${s.price}`} className="sale-row">
+                <span className="sale-price">€{s.price.toLocaleString()}</span>
+                <span className="sale-info">
+                  <span className="sale-date">{s.date}</span>
+                  {s.description && <span className="sale-desc">{s.description}</span>}
+                  {s.vat_exclusive && <span className="tag">price excludes VAT</span>}
+                  {s.not_full_market && <span className="tag">not full market price</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="list-note">
+            Matched to this address on the PSRA register — confirm there before relying on it.{" "}
+            <a href="https://www.propertypriceregister.ie/" target="_blank" rel="noopener noreferrer">
+              Search the Property Price Register ↗
+            </a>
+          </p>
+        </section>
+      )}
+
       {d.related.length > 0 && (
         <section aria-labelledby="related-h">
           <h3 id="related-h">Other applications at this address</h3>
@@ -444,8 +458,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         <p className="caveat">
           Data as of {d.last_synced?.slice(0, 10) ?? "unknown"}. This is a viewer over public
           register data — the {d.authority_name} register is the authoritative source.
-          {d.ppr_last_sale_price != null &&
-            " Sale figures come from the PSRA Property Price Register, matched by address — check the register before relying on them; new-build prices may exclude VAT."}
         </p>
       </footer>
     </aside>

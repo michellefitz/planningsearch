@@ -78,9 +78,13 @@ async function main() {
   // Assign stable ids by generation order (matches SQLite rowid ordering).
   type BundledApp = ApplicationRecord & {
     id: number;
-    ppr_last_sale_date?: string;
-    ppr_last_sale_price?: number;
-    ppr_sale_count?: number;
+    ppr_sales?: Array<{
+      date: string;
+      price: number;
+      description: string | null;
+      vat_exclusive: boolean;
+      not_full_market: boolean;
+    }>;
   };
   const apps: BundledApp[] = records.map((r, i) => ({ id: i + 1, ...r }));
   const now = new Date().toISOString();
@@ -102,9 +106,13 @@ async function main() {
       if (!isSpecificAddress(key)) continue;
       const sales = ppr.get(key);
       if (!sales?.length) continue;
-      app.ppr_last_sale_date = sales[0].date;
-      app.ppr_last_sale_price = sales[0].price;
-      app.ppr_sale_count = sales.length;
+      app.ppr_sales = sales.map((s) => ({
+        date: s.date,
+        price: s.price,
+        description: s.description,
+        vat_exclusive: s.vatExclusive,
+        not_full_market: s.notFullMarket,
+      }));
       matched++;
     }
     console.log(`Matched PPR sales for ${matched} of ${apps.length} applications.`);
