@@ -523,6 +523,18 @@ body {
   line-height: 1.3;
 }
 
+.map-links {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.map-links .btn {
+  text-decoration: none;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.7rem;
+}
+
 .detail-summary {
   font-size: 0.9rem;
   line-height: 1.5;

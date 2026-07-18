@@ -81,6 +81,46 @@ function withGlossary(text: string, glossary: Record<string, string>): JSX.Eleme
   );
 }
 
+/** Open the property in Google Maps — Street View and satellite when we have
+ *  coordinates, otherwise an address search (official Maps URLs API, no key). */
+function MapLinks({ detail: d }: { detail: AppDetail }) {
+  const hasCoords = d.lat != null && d.lng != null;
+  if (!hasCoords && !d.address_text) return null;
+  return (
+    <div className="map-links">
+      {hasCoords ? (
+        <>
+          <a
+            className="btn"
+            href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${d.lat},${d.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Street View ↗
+          </a>
+          <a
+            className="btn"
+            href={`https://www.google.com/maps/@?api=1&map_action=map&center=${d.lat},${d.lng}&zoom=19&basemap=satellite`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Aerial view ↗
+          </a>
+        </>
+      ) : (
+        <a
+          className="btn"
+          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.address_text!)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Find on Google Maps ↗
+        </a>
+      )}
+    </div>
+  );
+}
+
 type FilesState =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -171,6 +211,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
             </span>
           )}
         </p>
+        <MapLinks detail={d} />
       </header>
 
       <section aria-labelledby="timeline-h">
