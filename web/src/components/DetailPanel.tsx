@@ -157,7 +157,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         <p className="detail-desc-label">Planning description</p>
         <p className="detail-desc">{withGlossary(d.description ?? "No description available.", glossary)}</p>
         <p className="result-meta">
-          {d.planning_reference} · {d.authority_name}
+          <span className="ref">{d.planning_reference}</span> · {d.authority_name}
           {d.is_domestic_guess && (
             <span className="tag" title="Best-effort classification, not an official category">
               likely domestic
@@ -189,7 +189,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         <h3 id="facts-h">Details</h3>
         <dl className="facts">
           <dt>Reference</dt>
-          <dd>{d.planning_reference}</dd>
+          <dd className="ref">{d.planning_reference}</dd>
           <dt>Authority</dt>
           <dd>{d.authority_name}</dd>
           <dt>Type</dt>
@@ -248,7 +248,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           <ul className="related-list">
             {d.related.map((r) => (
               <li key={r.id}>
-                <button type="button" className="link-btn" onClick={() => onSelectRelated(r.id)}>
+                <button type="button" className="link-btn ref" onClick={() => onSelectRelated(r.id)}>
                   {r.planning_reference}
                 </button>{" "}
                 — {r.description?.slice(0, 80)}…

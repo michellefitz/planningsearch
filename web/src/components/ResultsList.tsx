@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { AppSummary } from "../api";
 import { STATUS_STYLE } from "./MapView";
 
@@ -14,8 +15,8 @@ interface Props {
 export function StatusBadge({ status, label }: { status: string; label: string }) {
   const s = STATUS_STYLE[status] ?? STATUS_STYLE.unknown;
   return (
-    <span className="status-badge" style={{ background: s.color }}>
-      <span aria-hidden="true">{s.letter}</span> {label}
+    <span className="status-badge" style={{ "--sc": s.color } as CSSProperties}>
+      {label}
     </span>
   );
 }
@@ -60,7 +61,7 @@ export default function ResultsList({
               </div>
               <p className="result-desc">{r.description}</p>
               <p className="result-meta">
-                {r.planning_reference} · {r.authority_short_name}
+                <span className="ref">{r.planning_reference}</span> · {r.authority_short_name}
                 {r.received_date && ` · received ${r.received_date}`}
                 {r.distance_km != null && ` · ${r.distance_km} km away`}
                 {r.is_domestic_guess && (

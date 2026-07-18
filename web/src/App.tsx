@@ -166,7 +166,7 @@ export default function App() {
               .filter(([k]) => k !== "unknown")
               .map(([key, s]) => (
                 <span key={key} className="legend-item">
-                  <span className="status-dot" style={{ background: s.color }} aria-hidden="true">
+                  <span className="legend-pin" style={{ background: s.color }} aria-hidden="true">
                     {s.letter}
                   </span>
                   {s.label}

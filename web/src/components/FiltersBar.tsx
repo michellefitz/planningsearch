@@ -45,9 +45,7 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
                   checked={state.statuses.includes(key)}
                   onChange={() => onChange({ ...state, statuses: toggle(state.statuses, key) })}
                 />
-                <span className="status-dot" style={{ background: s.color }} aria-hidden="true">
-                  {s.letter}
-                </span>
+                <span className="dot" style={{ background: s.color }} aria-hidden="true" />
                 {s.label}
               </label>
             ))}
