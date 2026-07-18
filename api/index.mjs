@@ -86,6 +86,7 @@ function parseFileListHtml(html, baseUrl) {
   };
 
   const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  const cellRe = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
   let row;
   while ((row = rowRe.exec(html)) !== null) {
     const rowHtml = row[1];
@@ -94,10 +95,14 @@ function parseFileListHtml(html, baseUrl) {
       .filter((a) => a.url !== null);
     if (anchors.length !== 1) continue;
     const { url, label } = anchors[0];
-    const rowText = stripTags(rowHtml.replace(ANCHOR_RE, " "));
+    const cells = [...rowHtml.matchAll(cellRe)].map((c) => stripTags(c[1]));
+    const docType = cells[0] ?? "";
+    const comment = cells[1] ?? "";
+    const title = comment && comment !== docType
+      ? `${docType} — ${comment}`
+      : docType;
     const filename = decodeURIComponent(url.split("/").pop() ?? "Document");
-    const title = GENERIC_LABEL_RE.test(label) ? rowText : label || rowText;
-    push(url, title, filename);
+    push(url, GENERIC_LABEL_RE.test(label) ? title : label || title, filename);
   }
 
   let m;

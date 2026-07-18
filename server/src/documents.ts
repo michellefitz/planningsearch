@@ -72,9 +72,10 @@ export function parseFileListHtml(html: string, baseUrl: string): ScannedFile[] 
     files.push({ title: title || fallback, url });
   };
 
-  // Pass 1: table rows — use the row text (minus the anchor's own label) as
-  // the title when the anchor text is generic.
+  // Pass 1: table rows — extract Document Type and Comment cells (columns 0–1)
+  // from the council's GridView, ignoring # Files, Size, JPEG columns.
   const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  const cellRe = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
   let row: RegExpExecArray | null;
   while ((row = rowRe.exec(html)) !== null) {
     const rowHtml = row[1];
@@ -83,10 +84,14 @@ export function parseFileListHtml(html: string, baseUrl: string): ScannedFile[] 
       .filter((a): a is { url: string; label: string } => a.url !== null);
     if (anchors.length !== 1) continue;
     const { url, label } = anchors[0];
-    const rowText = stripTags(rowHtml.replace(ANCHOR_RE, " "));
+    const cells = [...rowHtml.matchAll(cellRe)].map((c) => stripTags(c[1]));
+    const docType = cells[0] ?? "";
+    const comment = cells[1] ?? "";
+    const title = comment && comment !== docType
+      ? `${docType} — ${comment}`
+      : docType;
     const filename = decodeURIComponent(url.split("/").pop() ?? "Document");
-    const title = GENERIC_LABEL_RE.test(label) ? rowText : label || rowText;
-    push(url, title, filename);
+    push(url, GENERIC_LABEL_RE.test(label) ? title : label || title, filename);
   }
 
   // Pass 2: any document anchors not inside a single-link row (non-table

@@ -33,6 +33,17 @@ describe("extractFrameSrc", () => {
     ).toBe("viewer.aspx?id=9");
     expect(extractFrameSrc("<p>plain page</p>")).toBeNull();
   });
+  it("finds JavaScript location redirects", () => {
+    expect(extractFrameSrc('<script>window.location = "viewer.aspx?id=5";</script>')).toBe(
+      "viewer.aspx?id=5"
+    );
+    expect(extractFrameSrc('<script>document.location.href = "/doc/view.pdf";</script>')).toBe(
+      "/doc/view.pdf"
+    );
+    expect(extractFrameSrc('<script>location.replace("render.aspx?f=1");</script>')).toBe(
+      "render.aspx?f=1"
+    );
+  });
 });
 
 describe("deriveScannedFilesUrl", () => {
@@ -84,9 +95,9 @@ describe("parseFileListHtml", () => {
       </table>`;
     const files = parseFileListHtml(html, base);
     expect(files.map((f) => f.title)).toEqual([
-      "Application Form 02/06/2026",
-      "Site Location Map 02/06/2026",
-      "Planner's Report 10/07/2026",
+      "Application Form — 02/06/2026",
+      "Site Location Map — 02/06/2026",
+      "Planner's Report — 10/07/2026",
     ]);
     expect(files[0].url).toContain("fileid=1");
   });
