@@ -98,9 +98,11 @@ function MapLinks({ detail: d }: { detail: AppDetail }) {
           >
             Street View ↗
           </a>
+          {/* q drops a pin; t=k is the satellite basemap — the documented
+              URLs API can't do both at once. */}
           <a
             className="btn"
-            href={`https://www.google.com/maps/@?api=1&map_action=map&center=${d.lat},${d.lng}&zoom=19&basemap=satellite`}
+            href={`https://maps.google.com/?q=${d.lat},${d.lng}&t=k&z=19`}
             target="_blank"
             rel="noopener noreferrer"
           >
