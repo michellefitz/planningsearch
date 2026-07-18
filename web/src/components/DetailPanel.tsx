@@ -153,6 +153,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
       <header className="detail-header">
         <StatusBadge status={d.status} label={d.status_label} />
         <h2>{d.address_text ?? d.planning_reference}</h2>
+        {d.ai_summary && <p className="detail-summary">{d.ai_summary}</p>}
         <p className="detail-desc">{withGlossary(d.description ?? "No description available.", glossary)}</p>
         <p className="result-meta">
           {d.planning_reference} · {d.authority_name}

@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS applications (
   geom_polygon TEXT,
   source_url TEXT,
   last_synced TEXT,
+  ai_summary TEXT,
   UNIQUE(authority_id, planning_reference)
 );
 
@@ -111,6 +112,8 @@ export function openDb(dbPath: string = DB_PATH, opts: OpenDbOptions = {}): Data
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  // Migrate existing databases that predate the ai_summary column.
+  try { db.exec("ALTER TABLE applications ADD COLUMN ai_summary TEXT"); } catch {}
   seedAuthorities(db);
   return db;
 }

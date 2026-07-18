@@ -370,9 +370,17 @@ body {
   font-size: 1.1rem;
 }
 
+.detail-summary {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--text-primary, #1a1a1a);
+  margin: 0.3rem 0 0.5rem;
+}
+
 .detail-desc {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   line-height: 1.45;
+  color: var(--text-secondary, #555);
 }
 
 .glossary-term {

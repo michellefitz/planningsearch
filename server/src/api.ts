@@ -9,6 +9,7 @@ import {
   fetchScannedFileList,
   type DiagnosticStep,
 } from "./documents.js";
+import { summariseDescription } from "./summarize.js";
 
 function csv(v: unknown): string[] | undefined {
   if (typeof v !== "string" || !v.trim()) return undefined;
@@ -189,7 +190,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     return reply.send(doc.body);
   });
 
-  app.get("/api/applications/:id", (req, reply) => {
+  app.get("/api/applications/:id", async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const row = db.prepare("SELECT * FROM applications WHERE id = ?").get(id) as
       | Record<string, unknown>
@@ -206,6 +207,18 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
          ORDER BY received_date DESC LIMIT 10`
       )
       .all({ id, authority_id: row.authority_id, address_text: row.address_text });
-    return { ...publicApplication(row), documents, related };
+
+    let aiSummary = (row.ai_summary as string | null) ?? null;
+    if (!aiSummary && row.description) {
+      aiSummary = await summariseDescription(
+        row.description as string,
+        row.application_type as string | null
+      );
+      if (aiSummary) {
+        db.prepare("UPDATE applications SET ai_summary = ? WHERE id = ?").run(aiSummary, id);
+      }
+    }
+
+    return { ...publicApplication(row), ai_summary: aiSummary, documents, related };
   });
 }

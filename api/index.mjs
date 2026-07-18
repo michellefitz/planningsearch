@@ -212,6 +212,53 @@ async function fetchScannedDocument(listUrl, index, maxBytes = 4_000_000, trace)
   }
 }
 
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const AI_SUMMARY_CACHE = new Map();
+
+async function summariseDescription(description, applicationType) {
+  if (!ANTHROPIC_API_KEY || !description) return null;
+  const cacheKey = description;
+  if (AI_SUMMARY_CACHE.has(cacheKey)) return AI_SUMMARY_CACHE.get(cacheKey);
+  const systemPrompt =
+    "You summarise Irish planning applications in one short sentence of plain English. " +
+    "The reader is a regular person, not a planner or architect. " +
+    "Say what the project actually is: an extension, a new house, a commercial unit, solar panels, etc. " +
+    "Include key details like number of bedrooms or storeys only when stated. " +
+    'Never start with "This application is for". Just state what it is. ' +
+    "Keep it under 30 words.";
+  const userMsg = applicationType
+    ? `Application type: ${applicationType}\nDescription: ${description}`
+    : description;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 100,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMsg }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data.content?.find((b) => b.type === "text")?.text?.trim() || null;
+    if (text) AI_SUMMARY_CACHE.set(cacheKey, text);
+    return text;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function publicApp(a) {
   const auth = AUTH.get(a.authority_id);
   return {
@@ -448,7 +495,8 @@ export default async function handler(req, res) {
         received_date: a.received_date,
         decision_date: a.decision_date,
       }));
-    return send(res, 200, { ...publicApp(app), documents: [], related });
+    const aiSummary = await summariseDescription(app.description, app.application_type);
+    return send(res, 200, { ...publicApp(app), ai_summary: aiSummary, documents: [], related });
   }
 
   return send(res, 404, { error: "Not found" });

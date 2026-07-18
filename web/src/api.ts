@@ -41,6 +41,7 @@ export interface AppSummary {
 }
 
 export interface AppDetail extends AppSummary {
+  ai_summary: string | null;
   status_raw: string | null;
   application_type_raw: string | null;
   validated_date: string | null;
