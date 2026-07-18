@@ -126,27 +126,15 @@ export default function App() {
               {error}
             </p>
           )}
-          {detail ? (
-            <DetailPanel
-              detail={detail}
-              meta={meta}
-              onClose={() => {
-                setDetail(null);
-                setSelectedId(null);
-              }}
-              onSelectRelated={select}
-            />
-          ) : (
-            <ResultsList
-              results={results}
-              total={total}
-              fuzzy={fuzzy}
-              loading={loading}
-              selectedId={selectedId}
-              onSelect={select}
-              onHover={setHoveredId}
-            />
-          )}
+          <ResultsList
+            results={results}
+            total={total}
+            fuzzy={fuzzy}
+            loading={loading}
+            selectedId={selectedId}
+            onSelect={select}
+            onHover={setHoveredId}
+          />
         </div>
 
         <div className="map-wrap">
@@ -183,6 +171,28 @@ export default function App() {
           {meta?.generated_at && ` · refreshed here ${meta.generated_at.slice(0, 10)}`}.
         </span>
       </footer>
+
+      {detail && (
+        <>
+          <div
+            className="sheet-backdrop"
+            onClick={() => {
+              setDetail(null);
+              setSelectedId(null);
+            }}
+            aria-hidden="true"
+          />
+          <DetailPanel
+            detail={detail}
+            meta={meta}
+            onClose={() => {
+              setDetail(null);
+              setSelectedId(null);
+            }}
+            onSelectRelated={select}
+          />
+        </>
+      )}
     </div>
   );
 }

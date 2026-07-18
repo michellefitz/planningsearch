@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS applications (
   agent_name TEXT,
   address_text TEXT,
   eircode TEXT,
+  num_residential_units INTEGER,
+  floor_area_sqm REAL,
+  site_area_ha REAL,
+  expiry_date TEXT,
   lat REAL,
   lng REAL,
   geom_polygon TEXT,
@@ -112,8 +116,12 @@ export function openDb(dbPath: string = DB_PATH, opts: OpenDbOptions = {}): Data
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
-  // Migrate existing databases that predate the ai_summary column.
+  // Migrate existing databases that predate later columns.
   try { db.exec("ALTER TABLE applications ADD COLUMN ai_summary TEXT"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN num_residential_units INTEGER"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN floor_area_sqm REAL"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN site_area_ha REAL"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN expiry_date TEXT"); } catch {}
   seedAuthorities(db);
   return db;
 }
@@ -164,6 +172,10 @@ export interface ApplicationRecord {
   agent_name: string | null;
   address_text: string | null;
   eircode: string | null;
+  num_residential_units: number | null;
+  floor_area_sqm: number | null;
+  site_area_ha: number | null;
+  expiry_date: string | null;
   lat: number | null;
   lng: number | null;
   geom_polygon: string | null;
@@ -179,15 +191,17 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       is_domestic_guess, status, status_raw, received_date, validated_date,
       further_info_requested_date, further_info_received_date, decision_due_date,
       decision, decision_raw, decision_date, appeal_status, final_grant_date,
-      applicant_name, agent_name, address_text, eircode, lat, lng, geom_polygon,
-      source_url, last_synced
+      applicant_name, agent_name, address_text, eircode,
+      num_residential_units, floor_area_sqm, site_area_ha, expiry_date,
+      lat, lng, geom_polygon, source_url, last_synced
     ) VALUES (
       @authority_id, @planning_reference, @description, @application_type, @application_type_raw,
       @is_domestic_guess, @status, @status_raw, @received_date, @validated_date,
       @further_info_requested_date, @further_info_received_date, @decision_due_date,
       @decision, @decision_raw, @decision_date, @appeal_status, @final_grant_date,
-      @applicant_name, @agent_name, @address_text, @eircode, @lat, @lng, @geom_polygon,
-      @source_url, @last_synced
+      @applicant_name, @agent_name, @address_text, @eircode,
+      @num_residential_units, @floor_area_sqm, @site_area_ha, @expiry_date,
+      @lat, @lng, @geom_polygon, @source_url, @last_synced
     )
     ON CONFLICT(authority_id, planning_reference) DO UPDATE SET
       description = excluded.description,
@@ -210,6 +224,10 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       agent_name = excluded.agent_name,
       address_text = excluded.address_text,
       eircode = excluded.eircode,
+      num_residential_units = excluded.num_residential_units,
+      floor_area_sqm = excluded.floor_area_sqm,
+      site_area_ha = excluded.site_area_ha,
+      expiry_date = excluded.expiry_date,
       lat = excluded.lat,
       lng = excluded.lng,
       geom_polygon = excluded.geom_polygon,

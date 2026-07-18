@@ -3,9 +3,11 @@ import { api, type AppDetail, type Meta } from "../api";
 import { StatusBadge } from "./ResultsList";
 
 /**
- * Single-page narrative application view (PRD F3): header, visual timeline,
- * facts panel, documents (deep-link floor, F4.7), related applications, and
- * the persistent official-portal link + freshness caveat (F3.8).
+ * Application detail (PRD F3) presented as a right-hand overlay sheet:
+ * header with AI summary and property links, key-figure tiles, visual
+ * timeline, facts grid, documents (deep-link floor, F4.7), related
+ * applications, and the persistent official-portal link + freshness
+ * caveat (F3.8).
  */
 
 interface Props {
@@ -87,7 +89,7 @@ function MapLinks({ detail: d }: { detail: AppDetail }) {
   const hasCoords = d.lat != null && d.lng != null;
   if (!hasCoords && !d.address_text) return null;
   return (
-    <div className="map-links">
+    <>
       {hasCoords ? (
         <>
           <a
@@ -119,8 +121,38 @@ function MapLinks({ detail: d }: { detail: AppDetail }) {
           Find on Google Maps ↗
         </a>
       )}
-    </div>
+    </>
   );
+}
+
+const DAY_MS = 86_400_000;
+
+/** Key figures worth surfacing as tiles; only render what the record has. */
+function buildStats(d: AppDetail): Array<{ label: string; value: string }> {
+  const stats: Array<{ label: string; value: string }> = [];
+  if (d.num_residential_units) {
+    stats.push({
+      label: "Residential units",
+      value: String(d.num_residential_units),
+    });
+  }
+  if (d.floor_area_sqm) {
+    stats.push({ label: "Floor area", value: `${d.floor_area_sqm.toLocaleString()} m²` });
+  }
+  if (d.site_area_ha) {
+    stats.push({ label: "Site area", value: `${d.site_area_ha} ha` });
+  }
+  if (d.decision_date && d.received_date) {
+    const days = Math.round((Date.parse(d.decision_date) - Date.parse(d.received_date)) / DAY_MS);
+    if (days > 0) stats.push({ label: "Decided in", value: `${days} days` });
+  } else if (d.decision_due_date) {
+    const days = Math.ceil((Date.parse(d.decision_due_date) - Date.now()) / DAY_MS);
+    if (days >= 0) stats.push({ label: "Decision due in", value: `${days} day${days === 1 ? "" : "s"}` });
+  }
+  if (d.expiry_date) {
+    stats.push({ label: "Permission expires", value: d.expiry_date });
+  }
+  return stats;
 }
 
 type FilesState =
@@ -193,28 +225,62 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
 export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated }: Props) {
   const glossary = meta?.glossary ?? {};
   const timeline = buildTimeline(d);
+  const stats = buildStats(d);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
-    <aside className="detail-panel" aria-label={`Application ${d.planning_reference}`}>
-      <button type="button" className="btn detail-close" onClick={onClose} aria-label="Close application details">
-        ✕ Close
-      </button>
+    <aside className="detail-sheet" aria-label={`Application ${d.planning_reference}`} role="dialog">
+      <div className="sheet-top">
+        <StatusBadge status={d.status} label={d.status_label} />
+        <button type="button" className="sheet-close" onClick={onClose} aria-label="Close application details">
+          ✕
+        </button>
+      </div>
 
       <header className="detail-header">
-        <StatusBadge status={d.status} label={d.status_label} />
         <h2>{d.address_text ?? d.planning_reference}</h2>
-        {d.ai_summary && <p className="detail-summary">✦ {d.ai_summary}</p>}
-        <p className="detail-desc-label">Planning description</p>
-        <p className="detail-desc">{withGlossary(d.description ?? "No description available.", glossary)}</p>
         <p className="result-meta">
           <span className="ref">{d.planning_reference}</span> · {d.authority_name}
+          {d.received_date && ` · received ${d.received_date}`}
           {d.is_domestic_guess && (
             <span className="tag" title="Best-effort classification, not an official category">
               likely domestic
             </span>
           )}
         </p>
-        <MapLinks detail={d} />
+        {d.ai_summary && <p className="detail-summary">✦ {d.ai_summary}</p>}
+        <div className="action-row">
+          <MapLinks detail={d} />
+          {d.portal_url && (
+            <a className="btn btn-primary" href={d.portal_url} target="_blank" rel="noopener noreferrer">
+              Official {d.authority_short_name} portal ↗
+            </a>
+          )}
+        </div>
       </header>
+
+      {stats.length > 0 && (
+        <div className="stat-row">
+          {stats.map((s) => (
+            <div key={s.label} className="stat">
+              <span className="stat-value">{s.value}</span>
+              <span className="stat-label">{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <section aria-labelledby="desc-h">
+        <h3 id="desc-h">Planning description</h3>
+        <p className="detail-desc">{withGlossary(d.description ?? "No description available.", glossary)}</p>
+      </section>
 
       <section aria-labelledby="timeline-h">
         <h3 id="timeline-h">Timeline</h3>
@@ -281,13 +347,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         ) : (
           <p className="list-note">
             Scanned files (drawings, forms, reports, decision orders) are held on the council's own
-            portal — they are not in the open dataset. Use the link below to view them.
+            portal — they are not in the open dataset.
           </p>
-        )}
-        {d.portal_url && (
-          <a className="btn btn-primary portal-link" href={d.portal_url} target="_blank" rel="noopener noreferrer">
-            View on official {d.authority_short_name} portal ↗
-          </a>
         )}
         <ScannedFiles detail={d} />
       </section>

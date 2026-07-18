@@ -208,6 +208,13 @@ export function generateSeedRecords(): ApplicationRecord[] {
         agent_name: rand() < 0.5 ? pick(rand, ["Atelier North", "Boyle + Crowe Architects", "M2 Design Studio"]) : null,
         address_text: `${houseNo} ${street}, ${town.name}`,
         eircode: null,
+        num_residential_units: rand() < 0.15 ? 2 + Math.floor(rand() * 40) : null,
+        floor_area_sqm: rand() < 0.6 ? Math.round(40 + rand() * 260) : null,
+        site_area_ha: rand() < 0.5 ? Math.round(rand() * 80) / 100 : null,
+        expiry_date:
+          decided && plan.decisionRaw === "Grant Permission" && decisionDate
+            ? addDays(decisionDate, 365 * 5)
+            : null,
         lat: town.lat + (rand() - 0.5) * 0.02,
         lng: town.lng + (rand() - 0.5) * 0.03,
         geom_polygon: null,

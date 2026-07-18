@@ -47,6 +47,10 @@ export const FIELD_MAP = {
   eircode: "DevelopmentPostcode",
   oneOffHouse: "OneOffHouse",
   link: "LinkAppDetails",
+  numResidentialUnits: "NumResidentialUnits",
+  floorArea: "FloorArea",
+  siteArea: "AreaofSite",
+  expiryDate: "ExpiryDate",
 } as const;
 
 type Attributes = Record<string, unknown>;
@@ -61,6 +65,13 @@ function str(attrs: Attributes, field: string): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s.length ? s : null;
+}
+
+function num(attrs: Attributes, field: string): number | null {
+  const v = attrs[field];
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 /** ArcGIS dates are epoch millis; normalise to YYYY-MM-DD. */
@@ -142,6 +153,10 @@ export function featureToRecord(
     agent_name: null,
     address_text: str(attrs, FIELD_MAP.address),
     eircode: str(attrs, FIELD_MAP.eircode),
+    num_residential_units: num(attrs, FIELD_MAP.numResidentialUnits),
+    floor_area_sqm: num(attrs, FIELD_MAP.floorArea),
+    site_area_ha: num(attrs, FIELD_MAP.siteArea),
+    expiry_date: isoDate(attrs, FIELD_MAP.expiryDate),
     lat,
     lng,
     geom_polygon: null,

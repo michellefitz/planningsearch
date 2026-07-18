@@ -55,6 +55,10 @@ export interface AppDetail extends AppSummary {
   applicant_name: string | null;
   agent_name: string | null;
   eircode: string | null;
+  num_residential_units: number | null;
+  floor_area_sqm: number | null;
+  site_area_ha: number | null;
+  expiry_date: string | null;
   source_url: string | null;
   scanned_files_url: string | null;
   last_synced: string | null;
