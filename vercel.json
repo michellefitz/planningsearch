@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm install --include=dev",
-  "buildCommand": "node scripts/build-vercel.mjs"
+  "buildCommand": "PLANVIEW_EXPORT_SOURCE=live node scripts/build-vercel.mjs"
 }

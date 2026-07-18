@@ -18,6 +18,13 @@ export interface AuthorityConfig {
   gisUrl: string | null;
   /** Values used for this authority in the national dataset's PlanningAuthority field. */
   nationalDbNames: string[];
+  /**
+   * Case-insensitive substring (SQL LIKE fragment) that uniquely identifies
+   * this authority in PlanningAuthority — used both for the ArcGIS WHERE
+   * clause and for tolerant name matching (accents/hyphens vary at source,
+   * e.g. "Dun Laoghaire Rathdown" vs "Dún Laoghaire-Rathdown").
+   */
+  nationalDbLike: string;
   /** Best-effort link to the application (or a pre-filled search) on the official portal. */
   portalUrlForReference: (reference: string) => string;
   /** Rough bounding box [west, south, east, north] used for sanity-checking ingested geometry. */
@@ -33,6 +40,7 @@ export const AUTHORITIES: AuthorityConfig[] = [
     portalBaseUrl: "https://planning.agileapplications.ie/dublincity",
     gisUrl: "https://mapzone.dublincity.ie",
     nationalDbNames: ["Dublin City Council", "Dublin City"],
+    nationalDbLike: "Dublin City",
     portalUrlForReference: (ref) =>
       // Agile has no stable per-reference URL without its internal id; land on
       // search with the reference pre-filled so it is one click away.
@@ -47,6 +55,7 @@ export const AUTHORITIES: AuthorityConfig[] = [
     portalBaseUrl: "https://planning.agileapplications.ie/fingal",
     gisUrl: null,
     nationalDbNames: ["Fingal County Council", "Fingal"],
+    nationalDbLike: "Fingal",
     portalUrlForReference: (ref) =>
       `https://planning.agileapplications.ie/fingal/searches?query=${encodeURIComponent(ref)}`,
     bbox: [-6.5, 53.35, -6.05, 53.64],
@@ -63,6 +72,7 @@ export const AUTHORITIES: AuthorityConfig[] = [
       "Dún Laoghaire-Rathdown County Council",
       "Dun Laoghaire-Rathdown",
     ],
+    nationalDbLike: "Laoghaire",
     portalUrlForReference: (ref) =>
       // SwiftLG's documented pattern for a direct application view.
       `https://planning.dlrcoco.ie/swiftlg/apas/run/WPHAPPDETAIL.DisplayUrl?theApnID=${encodeURIComponent(ref)}`,
@@ -76,6 +86,7 @@ export const AUTHORITIES: AuthorityConfig[] = [
     portalBaseUrl: "https://planning.localgov.ie",
     gisUrl: null,
     nationalDbNames: ["South Dublin County Council", "South Dublin"],
+    nationalDbLike: "South Dublin",
     portalUrlForReference: (ref) =>
       `https://planning.localgov.ie/en/search?query=${encodeURIComponent(ref)}`,
     bbox: [-6.55, 53.22, -6.29, 53.37],
@@ -88,6 +99,7 @@ export const AUTHORITIES: AuthorityConfig[] = [
     portalBaseUrl: "https://www.eplanning.ie/KildareCC",
     gisUrl: "https://webgeo.kildarecoco.ie/planningenquiry",
     nationalDbNames: ["Kildare County Council", "Kildare"],
+    nationalDbLike: "Kildare",
     portalUrlForReference: (ref) =>
       `https://www.eplanning.ie/KildareCC/searchtypes?query=${encodeURIComponent(ref)}`,
     bbox: [-7.17, 52.94, -6.45, 53.45],
@@ -96,10 +108,26 @@ export const AUTHORITIES: AuthorityConfig[] = [
 
 export const AUTHORITY_BY_ID = new Map(AUTHORITIES.map((a) => [a.id, a]));
 
+/** Strip accents/punctuation for tolerant matching of source authority names. */
+function normalizeName(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 export function authorityIdForNationalName(name: string): string | null {
-  const needle = name.trim().toLowerCase();
-  for (const a of AUTHORITIES) {
-    if (a.nationalDbNames.some((n) => n.toLowerCase() === needle)) return a.id;
+  const needle = normalizeName(name);
+  if (!needle) return null;
+  // "South Dublin" must be checked before the generic "Dublin City" match
+  // cannot collide, but keep ordering deterministic: most specific first.
+  const ordered = [...AUTHORITIES].sort(
+    (a, b) => b.nationalDbLike.length - a.nationalDbLike.length
+  );
+  for (const a of ordered) {
+    if (needle.includes(normalizeName(a.nationalDbLike))) return a.id;
   }
   return null;
 }

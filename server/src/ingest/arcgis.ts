@@ -25,6 +25,7 @@ export const SERVICE_URL =
   process.env.PLANVIEW_ARCGIS_URL ??
   "https://services.arcgis.com/NzlPQPKn5QF9v2US/arcgis/rest/services/IrishPlanningApplications/FeatureServer/0";
 
+// Verified against the live service schema on 2026-07-18.
 export const FIELD_MAP = {
   authority: "PlanningAuthority",
   reference: "ApplicationNumber",
@@ -33,6 +34,7 @@ export const FIELD_MAP = {
   applicationType: "ApplicationType",
   status: "ApplicationStatus",
   received: "ReceivedDate",
+  withdrawn: "WithdrawnDate",
   decision: "Decision",
   decisionDate: "DecisionDate",
   decisionDueDate: "DecisionDueDate",
@@ -40,9 +42,10 @@ export const FIELD_MAP = {
   fiReceived: "FIRecDate",
   grantDate: "GrantDate",
   appealStatus: "AppealStatus",
-  applicant: "ApplicantForename", // often split/blank; see buildApplicantName
+  applicant: "ApplicantForename", // often null (redacted at source); see buildApplicantName
   applicantSurname: "ApplicantSurname",
-  eircode: "Eircode",
+  eircode: "DevelopmentPostcode",
+  oneOffHouse: "OneOffHouse",
   link: "LinkAppDetails",
 } as const;
 
@@ -111,14 +114,19 @@ export function featureToRecord(
   const auth = AUTHORITY_BY_ID.get(authorityId)!;
   const sourceUrl = str(attrs, FIELD_MAP.link) ?? auth.portalUrlForReference(reference);
 
+  // The dataset's own one-off-house flag is a strong domestic signal on top
+  // of the description heuristic.
+  const oneOff = /^y(es)?$/i.test(str(attrs, FIELD_MAP.oneOffHouse) ?? "");
+  const withdrawnDate = isoDate(attrs, FIELD_MAP.withdrawn);
+
   return {
     authority_id: authorityId,
     planning_reference: reference,
     description,
     application_type: normalizeApplicationType(typeRaw),
     application_type_raw: typeRaw,
-    is_domestic_guess: guessIsDomestic(description) ? 1 : 0,
-    status: normalizeStatus(statusRaw, decisionRaw),
+    is_domestic_guess: oneOff || guessIsDomestic(description) ? 1 : 0,
+    status: withdrawnDate ? "withdrawn" : normalizeStatus(statusRaw, decisionRaw),
     status_raw: statusRaw,
     received_date: isoDate(attrs, FIELD_MAP.received),
     validated_date: null,
@@ -166,12 +174,43 @@ export async function fetchPage(opts: FetchPageOptions): Promise<ArcgisFeature[]
   return body.features ?? [];
 }
 
-/** WHERE clause selecting the five v1 authorities, optionally since a date. */
+/**
+ * WHERE clause selecting the five v1 authorities, optionally since a date.
+ * Uses LIKE fragments rather than exact names because the source is not
+ * consistent about accents/hyphens (e.g. Dún Laoghaire-Rathdown).
+ */
 export function buildWhereClause(sinceIso?: string): string {
-  const names = AUTHORITIES.flatMap((a) => a.nationalDbNames).map(
-    (n) => `'${n.replace(/'/g, "''")}'`
+  const likes = AUTHORITIES.map(
+    (a) => `${FIELD_MAP.authority} LIKE '%${a.nationalDbLike.replace(/'/g, "''")}%'`
   );
-  const authorityClause = `${FIELD_MAP.authority} IN (${names.join(",")})`;
+  const authorityClause = `(${likes.join(" OR ")})`;
   if (!sinceIso) return authorityClause;
   return `${authorityClause} AND ${FIELD_MAP.received} >= TIMESTAMP '${sinceIso} 00:00:00'`;
+}
+
+/** Fetch every matching feature since a date, paginated with polite retries. */
+export async function fetchAllSince(
+  sinceIso: string,
+  onPage?: (fetched: number) => void
+): Promise<ArcgisFeature[]> {
+  const where = buildWhereClause(sinceIso);
+  const all: ArcgisFeature[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    let features: ArcgisFeature[] | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        features = await fetchPage({ where, offset, pageSize });
+        break;
+      } catch (err) {
+        if (attempt === 3) throw err;
+        await new Promise((r) => setTimeout(r, attempt * 2000));
+      }
+    }
+    all.push(...features!);
+    onPage?.(all.length);
+    if (features!.length < pageSize) break;
+    await new Promise((r) => setTimeout(r, 300)); // be polite to the public service
+  }
+  return all;
 }

@@ -34,25 +34,38 @@ const STATUS_RULES: Array<[RegExp, CanonicalStatus]> = [
   [/invalid|incomplete/i, "invalid"],
   [/refus|reject/i, "refused"],
   [/grant|approv|conditional|unconditional/i, "granted"],
-  [/decision made|decided/i, "granted"],
   [/pending|new application|under consideration|awaiting|received|registered|live/i, "pending"],
 ];
 
+/**
+ * Statuses that only say "the case is closed" without the outcome (e.g. the
+ * national dataset's "APPLICATION FINALISED", "DECISION MADE") — the real
+ * outcome lives in the Decision field, so defer to it.
+ */
+const DECIDED_OPAQUE = /finalised|finalized|decision made|decided|closed|complete/i;
+
 export function normalizeStatus(raw: string | null | undefined, decision?: string | null): CanonicalStatus {
   const source = `${raw ?? ""}`.trim();
+  const fromDecision = (): CanonicalStatus | null => {
+    const dec = `${decision ?? ""}`.trim();
+    if (!dec) return null;
+    if (/refus|reject/i.test(dec)) return "refused";
+    if (/grant|approv|conditional/i.test(dec)) return "granted";
+    if (/withdraw/i.test(dec)) return "withdrawn";
+    if (/invalid/i.test(dec)) return "invalid";
+    return null;
+  };
   if (source) {
+    // "Finalised"/"decision made" style statuses carry no outcome — the
+    // Decision field is authoritative there.
+    if (DECIDED_OPAQUE.test(source)) return fromDecision() ?? "unknown";
     for (const [re, status] of STATUS_RULES) {
       if (re.test(source)) return status;
     }
   }
   // Some sources leave status blank once decided; fall back to the decision text.
-  const dec = `${decision ?? ""}`.trim();
-  if (dec) {
-    if (/refus|reject/i.test(dec)) return "refused";
-    if (/grant|approv|conditional/i.test(dec)) return "granted";
-    if (/withdraw/i.test(dec)) return "withdrawn";
-    if (/invalid/i.test(dec)) return "invalid";
-  }
+  const viaDecision = fromDecision();
+  if (viaDecision) return viaDecision;
   return source ? "unknown" : "pending";
 }
 

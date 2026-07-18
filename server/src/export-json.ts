@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { AUTHORITIES } from "./config/authorities.js";
 import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
 import { generateSeedRecords } from "./seed.js";
+import { featureToRecord, fetchAllSince, SERVICE_URL } from "./ingest/arcgis.js";
+import type { ApplicationRecord } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,8 +19,48 @@ const OUT =
   process.env.PLANVIEW_JSON_OUT ??
   path.resolve(__dirname, "../../api/_data/planning.json");
 
-function main() {
-  const records = generateSeedRecords();
+/** Live pull from the national service: applications received in the window. */
+async function fetchLiveRecords(): Promise<ApplicationRecord[]> {
+  const days = Number(process.env.PLANVIEW_EXPORT_DAYS ?? 730); // default: last 2 years
+  const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+  console.log(`Fetching live data since ${since} from ${SERVICE_URL} …`);
+  const features = await fetchAllSince(since, (n) => console.log(`  fetched ${n} features…`));
+  const now = new Date().toISOString();
+  const records: ApplicationRecord[] = [];
+  let skipped = 0;
+  for (const f of features) {
+    const rec = featureToRecord(f, now);
+    if (rec) records.push(rec);
+    else skipped++;
+  }
+  // Dedup on authority+reference (source occasionally repeats rows).
+  const byKey = new Map<string, ApplicationRecord>();
+  for (const r of records) byKey.set(`${r.authority_id}|${r.planning_reference}`, r);
+  console.log(
+    `Mapped ${byKey.size} applications (${skipped} outside the five authorities/unmappable, ${records.length - byKey.size} duplicates).`
+  );
+  if (byKey.size === 0) throw new Error("Live fetch returned zero mappable applications");
+  return [...byKey.values()];
+}
+
+async function main() {
+  const source = process.env.PLANVIEW_EXPORT_SOURCE ?? "seed";
+  let records: ApplicationRecord[];
+  let dataSource: "live" | "seed";
+  if (source === "live") {
+    try {
+      records = await fetchLiveRecords();
+      dataSource = "live";
+    } catch (err) {
+      console.error("=== LIVE FETCH FAILED — falling back to DEMO SEED DATA ===");
+      console.error(err);
+      records = generateSeedRecords();
+      dataSource = "seed";
+    }
+  } else {
+    records = generateSeedRecords();
+    dataSource = "seed";
+  }
   // Assign stable ids by generation order (matches SQLite rowid ordering).
   const apps = records.map((r, i) => ({ id: i + 1, ...r }));
   const now = new Date().toISOString();
@@ -28,6 +70,7 @@ function main() {
 
   const bundle = {
     generated_at: now,
+    data_source: dataSource,
     authorities: AUTHORITIES.map((a) => ({
       id: a.id,
       name: a.name,
@@ -42,13 +85,19 @@ function main() {
     application_types: APPLICATION_TYPE_LABELS,
     glossary: GLOSSARY,
     attribution:
-      "Contains Irish Public Sector Data (Department of Housing, Local Government and Heritage) licensed under CC-BY 4.0. The local authority registers remain the authoritative source.",
+      dataSource === "live"
+        ? "Contains Irish Public Sector Data (Department of Housing, Local Government and Heritage) licensed under CC-BY 4.0. The local authority registers remain the authoritative source."
+        : "DEMO DATA — fictional applications for demonstration only. Real data: National Planning Applications (DHLGH), CC-BY 4.0.",
     applications: apps,
   };
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(bundle));
-  console.log(`Wrote ${apps.length} applications to ${OUT}`);
+  const mb = (fs.statSync(OUT).size / 1024 / 1024).toFixed(1);
+  console.log(`Wrote ${apps.length} applications (${dataSource}) to ${OUT} (${mb} MB)`);
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
