@@ -233,26 +233,27 @@ export async function fetchScannedDocument(
     if (!docRes.ok) return null;
 
     let contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
-    if (/text\/html/i.test(contentType)) {
+    let currentUrl = target.url;
+    for (let hop = 0; hop < 3 && /text\/html/i.test(contentType); hop++) {
       const shellHtml = await docRes.text();
       const inner = extractFrameSrc(shellHtml);
       trace?.push({
-        step: "viewer_shell",
+        step: `viewer_shell_${hop}`,
         extractedInner: inner,
         bodySnippet: shellHtml.slice(0, 500),
       });
       if (!inner) return null;
-      const innerUrl = new URL(inner, target.url).toString();
-      docRes = await fetch(innerUrl, { signal: controller.signal, headers: docHeaders });
+      currentUrl = new URL(inner, currentUrl).toString();
+      docRes = await fetch(currentUrl, { signal: controller.signal, headers: docHeaders });
       trace?.push({
-        step: "fetch_inner",
+        step: `fetch_inner_${hop}`,
         status: docRes.status,
         contentType: docRes.headers.get("content-type") ?? undefined,
       });
       if (!docRes.ok) return null;
       contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
-      if (/text\/html/i.test(contentType)) return null;
     }
+    if (/text\/html/i.test(contentType)) return null;
 
     const declared = Number(docRes.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > maxBytes) return "too_large";

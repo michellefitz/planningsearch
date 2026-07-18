@@ -180,20 +180,19 @@ async function fetchScannedDocument(listUrl, index, maxBytes = 4_000_000, trace)
     trace?.push({ step: "fetch_document", status: docRes.status, contentType: docRes.headers.get("content-type") });
     if (!docRes.ok) return null;
     let contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
-    if (/text\/html/i.test(contentType)) {
+    let currentUrl = target.url;
+    for (let hop = 0; hop < 3 && /text\/html/i.test(contentType); hop++) {
       const shellHtml = await docRes.text();
       const inner = extractFrameSrc(shellHtml);
-      trace?.push({ step: "viewer_shell", extractedInner: inner, bodySnippet: shellHtml.slice(0, 500) });
+      trace?.push({ step: `viewer_shell_${hop}`, extractedInner: inner, bodySnippet: shellHtml.slice(0, 500) });
       if (!inner) return null;
-      docRes = await fetch(new URL(inner, target.url).toString(), {
-        signal: controller.signal,
-        headers: docHeaders,
-      });
-      trace?.push({ step: "fetch_inner", status: docRes.status, contentType: docRes.headers.get("content-type") });
+      currentUrl = new URL(inner, currentUrl).toString();
+      docRes = await fetch(currentUrl, { signal: controller.signal, headers: docHeaders });
+      trace?.push({ step: `fetch_inner_${hop}`, status: docRes.status, contentType: docRes.headers.get("content-type") });
       if (!docRes.ok) return null;
       contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
-      if (/text\/html/i.test(contentType)) return null;
     }
+    if (/text\/html/i.test(contentType)) return null;
 
     const declared = Number(docRes.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > maxBytes) return "too_large";
