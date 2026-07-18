@@ -121,9 +121,16 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
       )}
       {state.phase === "loaded" && (
         <ul className="doc-list">
-          {state.files.map((f) => (
+          {state.files.map((f, i) => (
             <li key={f.url}>
-              <a href={f.url} target="_blank" rel="noopener noreferrer">
+              {/* Proxied through our API: the council's raw file URLs are
+                  session-bound and serve the wrong document outside the
+                  session that produced them. */}
+              <a
+                href={`/api/applications/${d.id}/files/${i}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {f.title}
               </a>
             </li>

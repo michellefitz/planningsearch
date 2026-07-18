@@ -109,20 +109,80 @@ function parseFileListHtml(html, baseUrl) {
   return files;
 }
 
+const UA_HEADERS = {
+  "User-Agent": "PlanView/0.1 (planning register viewer; respectful on-demand fetch)",
+  Accept: "text/html",
+};
+
 async function fetchScannedFileList(listUrl) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
-    const res = await fetch(listUrl, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "PlanView/0.1 (planning register viewer; respectful on-demand fetch)",
-        Accept: "text/html",
-      },
-    });
+    const res = await fetch(listUrl, { signal: controller.signal, headers: UA_HEADERS });
     if (!res.ok) return null;
     const files = parseFileListHtml(await res.text(), listUrl);
     return files.length > 0 ? files : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const cookieHeaderFromSetCookies = (setCookies) =>
+  setCookies.map((c) => c.split(";")[0].trim()).filter(Boolean).join("; ");
+
+function extractFrameSrc(html) {
+  const frame = html.match(/<(?:iframe|embed)\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
+  if (frame) return frame[1];
+  const object = html.match(/<object\b[^>]*\bdata\s*=\s*["']([^"']+)["']/i);
+  if (object) return object[1];
+  const refresh = html.match(
+    /<meta\b[^>]*http-equiv\s*=\s*["']refresh["'][^>]*content\s*=\s*["'][^"']*url=([^"']+)["']/i
+  );
+  if (refresh) return refresh[1].trim();
+  return null;
+}
+
+/**
+ * Session-bound document proxy: the council's file URLs only work inside the
+ * session that loaded the listing, so each view re-does the whole dance —
+ * fetch listing (capture cookies), fetch the file at `index` with them.
+ */
+async function fetchScannedDocument(listUrl, index, maxBytes = 4_000_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    const listRes = await fetch(listUrl, { signal: controller.signal, headers: UA_HEADERS });
+    if (!listRes.ok) return null;
+    const cookies = cookieHeaderFromSetCookies(listRes.headers.getSetCookie?.() ?? []);
+    const files = parseFileListHtml(await listRes.text(), listUrl);
+    const target = files[index];
+    if (!target) return null;
+
+    const docHeaders = { ...UA_HEADERS, Accept: "*/*", Referer: listUrl };
+    if (cookies) docHeaders.Cookie = cookies;
+
+    let docRes = await fetch(target.url, { signal: controller.signal, headers: docHeaders });
+    if (!docRes.ok) return null;
+    let contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
+    if (/text\/html/i.test(contentType)) {
+      const inner = extractFrameSrc(await docRes.text());
+      if (!inner) return null;
+      docRes = await fetch(new URL(inner, target.url).toString(), {
+        signal: controller.signal,
+        headers: docHeaders,
+      });
+      if (!docRes.ok) return null;
+      contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
+      if (/text\/html/i.test(contentType)) return null;
+    }
+
+    const declared = Number(docRes.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > maxBytes) return "too_large";
+    const body = Buffer.from(await docRes.arrayBuffer());
+    if (body.byteLength > maxBytes) return "too_large";
+    return { contentType, disposition: docRes.headers.get("content-disposition"), body };
   } catch {
     return null;
   } finally {
@@ -306,6 +366,33 @@ export default async function handler(req, res) {
           },
         })),
     });
+  }
+
+  const dm = route.match(/^\/api\/applications\/(\d+)\/files\/(\d+)$/);
+  if (dm) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(dm[1]));
+    const listUrl = app ? scannedFilesUrl(app.authority_id, app.source_url) : null;
+    if (!listUrl) return send(res, 404, { error: "No scanned files source" });
+    const doc = await fetchScannedDocument(listUrl, Number(dm[2]));
+    if (doc === "too_large" || doc === null) {
+      const reason =
+        doc === "too_large"
+          ? "This document is too large to display here."
+          : "Couldn't retrieve this document from the council just now.";
+      res.statusCode = doc === "too_large" ? 413 : 502;
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.end(
+        `<!doctype html><meta charset="utf-8"><title>PlanView</title>` +
+          `<p>${reason}</p><p><a href="${listUrl}">Open it on the council's scanned-files viewer instead</a>.</p>`
+      );
+      return;
+    }
+    res.statusCode = 200;
+    res.setHeader("Content-Type", doc.contentType);
+    if (doc.disposition) res.setHeader("Content-Disposition", doc.disposition);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.end(doc.body);
+    return;
   }
 
   const fm = route.match(/^\/api\/applications\/(\d+)\/files$/);

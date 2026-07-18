@@ -3,7 +3,11 @@ import type Database from "better-sqlite3";
 import { AUTHORITY_BY_ID } from "./config/authorities.js";
 import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
-import { deriveScannedFilesUrl, fetchScannedFileList } from "./documents.js";
+import {
+  deriveScannedFilesUrl,
+  fetchScannedDocument,
+  fetchScannedFileList,
+} from "./documents.js";
 
 function csv(v: unknown): string[] | undefined {
   if (typeof v !== "string" || !v.trim()) return undefined;
@@ -141,6 +145,41 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     }
     const files = await fetchScannedFileList(listUrl);
     return { supported: true, list_url: listUrl, files };
+  });
+
+  // Proxy a single document view. The council's file URLs are session-bound,
+  // so each view re-establishes a fresh upstream session server-side and
+  // streams the specific file back — self-contained per click.
+  app.get("/api/applications/:id/files/:index", async (req, reply) => {
+    const { id: rawId, index: rawIndex } = req.params as { id: string; index: string };
+    const id = Number(rawId);
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index) || index < 0) return reply.code(400).send({ error: "Bad index" });
+    const row = db
+      .prepare("SELECT authority_id, source_url FROM applications WHERE id = ?")
+      .get(id) as { authority_id: string; source_url: string | null } | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url);
+    if (!listUrl) return reply.code(404).send({ error: "No scanned files source" });
+
+    const doc = await fetchScannedDocument(listUrl, index);
+    if (doc === "too_large" || doc === null) {
+      const reason =
+        doc === "too_large"
+          ? "This document is too large to display here."
+          : "Couldn't retrieve this document from the council just now.";
+      return reply
+        .code(doc === "too_large" ? 413 : 502)
+        .type("text/html")
+        .send(
+          `<!doctype html><meta charset="utf-8"><title>PlanView</title>
+           <p>${reason}</p><p><a href="${listUrl}">Open it on the council's scanned-files viewer instead</a>.</p>`
+        );
+    }
+    reply.header("Content-Type", doc.contentType);
+    if (doc.disposition) reply.header("Content-Disposition", doc.disposition);
+    reply.header("Cache-Control", "private, max-age=300");
+    return reply.send(doc.body);
   });
 
   app.get("/api/applications/:id", (req, reply) => {

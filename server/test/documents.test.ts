@@ -1,5 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { deriveScannedFilesUrl, parseFileListHtml } from "../src/documents.js";
+import {
+  cookieHeaderFromSetCookies,
+  deriveScannedFilesUrl,
+  extractFrameSrc,
+  parseFileListHtml,
+} from "../src/documents.js";
+
+describe("cookieHeaderFromSetCookies", () => {
+  it("keeps only the name=value pair from each Set-Cookie", () => {
+    expect(
+      cookieHeaderFromSetCookies([
+        "ASP.NET_SessionId=abc123; path=/; HttpOnly",
+        "prefs=x; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Secure",
+      ])
+    ).toBe("ASP.NET_SessionId=abc123; prefs=x");
+  });
+  it("handles the empty case", () => {
+    expect(cookieHeaderFromSetCookies([])).toBe("");
+  });
+});
+
+describe("extractFrameSrc", () => {
+  it("finds iframe, object and meta-refresh targets", () => {
+    expect(extractFrameSrc('<iframe id="v" src="render.aspx?doc=1"></iframe>')).toBe(
+      "render.aspx?doc=1"
+    );
+    expect(extractFrameSrc('<object data="/docs/x.pdf" type="application/pdf"></object>')).toBe(
+      "/docs/x.pdf"
+    );
+    expect(
+      extractFrameSrc('<meta http-equiv="refresh" content="0;url=viewer.aspx?id=9">')
+    ).toBe("viewer.aspx?id=9");
+    expect(extractFrameSrc("<p>plain page</p>")).toBeNull();
+  });
+});
 
 describe("deriveScannedFilesUrl", () => {
   it("maps a Kildare eplanning detail URL to the iDocs listing", () => {
