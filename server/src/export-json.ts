@@ -21,7 +21,7 @@ const OUT =
 
 /** Live pull from the national service: applications received in the window. */
 async function fetchLiveRecords(): Promise<ApplicationRecord[]> {
-  const days = Number(process.env.PLANVIEW_EXPORT_DAYS ?? 730); // default: last 2 years
+  const days = Number(process.env.PLANVIEW_EXPORT_DAYS ?? 1825); // default: last 5 years
   const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
   console.log(`Fetching live data since ${since} from ${SERVICE_URL} …`);
   const features = await fetchAllSince(since, (n) => console.log(`  fetched ${n} features…`));

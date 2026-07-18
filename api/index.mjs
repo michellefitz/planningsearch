@@ -215,6 +215,46 @@ async function fetchScannedDocument(listUrl, index, maxBytes = 4_000_000, trace)
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const AI_SUMMARY_CACHE = new Map();
 
+const decodeEntities = (s) =>
+  s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
+
+/* Third-party submissions/observations show up in council file listings as
+   document types like "Third Party Submission" or "Submission/ Objection". */
+const OBJECTION_TITLE_RE = /submiss|observ|object/i;
+const countObjectionFiles = (files) => files.filter((f) => OBJECTION_TITLE_RE.test(f.title)).length;
+
+/* Applicant names are redacted in the national dataset; eplanning.ie detail
+   pages publish them under the Applicant tab. On-demand, cached per instance. */
+const APPLICANT_CACHE = new Map();
+
+async function fetchEplanningApplicantName(sourceUrl) {
+  if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return null;
+  if (APPLICANT_CACHE.has(sourceUrl)) return APPLICANT_CACHE.get(sourceUrl);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(sourceUrl, { signal: controller.signal, headers: UA_HEADERS });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const m = html.match(/Applicant name:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+    if (!m) return null;
+    const name = decodeEntities(stripTags(m[1])) || null;
+    if (name) APPLICANT_CACHE.set(sourceUrl, name);
+    return name;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function summariseDescription(description, applicationType) {
   if (!ANTHROPIC_API_KEY || !description) return null;
   const cacheKey = description;
@@ -476,7 +516,12 @@ export default async function handler(req, res) {
     const listUrl = scannedFilesUrl(app.authority_id, app.source_url);
     if (!listUrl) return send(res, 200, { supported: false, files: null, list_url: null });
     const files = await fetchScannedFileList(listUrl);
-    return send(res, 200, { supported: true, list_url: listUrl, files });
+    return send(res, 200, {
+      supported: true,
+      list_url: listUrl,
+      files,
+      objection_count: files ? countObjectionFiles(files) : null,
+    });
   }
 
   const m = route.match(/^\/api\/applications\/(\d+)$/);
@@ -495,8 +540,14 @@ export default async function handler(req, res) {
         received_date: a.received_date,
         decision_date: a.decision_date,
       }));
-    const aiSummary = await summariseDescription(app.description, app.application_type);
-    return send(res, 200, { ...publicApp(app), ai_summary: aiSummary, documents: [], related });
+    const [aiSummary, applicantName] = await Promise.all([
+      summariseDescription(app.description, app.application_type),
+      app.applicant_name || !app.source_url
+        ? Promise.resolve(null)
+        : fetchEplanningApplicantName(app.source_url),
+    ]);
+    const merged = applicantName ? { ...app, applicant_name: applicantName } : app;
+    return send(res, 200, { ...publicApp(merged), ai_summary: aiSummary, documents: [], related });
   }
 
   return send(res, 404, { error: "Not found" });

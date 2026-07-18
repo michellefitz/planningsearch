@@ -84,7 +84,7 @@ function withGlossary(text: string, glossary: Record<string, string>): JSX.Eleme
 type FilesState =
   | { phase: "idle" }
   | { phase: "loading" }
-  | { phase: "loaded"; files: Array<{ title: string; url: string }> }
+  | { phase: "loaded"; files: Array<{ title: string; url: string }>; objections: number }
   | { phase: "failed" };
 
 function ScannedFiles({ detail: d }: { detail: AppDetail }) {
@@ -96,7 +96,8 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
     setState({ phase: "loading" });
     try {
       const res = await api.files(d.id);
-      if (res.files?.length) setState({ phase: "loaded", files: res.files });
+      if (res.files?.length)
+        setState({ phase: "loaded", files: res.files, objections: res.objection_count ?? 0 });
       else setState({ phase: "failed" });
     } catch {
       setState({ phase: "failed" });
@@ -117,6 +118,12 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
       {state.phase === "failed" && (
         <p className="list-note">
           Couldn't read the council's file list just now — use the scanned-files link above.
+        </p>
+      )}
+      {state.phase === "loaded" && state.objections > 0 && (
+        <p className="objection-flag">
+          {state.objections} third-party submission{state.objections === 1 ? "" : "s"} /
+          objection{state.objections === 1 ? "" : "s"} on file
         </p>
       )}
       {state.phase === "loaded" && (

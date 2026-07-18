@@ -1,10 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
   cookieHeaderFromSetCookies,
+  countObjectionFiles,
   deriveScannedFilesUrl,
   extractFrameSrc,
   parseFileListHtml,
 } from "../src/documents.js";
+
+describe("countObjectionFiles", () => {
+  it("counts submission/observation/objection document types", () => {
+    expect(
+      countObjectionFiles([
+        { title: "Third Party Submission — J. Murphy", url: "a" },
+        { title: "Submission/ Objection Acknowledgement Letter", url: "b" },
+        { title: "Drawings - General — Site Plan", url: "c" },
+        { title: "Observation — An Taisce", url: "d" },
+      ])
+    ).toBe(3);
+  });
+});
 
 describe("cookieHeaderFromSetCookies", () => {
   it("keeps only the name=value pair from each Set-Cookie", () => {

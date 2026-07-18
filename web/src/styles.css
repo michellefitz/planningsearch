@@ -685,6 +685,27 @@ body {
   text-underline-offset: 2px;
 }
 
+.objection-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 550;
+  color: #92400e;
+  background: #fef3e2;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  margin: 0.2rem 0 0.45rem;
+}
+
+.objection-flag::before {
+  content: "";
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: #d97706;
+}
+
 .caveat {
   font-size: 0.75rem;
   line-height: 1.5;

@@ -143,6 +143,48 @@ const UA_HEADERS = {
   Accept: "text/html",
 };
 
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
+}
+
+/** Third-party submissions/observations show up in council file listings as
+ *  document types like "Third Party Submission" or "Submission/ Objection". */
+export const OBJECTION_TITLE_RE = /submiss|observ|object/i;
+
+export function countObjectionFiles(files: ScannedFile[]): number {
+  return files.filter((f) => OBJECTION_TITLE_RE.test(f.title)).length;
+}
+
+/**
+ * The national dataset redacts applicant names, but eplanning.ie detail pages
+ * publish them under the Applicant tab. On-demand fetch, cached by the caller.
+ */
+export async function fetchEplanningApplicantName(sourceUrl: string): Promise<string | null> {
+  if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(sourceUrl, { signal: controller.signal, headers: UA_HEADERS });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const m = html.match(/Applicant name:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+    if (!m) return null;
+    const name = decodeEntities(stripTags(m[1]));
+    return name || null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Live-fetch and parse a file listing; returns null when unreachable/unparsable. */
 export async function fetchScannedFileList(listUrl: string): Promise<ScannedFile[] | null> {
   const controller = new AbortController();

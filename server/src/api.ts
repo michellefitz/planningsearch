@@ -4,7 +4,9 @@ import { AUTHORITY_BY_ID } from "./config/authorities.js";
 import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
 import {
+  countObjectionFiles,
   deriveScannedFilesUrl,
+  fetchEplanningApplicantName,
   fetchScannedDocument,
   fetchScannedFileList,
   type DiagnosticStep,
@@ -146,7 +148,12 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       return { supported: false, files: null, list_url: null };
     }
     const files = await fetchScannedFileList(listUrl);
-    return { supported: true, list_url: listUrl, files };
+    return {
+      supported: true,
+      list_url: listUrl,
+      files,
+      objection_count: files ? countObjectionFiles(files) : null,
+    };
   });
 
   // Proxy a single document view. The council's file URLs are session-bound,
@@ -216,6 +223,16 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       );
       if (aiSummary) {
         db.prepare("UPDATE applications SET ai_summary = ? WHERE id = ?").run(aiSummary, id);
+      }
+    }
+
+    // Applicant names are redacted in the national dataset; eplanning portal
+    // pages publish them, so backfill on first view and cache in the DB.
+    if (!row.applicant_name && row.source_url) {
+      const name = await fetchEplanningApplicantName(row.source_url as string);
+      if (name) {
+        row.applicant_name = name;
+        db.prepare("UPDATE applications SET applicant_name = ? WHERE id = ?").run(name, id);
       }
     }
 

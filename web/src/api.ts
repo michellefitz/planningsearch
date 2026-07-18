@@ -146,6 +146,7 @@ export const api = {
       supported: boolean;
       list_url: string | null;
       files: Array<{ title: string; url: string }> | null;
+      objection_count: number | null;
     }>(`/api/applications/${id}/files`),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
