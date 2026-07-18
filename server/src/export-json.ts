@@ -20,7 +20,10 @@ const OUT =
   path.resolve(__dirname, "../../api/_data/planning.json");
 
 /** Live pull from the national service: applications received in the window. */
-async function fetchLiveRecords(): Promise<ApplicationRecord[]> {
+async function fetchLiveRecords(): Promise<{
+  records: ApplicationRecord[];
+  sourceUpdatedAt: string | null;
+}> {
   const days = Number(process.env.PLANVIEW_EXPORT_DAYS ?? 1825); // default: last 5 years
   const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
   console.log(`Fetching live data since ${since} from ${SERVICE_URL} …`);
@@ -28,7 +31,13 @@ async function fetchLiveRecords(): Promise<ApplicationRecord[]> {
   const now = new Date().toISOString();
   const records: ApplicationRecord[] = [];
   let skipped = 0;
+  // ETL_DATE is when DHLGH last loaded each row; the max across the pull is
+  // the honest "source last updated" stamp (ReceivedDate can be in the future
+  // — councils sometimes mistype dates).
+  let maxEtl = 0;
   for (const f of features) {
+    const etl = f.attributes.ETL_DATE;
+    if (typeof etl === "number" && etl > maxEtl) maxEtl = etl;
     const rec = featureToRecord(f, now);
     if (rec) records.push(rec);
     else skipped++;
@@ -40,16 +49,20 @@ async function fetchLiveRecords(): Promise<ApplicationRecord[]> {
     `Mapped ${byKey.size} applications (${skipped} outside the five authorities/unmappable, ${records.length - byKey.size} duplicates).`
   );
   if (byKey.size === 0) throw new Error("Live fetch returned zero mappable applications");
-  return [...byKey.values()];
+  return {
+    records: [...byKey.values()],
+    sourceUpdatedAt: maxEtl ? new Date(maxEtl).toISOString().slice(0, 10) : null,
+  };
 }
 
 async function main() {
   const source = process.env.PLANVIEW_EXPORT_SOURCE ?? "seed";
   let records: ApplicationRecord[];
   let dataSource: "live" | "seed";
+  let sourceUpdatedAt: string | null = null;
   if (source === "live") {
     try {
-      records = await fetchLiveRecords();
+      ({ records, sourceUpdatedAt } = await fetchLiveRecords());
       dataSource = "live";
     } catch (err) {
       console.error("=== LIVE FETCH FAILED — falling back to DEMO SEED DATA ===");
@@ -71,6 +84,7 @@ async function main() {
   const bundle = {
     generated_at: now,
     data_source: dataSource,
+    source_updated_at: sourceUpdatedAt,
     authorities: AUTHORITIES.map((a) => ({
       id: a.id,
       name: a.name,

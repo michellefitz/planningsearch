@@ -85,6 +85,9 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       .all();
     return {
       authorities,
+      // SQLite deployments track freshness per authority via last_synced.
+      source_updated_at: null,
+      generated_at: null,
       statuses: STATUS_LABELS,
       application_types: APPLICATION_TYPE_LABELS,
       glossary: GLOSSARY,

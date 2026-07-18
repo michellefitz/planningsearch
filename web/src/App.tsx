@@ -178,7 +178,9 @@ export default function App() {
 
       <footer className="app-footer">
         <span>
-          {meta?.attribution ?? ""} Data as of {oldestSync?.slice(0, 10) ?? "—"}.
+          {meta?.attribution ?? ""} Register data last updated{" "}
+          {meta?.source_updated_at ?? oldestSync?.slice(0, 10) ?? "—"}
+          {meta?.generated_at && ` · refreshed here ${meta.generated_at.slice(0, 10)}`}.
         </span>
       </footer>
     </div>

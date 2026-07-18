@@ -11,6 +11,8 @@ export interface Authority {
 
 export interface Meta {
   authorities: Authority[];
+  source_updated_at: string | null;
+  generated_at: string | null;
   statuses: Record<string, string>;
   application_types: Record<string, string>;
   glossary: Record<string, string>;

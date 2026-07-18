@@ -418,6 +418,8 @@ export default async function handler(req, res) {
   if (route === "/api/meta") {
     return send(res, 200, {
       authorities: BUNDLE.authorities,
+      source_updated_at: BUNDLE.source_updated_at ?? null,
+      generated_at: BUNDLE.generated_at ?? null,
       statuses: BUNDLE.statuses,
       application_types: BUNDLE.application_types,
       glossary: BUNDLE.glossary,
