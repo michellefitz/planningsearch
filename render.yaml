@@ -6,6 +6,7 @@ services:
     name: planview
     runtime: docker
     plan: free
+    branch: claude/ireland-planning-search-app-xtcqxf
     healthCheckPath: /api/meta
     envVars:
       # "seed" = fictional demo data (always works).
