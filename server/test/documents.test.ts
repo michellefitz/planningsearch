@@ -40,6 +40,23 @@ describe("parseFileListHtml", () => {
     ]);
   });
 
+  it("uses row text as the title when the link label is a generic 'View' (iDocs GridView)", () => {
+    const html = `
+      <table id="gvFiles">
+        <tr><th>Document</th><th>Date</th><th></th></tr>
+        <tr><td>Application Form</td><td>02/06/2026</td><td><a href="getFile.aspx?fileid=1">View</a></td></tr>
+        <tr><td>Site Location Map</td><td>02/06/2026</td><td><a href="getFile.aspx?fileid=2">View</a></td></tr>
+        <tr><td>Planner's Report</td><td>10/07/2026</td><td><a href="getFile.aspx?fileid=3">View</a></td></tr>
+      </table>`;
+    const files = parseFileListHtml(html, base);
+    expect(files.map((f) => f.title)).toEqual([
+      "Application Form 02/06/2026",
+      "Site Location Map 02/06/2026",
+      "Planner's Report 10/07/2026",
+    ]);
+    expect(files[0].url).toContain("fileid=1");
+  });
+
   it("returns an empty list for unrecognisable markup (deep-link fallback)", () => {
     expect(parseFileListHtml("<html><body>No anchors here</body></html>", base)).toEqual([]);
   });

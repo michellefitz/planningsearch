@@ -30,36 +30,73 @@ export interface ScannedFile {
   url: string;
 }
 
+const ANCHOR_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+const DOC_HREF_RE =
+  /\.(pdf|tiff?|jpe?g|png|doc|docx)([?#]|$)|getfile|getdocument|viewdocument|download|openfile|docid=|fileid=/i;
+/** Anchor text that names the action, not the document ("View", "Open", …). */
+const GENERIC_LABEL_RE = /^(view|open|download|show|file|document|link)?$/i;
+
+function stripTags(html: string): string {
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function resolveDocHref(href: string, baseUrl: string): string | null {
+  const trimmed = href.trim();
+  if (!trimmed || trimmed.startsWith("#") || trimmed.toLowerCase().startsWith("javascript:")) return null;
+  if (!DOC_HREF_RE.test(trimmed)) return null;
+  try {
+    return new URL(trimmed, baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Tolerant parser for a council file-listing HTML page: collects anchors that
  * look like document links and resolves them against the page URL. Built
  * defensively (the markup is not under our control) — an empty result means
  * "fall back to the deep link", never a hard failure.
+ *
+ * Listing pages (e.g. Kildare's iDocs GridView) typically label every link
+ * "View" and keep the document name in sibling cells of the same table row,
+ * so when a row contains exactly one document link, the row's remaining text
+ * becomes the title.
  */
 export function parseFileListHtml(html: string, baseUrl: string): ScannedFile[] {
   const files: ScannedFile[] = [];
   const seen = new Set<string>();
-  const anchorRe = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  const docHref = /\.(pdf|tiff?|jpe?g|png|doc|docx)([?#]|$)|getfile|getdocument|viewdocument|download|openfile|docid=|fileid=/i;
+
+  const push = (url: string, title: string, fallback: string) => {
+    if (seen.has(url)) return;
+    seen.add(url);
+    files.push({ title: title || fallback, url });
+  };
+
+  // Pass 1: table rows — use the row text (minus the anchor's own label) as
+  // the title when the anchor text is generic.
+  const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let row: RegExpExecArray | null;
+  while ((row = rowRe.exec(html)) !== null) {
+    const rowHtml = row[1];
+    const anchors = [...rowHtml.matchAll(ANCHOR_RE)]
+      .map((a) => ({ url: resolveDocHref(a[1], baseUrl), label: stripTags(a[2]) }))
+      .filter((a): a is { url: string; label: string } => a.url !== null);
+    if (anchors.length !== 1) continue;
+    const { url, label } = anchors[0];
+    const rowText = stripTags(rowHtml.replace(ANCHOR_RE, " "));
+    const filename = decodeURIComponent(url.split("/").pop() ?? "Document");
+    const title = GENERIC_LABEL_RE.test(label) ? rowText : label || rowText;
+    push(url, title, filename);
+  }
+
+  // Pass 2: any document anchors not inside a single-link row (non-table
+  // layouts, multi-link rows) keep their own text.
   let m: RegExpExecArray | null;
-  while ((m = anchorRe.exec(html)) !== null) {
-    const href = m[1].trim();
-    if (!href || href.startsWith("#") || href.toLowerCase().startsWith("javascript:")) continue;
-    if (!docHref.test(href)) continue;
-    let abs: string;
-    try {
-      abs = new URL(href, baseUrl).toString();
-    } catch {
-      continue;
-    }
-    if (seen.has(abs)) continue;
-    seen.add(abs);
-    const title =
-      m[2]
-        .replace(/<[^>]*>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim() || decodeURIComponent(abs.split("/").pop() ?? "Document");
-    files.push({ title, url: abs });
+  while ((m = ANCHOR_RE.exec(html)) !== null) {
+    const url = resolveDocHref(m[1], baseUrl);
+    if (!url) continue;
+    const label = stripTags(m[2]);
+    push(url, label, decodeURIComponent(url.split("/").pop() ?? "Document"));
   }
   return files;
 }

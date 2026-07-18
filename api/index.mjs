@@ -52,29 +52,59 @@ function scannedFilesUrl(authorityId, sourceUrl) {
     : null;
 }
 
-/** Tolerant anchor-scrape of a council file-listing page; [] means "fall back to deep link". */
+/**
+ * Tolerant anchor-scrape of a council file-listing page; [] means "fall back
+ * to deep link". Listing pages like Kildare's iDocs GridView label every link
+ * "View" and keep the document name in sibling cells of the same table row,
+ * so single-link rows use the row's remaining text as the title.
+ */
+const ANCHOR_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+const DOC_HREF_RE =
+  /\.(pdf|tiff?|jpe?g|png|doc|docx)([?#]|$)|getfile|getdocument|viewdocument|download|openfile|docid=|fileid=/i;
+const GENERIC_LABEL_RE = /^(view|open|download|show|file|document|link)?$/i;
+
+const stripTags = (h) => h.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
+function resolveDocHref(href, baseUrl) {
+  const trimmed = href.trim();
+  if (!trimmed || trimmed.startsWith("#") || trimmed.toLowerCase().startsWith("javascript:")) return null;
+  if (!DOC_HREF_RE.test(trimmed)) return null;
+  try {
+    return new URL(trimmed, baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
 function parseFileListHtml(html, baseUrl) {
   const files = [];
   const seen = new Set();
-  const anchorRe = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  const docHref = /\.(pdf|tiff?|jpe?g|png|doc|docx)([?#]|$)|getfile|getdocument|viewdocument|download|openfile|docid=|fileid=/i;
+  const push = (url, title, fallback) => {
+    if (seen.has(url)) return;
+    seen.add(url);
+    files.push({ title: title || fallback, url });
+  };
+
+  const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let row;
+  while ((row = rowRe.exec(html)) !== null) {
+    const rowHtml = row[1];
+    const anchors = [...rowHtml.matchAll(ANCHOR_RE)]
+      .map((a) => ({ url: resolveDocHref(a[1], baseUrl), label: stripTags(a[2]) }))
+      .filter((a) => a.url !== null);
+    if (anchors.length !== 1) continue;
+    const { url, label } = anchors[0];
+    const rowText = stripTags(rowHtml.replace(ANCHOR_RE, " "));
+    const filename = decodeURIComponent(url.split("/").pop() ?? "Document");
+    const title = GENERIC_LABEL_RE.test(label) ? rowText : label || rowText;
+    push(url, title, filename);
+  }
+
   let m;
-  while ((m = anchorRe.exec(html)) !== null) {
-    const href = m[1].trim();
-    if (!href || href.startsWith("#") || href.toLowerCase().startsWith("javascript:")) continue;
-    if (!docHref.test(href)) continue;
-    let abs;
-    try {
-      abs = new URL(href, baseUrl).toString();
-    } catch {
-      continue;
-    }
-    if (seen.has(abs)) continue;
-    seen.add(abs);
-    const title =
-      m[2].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() ||
-      decodeURIComponent(abs.split("/").pop() ?? "Document");
-    files.push({ title, url: abs });
+  while ((m = ANCHOR_RE.exec(html)) !== null) {
+    const url = resolveDocHref(m[1], baseUrl);
+    if (!url) continue;
+    push(url, stripTags(m[2]), decodeURIComponent(url.split("/").pop() ?? "Document"));
   }
   return files;
 }
