@@ -162,24 +162,46 @@ export function countObjectionFiles(files: ScannedFile[]): number {
   return files.filter((f) => OBJECTION_TITLE_RE.test(f.title)).length;
 }
 
+export interface EplanningParties {
+  applicant: string | null;
+  agent: string | null;
+}
+
 /**
- * The national dataset redacts applicant names, but eplanning.ie detail pages
- * publish them under the Applicant tab. On-demand fetch, cached by the caller.
+ * The national dataset redacts applicant names and has no agent field at
+ * all, but eplanning.ie detail pages publish both: the applicant under the
+ * Applicant tab, the agent (usually the architect, name + practice) in a
+ * hidden "Agent Details" popup div.
  */
-export async function fetchEplanningApplicantName(sourceUrl: string): Promise<string | null> {
-  if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return null;
+export function parseEplanningParties(html: string): EplanningParties {
+  const applicantM = html.match(/Applicant name:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+  const applicant = applicantM ? decodeEntities(stripTags(applicantM[1])) || null : null;
+
+  let agent: string | null = null;
+  const agentsBlock = html.match(/id="DivAgents"([\s\S]*?)<\/table>/i);
+  if (agentsBlock) {
+    const nameM = agentsBlock[1].match(/Name\s*:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+    // First address line is typically the practice name.
+    const firmM = agentsBlock[1].match(/Address\s*:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+    const name = nameM ? decodeEntities(stripTags(nameM[1])) : "";
+    const firm = firmM ? decodeEntities(stripTags(firmM[1])) : "";
+    agent = [name, firm].filter(Boolean).join(", ") || null;
+  }
+  return { applicant, agent };
+}
+
+/** On-demand fetch of both parties from an eplanning detail page. */
+export async function fetchEplanningParties(sourceUrl: string): Promise<EplanningParties> {
+  const none: EplanningParties = { applicant: null, agent: null };
+  if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return none;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(sourceUrl, { signal: controller.signal, headers: UA_HEADERS });
-    if (!res.ok) return null;
-    const html = await res.text();
-    const m = html.match(/Applicant name:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
-    if (!m) return null;
-    const name = decodeEntities(stripTags(m[1]));
-    return name || null;
+    if (!res.ok) return none;
+    return parseEplanningParties(await res.text());
   } catch {
-    return null;
+    return none;
   } finally {
     clearTimeout(timer);
   }

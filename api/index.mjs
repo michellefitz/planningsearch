@@ -230,26 +230,40 @@ const decodeEntities = (s) =>
 const OBJECTION_TITLE_RE = /submiss|observ|object/i;
 const countObjectionFiles = (files) => files.filter((f) => OBJECTION_TITLE_RE.test(f.title)).length;
 
-/* Applicant names are redacted in the national dataset; eplanning.ie detail
-   pages publish them under the Applicant tab. On-demand, cached per instance. */
-const APPLICANT_CACHE = new Map();
+/* Applicant names are redacted in the national dataset and agents absent
+   from it entirely; eplanning.ie detail pages publish both (agent = usually
+   the architect, in a hidden "Agent Details" div). Cached per instance. */
+const PARTIES_CACHE = new Map();
 
-async function fetchEplanningApplicantName(sourceUrl) {
-  if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return null;
-  if (APPLICANT_CACHE.has(sourceUrl)) return APPLICANT_CACHE.get(sourceUrl);
+function parseEplanningParties(html) {
+  const applicantM = html.match(/Applicant name:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+  const applicant = applicantM ? decodeEntities(stripTags(applicantM[1])) || null : null;
+  let agent = null;
+  const agentsBlock = html.match(/id="DivAgents"([\s\S]*?)<\/table>/i);
+  if (agentsBlock) {
+    const nameM = agentsBlock[1].match(/Name\s*:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+    const firmM = agentsBlock[1].match(/Address\s*:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+    const name = nameM ? decodeEntities(stripTags(nameM[1])) : "";
+    const firm = firmM ? decodeEntities(stripTags(firmM[1])) : "";
+    agent = [name, firm].filter(Boolean).join(", ") || null;
+  }
+  return { applicant, agent };
+}
+
+async function fetchEplanningParties(sourceUrl) {
+  const none = { applicant: null, agent: null };
+  if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return none;
+  if (PARTIES_CACHE.has(sourceUrl)) return PARTIES_CACHE.get(sourceUrl);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
     const res = await fetch(sourceUrl, { signal: controller.signal, headers: UA_HEADERS });
-    if (!res.ok) return null;
-    const html = await res.text();
-    const m = html.match(/Applicant name:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
-    if (!m) return null;
-    const name = decodeEntities(stripTags(m[1])) || null;
-    if (name) APPLICANT_CACHE.set(sourceUrl, name);
-    return name;
+    if (!res.ok) return none;
+    const parties = parseEplanningParties(await res.text());
+    if (parties.applicant || parties.agent) PARTIES_CACHE.set(sourceUrl, parties);
+    return parties;
   } catch {
-    return null;
+    return none;
   } finally {
     clearTimeout(timer);
   }
@@ -542,13 +556,17 @@ export default async function handler(req, res) {
         received_date: a.received_date,
         decision_date: a.decision_date,
       }));
-    const [aiSummary, applicantName] = await Promise.all([
+    const [aiSummary, parties] = await Promise.all([
       summariseDescription(app.description, app.application_type),
-      app.applicant_name || !app.source_url
-        ? Promise.resolve(null)
-        : fetchEplanningApplicantName(app.source_url),
+      (app.applicant_name && app.agent_name) || !app.source_url
+        ? Promise.resolve({ applicant: null, agent: null })
+        : fetchEplanningParties(app.source_url),
     ]);
-    const merged = applicantName ? { ...app, applicant_name: applicantName } : app;
+    const merged = {
+      ...app,
+      applicant_name: app.applicant_name ?? parties.applicant,
+      agent_name: app.agent_name ?? parties.agent,
+    };
     return send(res, 200, { ...publicApp(merged), ai_summary: aiSummary, documents: [], related });
   }
 

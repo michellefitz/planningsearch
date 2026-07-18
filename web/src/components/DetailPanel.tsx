@@ -372,7 +372,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           <dd>{withGlossary(d.application_type_label, glossary)}</dd>
           <dt>Applicant</dt>
           <dd>{d.applicant_name ?? "—"}</dd>
-          <dt>Agent</dt>
+          <dt>Agent / architect</dt>
           <dd>{d.agent_name ?? "—"}</dd>
           <dt>Decision</dt>
           <dd>{d.decision ?? "Not yet decided"}</dd>

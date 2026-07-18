@@ -4,8 +4,37 @@ import {
   countObjectionFiles,
   deriveScannedFilesUrl,
   extractFrameSrc,
+  parseEplanningParties,
   parseFileListHtml,
 } from "../src/documents.js";
+
+describe("parseEplanningParties", () => {
+  // Trimmed from a real eplanning.ie AppFileRefDetails page.
+  const HTML = `
+    <tr><th class="col-md-2"> Applicant name: </th><td colspan="3"> Trina &amp; John Fanning </td></tr>
+    <div id="DivAgents" style="display: none" title="Agent Details">
+      <p><table class="table">
+        <tr><th width="20%">Name :</th><td width="80%" align="left">  Noeline Devaney</td></tr>
+        <tr><th rowspan="4">Address :</th><td align="left">Devaney Williams Architects</td></tr>
+        <tr><td align="left">Stream House, Main Street</td></tr>
+        <tr><th >Phone :</th><td align="left"></td></tr>
+      </table></p>
+    </div>`;
+
+  it("extracts applicant and agent (name + practice)", () => {
+    expect(parseEplanningParties(HTML)).toEqual({
+      applicant: "Trina & John Fanning",
+      agent: "Noeline Devaney, Devaney Williams Architects",
+    });
+  });
+
+  it("returns nulls for pages without either section", () => {
+    expect(parseEplanningParties("<html><body>nothing here</body></html>")).toEqual({
+      applicant: null,
+      agent: null,
+    });
+  });
+});
 
 describe("countObjectionFiles", () => {
   it("counts submission/observation/objection document types", () => {

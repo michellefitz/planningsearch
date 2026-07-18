@@ -6,7 +6,7 @@ import { search, suggest, type SearchFilters } from "./search.js";
 import {
   countObjectionFiles,
   deriveScannedFilesUrl,
-  fetchEplanningApplicantName,
+  fetchEplanningParties,
   fetchScannedDocument,
   fetchScannedFileList,
   type DiagnosticStep,
@@ -229,13 +229,19 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       }
     }
 
-    // Applicant names are redacted in the national dataset; eplanning portal
-    // pages publish them, so backfill on first view and cache in the DB.
-    if (!row.applicant_name && row.source_url) {
-      const name = await fetchEplanningApplicantName(row.source_url as string);
-      if (name) {
-        row.applicant_name = name;
-        db.prepare("UPDATE applications SET applicant_name = ? WHERE id = ?").run(name, id);
+    // Applicant names are redacted in the national dataset and agents are
+    // absent from it entirely; eplanning portal pages publish both, so
+    // backfill on first view and cache in the DB.
+    if ((!row.applicant_name || !row.agent_name) && row.source_url) {
+      const parties = await fetchEplanningParties(row.source_url as string);
+      if (parties.applicant && !row.applicant_name) row.applicant_name = parties.applicant;
+      if (parties.agent && !row.agent_name) row.agent_name = parties.agent;
+      if (parties.applicant || parties.agent) {
+        db.prepare("UPDATE applications SET applicant_name = ?, agent_name = ? WHERE id = ?").run(
+          row.applicant_name ?? null,
+          row.agent_name ?? null,
+          id
+        );
       }
     }
 
