@@ -111,7 +111,7 @@ export function cookieHeaderFromSetCookies(setCookies: string[]): string {
 
 /**
  * If a "document" URL returns an HTML viewer shell, find the actual content it
- * embeds (iframe/embed/object src, or a meta refresh target).
+ * embeds (iframe/embed/object src, meta refresh, or JS redirect).
  */
 export function extractFrameSrc(html: string): string | null {
   const frame = html.match(/<(?:iframe|embed)\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
@@ -122,6 +122,12 @@ export function extractFrameSrc(html: string): string | null {
     /<meta\b[^>]*http-equiv\s*=\s*["']refresh["'][^>]*content\s*=\s*["'][^"']*url=([^"']+)["']/i
   );
   if (refresh) return refresh[1].trim();
+  const jsLoc = html.match(
+    /(?:window\.|document\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i
+  );
+  if (jsLoc) return jsLoc[1];
+  const jsReplace = html.match(/location\.replace\(\s*["']([^"']+)["']\s*\)/i);
+  if (jsReplace) return jsReplace[1];
   return null;
 }
 
@@ -155,6 +161,18 @@ export interface FetchedDocument {
   body: Buffer;
 }
 
+export interface DiagnosticStep {
+  step: string;
+  status?: number;
+  contentType?: string;
+  cookies?: string;
+  bodySnippet?: string;
+  fileCount?: number;
+  targetUrl?: string;
+  extractedInner?: string | null;
+  error?: string;
+}
+
 /**
  * Fetch one document by its position in the listing, doing the whole session
  * dance server-side in a single pass: load the listing (capturing the
@@ -164,22 +182,40 @@ export interface FetchedDocument {
  * fully self-contained.
  *
  * Returns "too_large" when the document exceeds maxBytes (serverless response
- * limits), null on any upstream failure.
+ * limits), null on any upstream failure. When a trace array is passed, each
+ * step pushes diagnostic info to it.
  */
 export async function fetchScannedDocument(
   listUrl: string,
   index: number,
-  maxBytes = 4_000_000
+  maxBytes = 4_000_000,
+  trace?: DiagnosticStep[]
 ): Promise<FetchedDocument | "too_large" | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25_000);
   try {
     const listRes = await fetch(listUrl, { signal: controller.signal, headers: UA_HEADERS });
+    trace?.push({
+      step: "fetch_listing",
+      status: listRes.status,
+      contentType: listRes.headers.get("content-type") ?? undefined,
+    });
     if (!listRes.ok) return null;
     const cookies = cookieHeaderFromSetCookies(listRes.headers.getSetCookie?.() ?? []);
-    const files = parseFileListHtml(await listRes.text(), listUrl);
+    const listHtml = await listRes.text();
+    const files = parseFileListHtml(listHtml, listUrl);
+    trace?.push({
+      step: "parse_listing",
+      fileCount: files.length,
+      cookies: cookies || "(none)",
+      bodySnippet: listHtml.slice(0, 500),
+    });
     const target = files[index];
-    if (!target) return null;
+    if (!target) {
+      trace?.push({ step: "target_lookup", error: `No file at index ${index} (${files.length} files found)` });
+      return null;
+    }
+    trace?.push({ step: "target_lookup", targetUrl: target.url });
 
     const docHeaders: Record<string, string> = {
       ...UA_HEADERS,
@@ -189,16 +225,30 @@ export async function fetchScannedDocument(
     if (cookies) docHeaders.Cookie = cookies;
 
     let docRes = await fetch(target.url, { signal: controller.signal, headers: docHeaders });
+    trace?.push({
+      step: "fetch_document",
+      status: docRes.status,
+      contentType: docRes.headers.get("content-type") ?? undefined,
+    });
     if (!docRes.ok) return null;
 
-    // Some servers answer with an HTML viewer shell; follow one embedded hop.
     let contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
     if (/text\/html/i.test(contentType)) {
       const shellHtml = await docRes.text();
       const inner = extractFrameSrc(shellHtml);
+      trace?.push({
+        step: "viewer_shell",
+        extractedInner: inner,
+        bodySnippet: shellHtml.slice(0, 500),
+      });
       if (!inner) return null;
       const innerUrl = new URL(inner, target.url).toString();
       docRes = await fetch(innerUrl, { signal: controller.signal, headers: docHeaders });
+      trace?.push({
+        step: "fetch_inner",
+        status: docRes.status,
+        contentType: docRes.headers.get("content-type") ?? undefined,
+      });
       if (!docRes.ok) return null;
       contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
       if (/text\/html/i.test(contentType)) return null;
@@ -213,7 +263,8 @@ export async function fetchScannedDocument(
       disposition: docRes.headers.get("content-disposition"),
       body,
     };
-  } catch {
+  } catch (err) {
+    trace?.push({ step: "error", error: String(err) });
     return null;
   } finally {
     clearTimeout(timer);

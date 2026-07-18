@@ -141,6 +141,12 @@ function extractFrameSrc(html) {
     /<meta\b[^>]*http-equiv\s*=\s*["']refresh["'][^>]*content\s*=\s*["'][^"']*url=([^"']+)["']/i
   );
   if (refresh) return refresh[1].trim();
+  const jsLoc = html.match(
+    /(?:window\.|document\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i
+  );
+  if (jsLoc) return jsLoc[1];
+  const jsReplace = html.match(/location\.replace\(\s*["']([^"']+)["']\s*\)/i);
+  if (jsReplace) return jsReplace[1];
   return null;
 }
 
@@ -149,30 +155,41 @@ function extractFrameSrc(html) {
  * session that loaded the listing, so each view re-does the whole dance —
  * fetch listing (capture cookies), fetch the file at `index` with them.
  */
-async function fetchScannedDocument(listUrl, index, maxBytes = 4_000_000) {
+async function fetchScannedDocument(listUrl, index, maxBytes = 4_000_000, trace) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   try {
     const listRes = await fetch(listUrl, { signal: controller.signal, headers: UA_HEADERS });
+    trace?.push({ step: "fetch_listing", status: listRes.status, contentType: listRes.headers.get("content-type") });
     if (!listRes.ok) return null;
     const cookies = cookieHeaderFromSetCookies(listRes.headers.getSetCookie?.() ?? []);
-    const files = parseFileListHtml(await listRes.text(), listUrl);
+    const listHtml = await listRes.text();
+    const files = parseFileListHtml(listHtml, listUrl);
+    trace?.push({ step: "parse_listing", fileCount: files.length, cookies: cookies || "(none)", bodySnippet: listHtml.slice(0, 500) });
     const target = files[index];
-    if (!target) return null;
+    if (!target) {
+      trace?.push({ step: "target_lookup", error: `No file at index ${index} (${files.length} files found)` });
+      return null;
+    }
+    trace?.push({ step: "target_lookup", targetUrl: target.url });
 
     const docHeaders = { ...UA_HEADERS, Accept: "*/*", Referer: listUrl };
     if (cookies) docHeaders.Cookie = cookies;
 
     let docRes = await fetch(target.url, { signal: controller.signal, headers: docHeaders });
+    trace?.push({ step: "fetch_document", status: docRes.status, contentType: docRes.headers.get("content-type") });
     if (!docRes.ok) return null;
     let contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
     if (/text\/html/i.test(contentType)) {
-      const inner = extractFrameSrc(await docRes.text());
+      const shellHtml = await docRes.text();
+      const inner = extractFrameSrc(shellHtml);
+      trace?.push({ step: "viewer_shell", extractedInner: inner, bodySnippet: shellHtml.slice(0, 500) });
       if (!inner) return null;
       docRes = await fetch(new URL(inner, target.url).toString(), {
         signal: controller.signal,
         headers: docHeaders,
       });
+      trace?.push({ step: "fetch_inner", status: docRes.status, contentType: docRes.headers.get("content-type") });
       if (!docRes.ok) return null;
       contentType = docRes.headers.get("content-type") ?? "application/octet-stream";
       if (/text\/html/i.test(contentType)) return null;
@@ -183,7 +200,8 @@ async function fetchScannedDocument(listUrl, index, maxBytes = 4_000_000) {
     const body = Buffer.from(await docRes.arrayBuffer());
     if (body.byteLength > maxBytes) return "too_large";
     return { contentType, disposition: docRes.headers.get("content-disposition"), body };
-  } catch {
+  } catch (err) {
+    trace?.push({ step: "error", error: String(err) });
     return null;
   } finally {
     clearTimeout(timer);
@@ -373,7 +391,12 @@ export default async function handler(req, res) {
     const app = BUNDLE.applications.find((a) => a.id === Number(dm[1]));
     const listUrl = app ? scannedFilesUrl(app.authority_id, app.source_url) : null;
     if (!listUrl) return send(res, 404, { error: "No scanned files source" });
-    const doc = await fetchScannedDocument(listUrl, Number(dm[2]));
+    const debug = p.get("debug") === "1";
+    const trace = debug ? [] : undefined;
+    const doc = await fetchScannedDocument(listUrl, Number(dm[2]), 4_000_000, trace);
+    if (debug) {
+      return send(res, 200, { listUrl, index: Number(dm[2]), result: doc === null ? "null" : doc === "too_large" ? "too_large" : "ok", trace });
+    }
     if (doc === "too_large" || doc === null) {
       const reason =
         doc === "too_large"

@@ -7,6 +7,7 @@ import {
   deriveScannedFilesUrl,
   fetchScannedDocument,
   fetchScannedFileList,
+  type DiagnosticStep,
 } from "./documents.js";
 
 function csv(v: unknown): string[] | undefined {
@@ -162,7 +163,13 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url);
     if (!listUrl) return reply.code(404).send({ error: "No scanned files source" });
 
-    const doc = await fetchScannedDocument(listUrl, index);
+    const query = req.query as Record<string, unknown>;
+    const debug = query.debug === "1";
+    const trace: DiagnosticStep[] | undefined = debug ? [] : undefined;
+    const doc = await fetchScannedDocument(listUrl, index, 4_000_000, trace);
+    if (debug) {
+      return reply.send({ listUrl, index, result: doc === null ? "null" : doc === "too_large" ? "too_large" : "ok", trace });
+    }
     if (doc === "too_large" || doc === null) {
       const reason =
         doc === "too_large"
