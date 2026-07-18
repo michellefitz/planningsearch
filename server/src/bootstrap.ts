@@ -28,7 +28,7 @@ async function bootstrap() {
       console.error("Live ingest failed, falling back to demo seed:", err);
     }
   }
-  seedDemoData();
+  await seedDemoData();
 }
 
 bootstrap().catch((err) => {

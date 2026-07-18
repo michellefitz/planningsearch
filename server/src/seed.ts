@@ -5,7 +5,7 @@
  * service). Names are invented; any resemblance to real applications is
  * coincidental.
  */
-import { openDb, setAuthoritySynced, upsertApplication, type ApplicationRecord } from "./db.js";
+import type { ApplicationRecord } from "./db.js";
 import { AUTHORITY_BY_ID } from "./config/authorities.js";
 import { guessIsDomestic, normalizeApplicationType, normalizeStatus } from "./normalize.js";
 
@@ -221,7 +221,11 @@ export function generateSeedRecords(): ApplicationRecord[] {
   return records;
 }
 
-export function seedDemoData() {
+export async function seedDemoData() {
+  // Loaded lazily so importing generateSeedRecords (e.g. from export-json.ts,
+  // the dependency-free Vercel build) never pulls in the native better-sqlite3
+  // module.
+  const { openDb, setAuthoritySynced, upsertApplication } = await import("./db.js");
   const db = openDb();
   const now = new Date().toISOString();
   const records = generateSeedRecords();
@@ -232,5 +236,8 @@ export function seedDemoData() {
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  seedDemoData();
+  seedDemoData().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }
