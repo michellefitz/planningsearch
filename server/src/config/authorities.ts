@@ -1,0 +1,105 @@
+/**
+ * The five v1 authorities, their source systems, and best-effort deep-link
+ * builders into each council's own portal.
+ *
+ * Deep-link patterns are the Phase 0 spike surface (PRD §5.2/§9): the national
+ * dataset carries a per-application `LinkAppDetails` URL which we always prefer
+ * when present; these builders are the fallback when it is missing or stale.
+ */
+
+export type SourceSystem = "agile" | "swiftlg" | "localgov" | "eplanning";
+
+export interface AuthorityConfig {
+  id: string;
+  name: string;
+  shortName: string;
+  sourceSystem: SourceSystem;
+  portalBaseUrl: string;
+  gisUrl: string | null;
+  /** Values used for this authority in the national dataset's PlanningAuthority field. */
+  nationalDbNames: string[];
+  /** Best-effort link to the application (or a pre-filled search) on the official portal. */
+  portalUrlForReference: (reference: string) => string;
+  /** Rough bounding box [west, south, east, north] used for sanity-checking ingested geometry. */
+  bbox: [number, number, number, number];
+}
+
+export const AUTHORITIES: AuthorityConfig[] = [
+  {
+    id: "dublin-city",
+    name: "Dublin City Council",
+    shortName: "Dublin City",
+    sourceSystem: "agile",
+    portalBaseUrl: "https://planning.agileapplications.ie/dublincity",
+    gisUrl: "https://mapzone.dublincity.ie",
+    nationalDbNames: ["Dublin City Council", "Dublin City"],
+    portalUrlForReference: (ref) =>
+      // Agile has no stable per-reference URL without its internal id; land on
+      // search with the reference pre-filled so it is one click away.
+      `https://planning.agileapplications.ie/dublincity/searches?query=${encodeURIComponent(ref)}`,
+    bbox: [-6.387, 53.298, -6.11, 53.411],
+  },
+  {
+    id: "fingal",
+    name: "Fingal County Council",
+    shortName: "Fingal",
+    sourceSystem: "agile",
+    portalBaseUrl: "https://planning.agileapplications.ie/fingal",
+    gisUrl: null,
+    nationalDbNames: ["Fingal County Council", "Fingal"],
+    portalUrlForReference: (ref) =>
+      `https://planning.agileapplications.ie/fingal/searches?query=${encodeURIComponent(ref)}`,
+    bbox: [-6.5, 53.35, -6.05, 53.64],
+  },
+  {
+    id: "dlr",
+    name: "Dún Laoghaire-Rathdown County Council",
+    shortName: "Dún Laoghaire-Rathdown",
+    sourceSystem: "swiftlg",
+    portalBaseUrl: "https://planning.dlrcoco.ie/swiftlg",
+    gisUrl: null,
+    nationalDbNames: [
+      "Dun Laoghaire Rathdown County Council",
+      "Dún Laoghaire-Rathdown County Council",
+      "Dun Laoghaire-Rathdown",
+    ],
+    portalUrlForReference: (ref) =>
+      // SwiftLG's documented pattern for a direct application view.
+      `https://planning.dlrcoco.ie/swiftlg/apas/run/WPHAPPDETAIL.DisplayUrl?theApnID=${encodeURIComponent(ref)}`,
+    bbox: [-6.31, 53.2, -6.09, 53.32],
+  },
+  {
+    id: "south-dublin",
+    name: "South Dublin County Council",
+    shortName: "South Dublin",
+    sourceSystem: "localgov",
+    portalBaseUrl: "https://planning.localgov.ie",
+    gisUrl: null,
+    nationalDbNames: ["South Dublin County Council", "South Dublin"],
+    portalUrlForReference: (ref) =>
+      `https://planning.localgov.ie/en/search?query=${encodeURIComponent(ref)}`,
+    bbox: [-6.55, 53.22, -6.29, 53.37],
+  },
+  {
+    id: "kildare",
+    name: "Kildare County Council",
+    shortName: "Kildare",
+    sourceSystem: "eplanning",
+    portalBaseUrl: "https://www.eplanning.ie/KildareCC",
+    gisUrl: "https://webgeo.kildarecoco.ie/planningenquiry",
+    nationalDbNames: ["Kildare County Council", "Kildare"],
+    portalUrlForReference: (ref) =>
+      `https://www.eplanning.ie/KildareCC/searchtypes?query=${encodeURIComponent(ref)}`,
+    bbox: [-7.17, 52.94, -6.45, 53.45],
+  },
+];
+
+export const AUTHORITY_BY_ID = new Map(AUTHORITIES.map((a) => [a.id, a]));
+
+export function authorityIdForNationalName(name: string): string | null {
+  const needle = name.trim().toLowerCase();
+  for (const a of AUTHORITIES) {
+    if (a.nationalDbNames.some((n) => n.toLowerCase() === needle)) return a.id;
+  }
+  return null;
+}

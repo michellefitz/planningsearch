@@ -1,0 +1,23 @@
+{
+  "name": "planview",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Unified Irish planning permission viewer — one search, one map, one clean application view over five local authorities",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:server dev:web",
+    "dev:server": "npm run dev --workspace server",
+    "dev:web": "npm run dev --workspace web",
+    "build": "npm run build --workspace server && npm run build --workspace web",
+    "seed": "npm run seed --workspace server",
+    "ingest": "npm run ingest --workspace server",
+    "start": "npm run start --workspace server",
+    "test": "npm run test --workspace server"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}

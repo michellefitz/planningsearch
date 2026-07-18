@@ -1,0 +1,144 @@
+export interface Authority {
+  id: string;
+  name: string;
+  short_name: string;
+  source_system: string;
+  portal_base_url: string;
+  gis_url: string | null;
+  last_synced: string | null;
+  application_count: number;
+}
+
+export interface Meta {
+  authorities: Authority[];
+  statuses: Record<string, string>;
+  application_types: Record<string, string>;
+  glossary: Record<string, string>;
+  attribution: string;
+}
+
+export interface AppSummary {
+  id: number;
+  authority_id: string;
+  authority_name: string;
+  authority_short_name: string;
+  planning_reference: string;
+  description: string | null;
+  status: string;
+  status_label: string;
+  application_type: string;
+  application_type_label: string;
+  is_domestic_guess: boolean;
+  received_date: string | null;
+  decision: string | null;
+  decision_date: string | null;
+  address_text: string | null;
+  lat: number | null;
+  lng: number | null;
+  distance_km?: number;
+  match_quality?: "exact" | "fuzzy";
+  portal_url: string | null;
+}
+
+export interface AppDetail extends AppSummary {
+  status_raw: string | null;
+  application_type_raw: string | null;
+  validated_date: string | null;
+  further_info_requested_date: string | null;
+  further_info_received_date: string | null;
+  decision_due_date: string | null;
+  appeal_status: string | null;
+  final_grant_date: string | null;
+  applicant_name: string | null;
+  agent_name: string | null;
+  eircode: string | null;
+  source_url: string | null;
+  last_synced: string | null;
+  documents: Array<{
+    id: number;
+    title: string;
+    doc_type: string | null;
+    page_count: number | null;
+    access_mode: "link" | "cached";
+    source_url: string | null;
+    is_withheld: number;
+  }>;
+  related: Array<{
+    id: number;
+    planning_reference: string;
+    description: string | null;
+    status: string;
+    received_date: string | null;
+    decision_date: string | null;
+  }>;
+}
+
+export interface SearchState {
+  q: string;
+  authorities: string[];
+  statuses: string[];
+  domesticOnly: boolean;
+  receivedFrom: string;
+  receivedTo: string;
+  useMapArea: boolean;
+  sort: string;
+}
+
+export const EMPTY_SEARCH: SearchState = {
+  q: "",
+  authorities: [],
+  statuses: [],
+  domesticOnly: false,
+  receivedFrom: "",
+  receivedTo: "",
+  useMapArea: false,
+  sort: "received",
+};
+
+export function searchParams(
+  s: SearchState,
+  bbox: [number, number, number, number] | null,
+  near: { lat: number; lng: number } | null
+): URLSearchParams {
+  const p = new URLSearchParams();
+  if (s.q.trim()) p.set("q", s.q.trim());
+  if (s.authorities.length) p.set("authority", s.authorities.join(","));
+  if (s.statuses.length) p.set("status", s.statuses.join(","));
+  if (s.domesticOnly) p.set("domestic", "1");
+  if (s.receivedFrom) p.set("receivedFrom", s.receivedFrom);
+  if (s.receivedTo) p.set("receivedTo", s.receivedTo);
+  if (s.useMapArea && bbox) p.set("bbox", bbox.join(","));
+  if (near) {
+    p.set("lat", String(near.lat));
+    p.set("lng", String(near.lng));
+  }
+  if (s.sort) p.set("sort", s.sort);
+  p.set("limit", "50");
+  return p;
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+export interface PointFeatureCollection {
+  type: "FeatureCollection";
+  features: Array<{
+    type: "Feature";
+    geometry: { type: "Point"; coordinates: [number, number] };
+    properties: Record<string, unknown>;
+  }>;
+}
+
+export const api = {
+  meta: () => getJson<Meta>("/api/meta"),
+  search: (p: URLSearchParams) =>
+    getJson<{ total: number; fuzzy: boolean; results: AppSummary[] }>(`/api/search?${p}`),
+  suggest: (q: string) =>
+    getJson<{ suggestions: string[] }>(`/api/suggest?q=${encodeURIComponent(q)}`),
+  detail: (id: number) => getJson<AppDetail>(`/api/applications/${id}`),
+  mapGeoJson: (p: URLSearchParams) =>
+    getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
+};

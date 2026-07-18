@@ -1,0 +1,177 @@
+/**
+ * Ingestion from the National Planning Applications ArcGIS Feature Service
+ * (DHLGH, CC-BY 4.0) — PRD §5.1/§7.2. Metadata only; documents stay on the
+ * council portals (§7.3).
+ *
+ * NOTE: field names below follow the published national layer but could not be
+ * verified from the build sandbox (arcgis.com is not reachable through its
+ * network policy). `FIELD_MAP` centralises them: run
+ * `curl "<SERVICE_URL>/0?f=json" | jq '.fields[].name'` once against the live
+ * service and adjust in one place if anything differs.
+ */
+import {
+  authorityIdForNationalName,
+  AUTHORITIES,
+  AUTHORITY_BY_ID,
+} from "../config/authorities.js";
+import {
+  guessIsDomestic,
+  normalizeApplicationType,
+  normalizeStatus,
+} from "../normalize.js";
+import type { ApplicationRecord } from "../db.js";
+
+export const SERVICE_URL =
+  process.env.PLANVIEW_ARCGIS_URL ??
+  "https://services.arcgis.com/NzlPQPKn5QF9v2US/arcgis/rest/services/IrishPlanningApplications/FeatureServer/0";
+
+export const FIELD_MAP = {
+  authority: "PlanningAuthority",
+  reference: "ApplicationNumber",
+  description: "DevelopmentDescription",
+  address: "DevelopmentAddress",
+  applicationType: "ApplicationType",
+  status: "ApplicationStatus",
+  received: "ReceivedDate",
+  decision: "Decision",
+  decisionDate: "DecisionDate",
+  decisionDueDate: "DecisionDueDate",
+  fiRequested: "FIRequestDate",
+  fiReceived: "FIRecDate",
+  grantDate: "GrantDate",
+  appealStatus: "AppealStatus",
+  applicant: "ApplicantForename", // often split/blank; see buildApplicantName
+  applicantSurname: "ApplicantSurname",
+  eircode: "Eircode",
+  link: "LinkAppDetails",
+} as const;
+
+type Attributes = Record<string, unknown>;
+
+export interface ArcgisFeature {
+  attributes: Attributes;
+  geometry?: { x?: number; y?: number; rings?: number[][][] };
+}
+
+function str(attrs: Attributes, field: string): string | null {
+  const v = attrs[field];
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s.length ? s : null;
+}
+
+/** ArcGIS dates are epoch millis; normalise to YYYY-MM-DD. */
+function isoDate(attrs: Attributes, field: string): string | null {
+  const v = attrs[field];
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Date.parse(String(v));
+  if (!Number.isFinite(n)) return null;
+  return new Date(n).toISOString().slice(0, 10);
+}
+
+function buildApplicantName(attrs: Attributes): string | null {
+  const fore = str(attrs, FIELD_MAP.applicant);
+  const sur = str(attrs, FIELD_MAP.applicantSurname);
+  const joined = [fore, sur].filter(Boolean).join(" ").trim();
+  return joined.length ? joined : null;
+}
+
+/** Map one ArcGIS feature onto the canonical record; null if unmappable. */
+export function featureToRecord(
+  feature: ArcgisFeature,
+  now: string = new Date().toISOString()
+): ApplicationRecord | null {
+  const attrs = feature.attributes;
+  const authorityName = str(attrs, FIELD_MAP.authority);
+  const reference = str(attrs, FIELD_MAP.reference);
+  if (!authorityName || !reference) return null;
+  const authorityId = authorityIdForNationalName(authorityName);
+  if (!authorityId) return null; // outside the five v1 authorities
+
+  const description = str(attrs, FIELD_MAP.description);
+  const statusRaw = str(attrs, FIELD_MAP.status);
+  const decisionRaw = str(attrs, FIELD_MAP.decision);
+  const typeRaw = str(attrs, FIELD_MAP.applicationType);
+
+  let lat: number | null = null;
+  let lng: number | null = null;
+  if (feature.geometry && typeof feature.geometry.x === "number" && typeof feature.geometry.y === "number") {
+    // Service is requested with outSR=4326, so x/y are lng/lat.
+    lng = feature.geometry.x;
+    lat = feature.geometry.y;
+    const auth = AUTHORITY_BY_ID.get(authorityId)!;
+    const [w, s, e, n] = auth.bbox;
+    // Drop clearly-wrong geometry (projection mishaps) rather than plotting it.
+    if (lng < w - 0.5 || lng > e + 0.5 || lat < s - 0.5 || lat > n + 0.5) {
+      lat = null;
+      lng = null;
+    }
+  }
+
+  const auth = AUTHORITY_BY_ID.get(authorityId)!;
+  const sourceUrl = str(attrs, FIELD_MAP.link) ?? auth.portalUrlForReference(reference);
+
+  return {
+    authority_id: authorityId,
+    planning_reference: reference,
+    description,
+    application_type: normalizeApplicationType(typeRaw),
+    application_type_raw: typeRaw,
+    is_domestic_guess: guessIsDomestic(description) ? 1 : 0,
+    status: normalizeStatus(statusRaw, decisionRaw),
+    status_raw: statusRaw,
+    received_date: isoDate(attrs, FIELD_MAP.received),
+    validated_date: null,
+    further_info_requested_date: isoDate(attrs, FIELD_MAP.fiRequested),
+    further_info_received_date: isoDate(attrs, FIELD_MAP.fiReceived),
+    decision_due_date: isoDate(attrs, FIELD_MAP.decisionDueDate),
+    decision: decisionRaw,
+    decision_raw: decisionRaw,
+    decision_date: isoDate(attrs, FIELD_MAP.decisionDate),
+    appeal_status: str(attrs, FIELD_MAP.appealStatus),
+    final_grant_date: isoDate(attrs, FIELD_MAP.grantDate),
+    applicant_name: buildApplicantName(attrs),
+    agent_name: null,
+    address_text: str(attrs, FIELD_MAP.address),
+    eircode: str(attrs, FIELD_MAP.eircode),
+    lat,
+    lng,
+    geom_polygon: null,
+    source_url: sourceUrl,
+    last_synced: now,
+  };
+}
+
+export interface FetchPageOptions {
+  where: string;
+  offset: number;
+  pageSize: number;
+  signal?: AbortSignal;
+}
+
+export async function fetchPage(opts: FetchPageOptions): Promise<ArcgisFeature[]> {
+  const params = new URLSearchParams({
+    f: "json",
+    where: opts.where,
+    outFields: "*",
+    outSR: "4326",
+    resultOffset: String(opts.offset),
+    resultRecordCount: String(opts.pageSize),
+    orderByFields: "OBJECTID",
+  });
+  const res = await fetch(`${SERVICE_URL}/query?${params}`, { signal: opts.signal });
+  if (!res.ok) throw new Error(`ArcGIS query failed: HTTP ${res.status}`);
+  const body = (await res.json()) as { features?: ArcgisFeature[]; error?: { message?: string } };
+  if (body.error) throw new Error(`ArcGIS query error: ${body.error.message ?? "unknown"}`);
+  return body.features ?? [];
+}
+
+/** WHERE clause selecting the five v1 authorities, optionally since a date. */
+export function buildWhereClause(sinceIso?: string): string {
+  const names = AUTHORITIES.flatMap((a) => a.nationalDbNames).map(
+    (n) => `'${n.replace(/'/g, "''")}'`
+  );
+  const authorityClause = `${FIELD_MAP.authority} IN (${names.join(",")})`;
+  if (!sinceIso) return authorityClause;
+  return `${authorityClause} AND ${FIELD_MAP.received} >= TIMESTAMP '${sinceIso} 00:00:00'`;
+}
