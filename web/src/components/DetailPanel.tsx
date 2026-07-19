@@ -361,6 +361,9 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
     agent_name: string | null;
   } | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
+  // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
+  const isLongDesc = (d.description ?? "").length > 400;
   // Councils whose decision substance the conditions endpoint can serve —
   // skipping the round-trip (and the placeholder) everywhere else.
   const hasConditionsSource = ["south-dublin", "dublin-city", "fingal"].includes(d.authority_id);
@@ -368,6 +371,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   useEffect(() => {
     setConditions(null);
     setEnrich(null);
+    setDescExpanded(false);
     let cancelled = false;
     if (hasConditionsSource) {
       setConditionsLoading(true);
@@ -480,7 +484,43 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
 
       <section aria-labelledby="desc-h">
         <h3 id="desc-h">Planning description</h3>
-        <p className="detail-desc">{withGlossary(d.description ?? "No description available.", glossary)}</p>
+        <p className={`detail-desc ${isLongDesc && !descExpanded ? "clamped" : ""}`}>
+          {withGlossary(d.description ?? "No description available.", glossary)}
+        </p>
+        {isLongDesc && (
+          <button
+            type="button"
+            className="link-btn desc-toggle"
+            aria-expanded={descExpanded}
+            onClick={() => setDescExpanded((v) => !v)}
+          >
+            {descExpanded ? "Collapse" : "Expand"}
+          </button>
+        )}
+      </section>
+
+      <section aria-labelledby="facts-h">
+        <h3 id="facts-h">Details</h3>
+        <dl className="facts">
+          <dt>Reference</dt>
+          <dd className="ref">{d.planning_reference}</dd>
+          <dt>Authority</dt>
+          <dd>{d.authority_name}</dd>
+          <dt>Type</dt>
+          <dd>{withGlossary(d.application_type_label, glossary)}</dd>
+          <dt>Applicant</dt>
+          <dd>{applicant ?? "—"}</dd>
+          <dt>Agent / architect</dt>
+          <dd>{agent ?? "—"}</dd>
+          <dt>Decision</dt>
+          <dd>{d.decision ?? "Not yet decided"}</dd>
+          {d.eircode && (
+            <>
+              <dt>Eircode</dt>
+              <dd>{d.eircode}</dd>
+            </>
+          )}
+        </dl>
       </section>
 
       <section aria-labelledby="timeline-h">
@@ -515,30 +555,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
       ) : (
         <DecisionSection conditions={conditions} />
       )}
-
-      <section aria-labelledby="facts-h">
-        <h3 id="facts-h">Details</h3>
-        <dl className="facts">
-          <dt>Reference</dt>
-          <dd className="ref">{d.planning_reference}</dd>
-          <dt>Authority</dt>
-          <dd>{d.authority_name}</dd>
-          <dt>Type</dt>
-          <dd>{withGlossary(d.application_type_label, glossary)}</dd>
-          <dt>Applicant</dt>
-          <dd>{applicant ?? "—"}</dd>
-          <dt>Agent / architect</dt>
-          <dd>{agent ?? "—"}</dd>
-          <dt>Decision</dt>
-          <dd>{d.decision ?? "Not yet decided"}</dd>
-          {d.eircode && (
-            <>
-              <dt>Eircode</dt>
-              <dd>{d.eircode}</dd>
-            </>
-          )}
-        </dl>
-      </section>
 
       <section aria-labelledby="docs-h">
         <h3 id="docs-h">Documents</h3>
