@@ -728,19 +728,6 @@ async function callClaude(systemPrompt, content, maxTokens = 120, timeoutMs = 10
   }
 }
 
-const APPEAL_SUMMARY_PROMPT =
-  "You explain the outcome of an Irish planning appeal to a regular person in plain English. " +
-  "Appeals are decided nationally by An Coimisiún Pleanála (formerly An Bord Pleanála), and the " +
-  "Commission's decision replaces the council's. Write a short, flowing summary of a few sentences: " +
-  "who appealed and what was at stake, then — if the appeal has been decided — what the Commission " +
-  "decided and the main practical reasons. If it is not yet decided, say it is still under " +
-  "consideration and what is being contested. Name real issues (overlooking neighbours, traffic, " +
-  "height and scale, drainage…), never policy or plan citations. " +
-  "FORMAT: plain prose only — no Markdown, asterisks, bold, headings, bullet points, section labels " +
-  "or a title. Do not restate the address as a heading; begin directly with the summary. " +
-  "Use only what the material states — never invent details. " +
-  NO_LEAK_RULE;
-
 function sanitiseSummary(text) {
   return text
     .replace(/\*\*/g, "")
@@ -765,6 +752,19 @@ function isUsableSummary(text) {
   if (!t || /^insufficient[.!]?$/i.test(t) || LEAK_RE.test(t)) return null;
   return t;
 }
+
+const APPEAL_SUMMARY_PROMPT =
+  "You explain the outcome of an Irish planning appeal to a regular person in plain English. " +
+  "Appeals are decided nationally by An Coimisiún Pleanála (formerly An Bord Pleanála), and the " +
+  "Commission's decision replaces the council's. Write a short, flowing summary of a few sentences: " +
+  "who appealed and what was at stake, then — if the appeal has been decided — what the Commission " +
+  "decided and the main practical reasons. If it is not yet decided, say it is still under " +
+  "consideration and what is being contested. Name real issues (overlooking neighbours, traffic, " +
+  "height and scale, drainage…), never policy or plan citations. " +
+  "FORMAT: plain prose only — no Markdown, asterisks, bold, headings, bullet points, section labels " +
+  "or a title. Do not restate the address as a heading; begin directly with the summary. " +
+  "Use only what the material states — never invent details. " +
+  NO_LEAK_RULE;
 
 async function summariseAppeal(context, pdfBase64) {
   if (!context.trim() && !pdfBase64) return null;
