@@ -73,6 +73,112 @@ function abpCaseUrl(reference) {
   return m ? `https://www.pleanala.ie/en-ie/case/${m[0]}` : null;
 }
 
+// --- An Coimisiún Pleanála case-page parsing (mirrors server/src/abp.ts) ---
+const ABP_STRIP = (h) => h.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+function abpDecode(s) {
+  return s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
+}
+const abpClean = (h) => abpDecode(ABP_STRIP(h));
+
+function abpPushPair(out, seen, rawLabel, rawValue) {
+  const label = abpClean(rawLabel).replace(/[:\s]+$/, "");
+  const value = abpClean(rawValue);
+  if (!label || !value) return;
+  if (label.length > 60 || value.length > 1200) return;
+  if (label.toLowerCase() === value.toLowerCase()) return;
+  const key = label.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  out.push({ label, value });
+}
+
+const ABP_DL_RE = /<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi;
+const ABP_ROW_RE = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+const ABP_CELL_RE = /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+const ABP_LABELLED_RE =
+  /<(\w+)[^>]*class="[^"]*\b(?:label|term|key|field-name)\b[^"]*"[^>]*>([\s\S]*?)<\/\1>\s*<(\w+)[^>]*class="[^"]*\b(?:value|desc|detail|field-value)\b[^"]*"[^>]*>([\s\S]*?)<\/\3>/gi;
+
+function parseAppealCaseFields(html) {
+  const out = [];
+  const seen = new Set();
+  for (const m of html.matchAll(ABP_DL_RE)) abpPushPair(out, seen, m[1], m[2]);
+  for (const m of html.matchAll(ABP_LABELLED_RE)) abpPushPair(out, seen, m[2], m[4]);
+  for (const rowMatch of html.matchAll(ABP_ROW_RE)) {
+    const cells = [...rowMatch[1].matchAll(ABP_CELL_RE)].map((c) => c[2]);
+    if (cells.length === 2) abpPushPair(out, seen, cells[0], cells[1]);
+  }
+  return out;
+}
+
+const ABP_ANCHOR_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+const ABP_DOC_HREF_RE = /\.(pdf|docx?|tiff?)([?#]|$)|case\s*documentation|\/document|getfile/i;
+
+function parseAppealCaseDocuments(html, baseUrl) {
+  const out = [];
+  const seen = new Set();
+  for (const m of html.matchAll(ABP_ANCHOR_RE)) {
+    const href = abpDecode(m[1]).trim();
+    if (!ABP_DOC_HREF_RE.test(href)) continue;
+    let url;
+    try {
+      url = new URL(href, baseUrl).href;
+    } catch {
+      continue;
+    }
+    if (seen.has(url)) continue;
+    seen.add(url);
+    const text = abpClean(m[2]);
+    out.push({ title: text || decodeURIComponent(url.split("/").pop() ?? "Document"), url });
+  }
+  return out;
+}
+
+const ABP_FETCH_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-IE,en;q=0.9",
+};
+
+async function fetchAppealCase(caseUrl, trace) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const resp = await fetch(caseUrl, { signal: controller.signal, headers: ABP_FETCH_HEADERS });
+    const contentType = resp.headers.get("content-type") ?? undefined;
+    if (!resp.ok) {
+      trace?.push({ step: "abp_fetch", url: caseUrl, status: resp.status, contentType, error: "non-200" });
+      return null;
+    }
+    const html = await resp.text();
+    const details = {
+      fields: parseAppealCaseFields(html),
+      documents: parseAppealCaseDocuments(html, caseUrl),
+    };
+    trace?.push({
+      step: "abp_fetch",
+      url: caseUrl,
+      status: resp.status,
+      contentType,
+      bodySnippet: `[${html.length} bytes] fields=${details.fields.length} docs=${details.documents.length} :: ${html.slice(0, 1500)}`,
+    });
+    if (!details.fields.length && !details.documents.length) return null;
+    return details;
+  } catch (err) {
+    trace?.push({ step: "abp_fetch", url: caseUrl, error: err instanceof Error ? err.message : String(err) });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Tolerant anchor-scrape of a council file-listing page; [] means "fall back
  * to deep link". Listing pages like Kildare's iDocs GridView label every link
@@ -1049,6 +1155,29 @@ export default async function handler(req, res) {
     return send(res, 200, {
       supported: true,
       conditions: conditions ? { ...conditions, refusal_summary: refusalSummary } : null,
+    });
+  }
+
+  const am = route.match(/^\/api\/applications\/(\d+)\/appeal$/);
+  if (am) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(am[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    const caseUrl = abpCaseUrl(app.appeal_reference);
+    if (!caseUrl) return send(res, 200, { supported: false });
+    const debug = p.get("debug") === "1";
+    const trace = debug ? [] : undefined;
+    const details = await fetchAppealCase(caseUrl, trace);
+    if (debug) return send(res, 200, { case_url: caseUrl, details, trace });
+    return send(res, 200, {
+      supported: true,
+      case_url: caseUrl,
+      reference: app.appeal_reference ?? null,
+      status: app.appeal_status ?? null,
+      lodged_date: app.appeal_lodged_date ?? null,
+      decision: app.appeal_decision ?? null,
+      decision_date: app.appeal_decision_date ?? null,
+      fields: details?.fields ?? null,
+      documents: details?.documents ?? null,
     });
   }
 

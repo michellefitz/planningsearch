@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { abpCaseNumber, abpCaseUrl } from "../src/abp.js";
+import {
+  abpCaseNumber,
+  abpCaseUrl,
+  parseAppealCase,
+  parseAppealCaseDocuments,
+  parseAppealCaseFields,
+} from "../src/abp.js";
 
 describe("abpCaseNumber", () => {
   it("extracts the six-digit case number from every reference form", () => {
@@ -31,5 +37,74 @@ describe("abpCaseUrl", () => {
   it("returns null for unparseable or missing references", () => {
     expect(abpCaseUrl(null)).toBeNull();
     expect(abpCaseUrl("no digits here")).toBeNull();
+  });
+});
+
+describe("parseAppealCaseFields", () => {
+  it("extracts label/value pairs from a definition list", () => {
+    const html = `
+      <dl>
+        <dt>Case Reference</dt><dd>ABP-319506-23</dd>
+        <dt>Local Authority</dt><dd>Fingal County Council</dd>
+        <dt>Decision</dt><dd>Grant Permission</dd>
+      </dl>`;
+    const fields = parseAppealCaseFields(html);
+    expect(fields).toEqual([
+      { label: "Case Reference", value: "ABP-319506-23" },
+      { label: "Local Authority", value: "Fingal County Council" },
+      { label: "Decision", value: "Grant Permission" },
+    ]);
+  });
+
+  it("extracts pairs from a two-column table and labelled cards", () => {
+    const table = `<table><tr><th>Status</th><td>Decided</td></tr>
+      <tr><td>Decision Date</td><td>10/03/2026</td></tr></table>`;
+    expect(parseAppealCaseFields(table)).toEqual([
+      { label: "Status", value: "Decided" },
+      { label: "Decision Date", value: "10/03/2026" },
+    ]);
+
+    const cards = `<div class="field-name">Nature of Appeal</div><div class="field-value">Third Party</div>`;
+    expect(parseAppealCaseFields(cards)).toEqual([
+      { label: "Nature of Appeal", value: "Third Party" },
+    ]);
+  });
+
+  it("de-duplicates, trims trailing colons, and skips noise", () => {
+    const html = `
+      <dl>
+        <dt>Decision:</dt><dd>Refuse Permission</dd>
+        <dt>Decision</dt><dd>ignored duplicate</dd>
+        <dt></dt><dd>orphan value</dd>
+      </dl>`;
+    expect(parseAppealCaseFields(html)).toEqual([
+      { label: "Decision", value: "Refuse Permission" },
+    ]);
+  });
+});
+
+describe("parseAppealCaseDocuments", () => {
+  it("collects case-documentation links and resolves relative URLs", () => {
+    const base = "https://www.pleanala.ie/en-ie/case/319506";
+    const html = `
+      <a href="/publicaccess/Case%20Documentation/319506/Inspector%20Report.pdf">Inspector's Report</a>
+      <a href="https://www.pleanala.ie/files/board-direction.pdf">Board Direction</a>
+      <a href="/en-ie/home">Home</a>`;
+    const docs = parseAppealCaseDocuments(html, base);
+    expect(docs).toEqual([
+      {
+        title: "Inspector's Report",
+        url: "https://www.pleanala.ie/publicaccess/Case%20Documentation/319506/Inspector%20Report.pdf",
+      },
+      { title: "Board Direction", url: "https://www.pleanala.ie/files/board-direction.pdf" },
+    ]);
+  });
+
+  it("parseAppealCase bundles fields and documents together", () => {
+    const html = `<dl><dt>Status</dt><dd>Decided</dd></dl>
+      <a href="/x/report.pdf">Report</a>`;
+    const out = parseAppealCase(html, "https://www.pleanala.ie/en-ie/case/1");
+    expect(out.fields).toHaveLength(1);
+    expect(out.documents).toHaveLength(1);
   });
 });

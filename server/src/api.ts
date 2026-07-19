@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type Database from "better-sqlite3";
 import { AUTHORITY_BY_ID } from "./config/authorities.js";
-import { abpCaseUrl } from "./abp.js";
+import { abpCaseUrl, fetchAppealCase } from "./abp.js";
 import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
 import {
@@ -215,6 +215,51 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       list_url: listUrl,
       files,
       objection_count: files ? countObjectionFiles(files) : null,
+    };
+  });
+
+  // On-demand An Coimisiún Pleanála (ABP/CP) appeal-case enrichment. The
+  // summary fields (status, decision, dates) come from the register we already
+  // hold; this pulls the fuller case detail — parties, board direction,
+  // documentation links — live from the national case file, degrading to just
+  // the summary + case link if the case site can't be reached.
+  app.get("/api/applications/:id/appeal", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare(
+        `SELECT appeal_reference, appeal_status, appeal_lodged_date,
+                appeal_decision, appeal_decision_date
+         FROM applications WHERE id = ?`
+      )
+      .get(id) as
+      | {
+          appeal_reference: string | null;
+          appeal_status: string | null;
+          appeal_lodged_date: string | null;
+          appeal_decision: string | null;
+          appeal_decision_date: string | null;
+        }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    const caseUrl = abpCaseUrl(row.appeal_reference);
+    if (!caseUrl) return { supported: false };
+
+    const debug = (req.query as { debug?: string }).debug === "1";
+    const trace = debug ? [] : undefined;
+    const details = await fetchAppealCase(caseUrl, trace);
+    if (debug) return { case_url: caseUrl, details, trace };
+    return {
+      supported: true,
+      case_url: caseUrl,
+      reference: row.appeal_reference,
+      status: row.appeal_status,
+      lodged_date: row.appeal_lodged_date,
+      decision: row.appeal_decision,
+      decision_date: row.appeal_decision_date,
+      // Null when the live case site couldn't be reached — the client then
+      // shows the summary above plus the case-file link only.
+      fields: details?.fields ?? null,
+      documents: details?.documents ?? null,
     };
   });
 

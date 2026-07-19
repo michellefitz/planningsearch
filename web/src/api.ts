@@ -209,6 +209,18 @@ export const api = {
     getJson<{ supported: boolean; conditions: DecisionConditions | null }>(
       `/api/applications/${id}/conditions`
     ),
+  appeal: (id: number) =>
+    getJson<{
+      supported: boolean;
+      case_url?: string;
+      reference?: string | null;
+      status?: string | null;
+      lodged_date?: string | null;
+      decision?: string | null;
+      decision_date?: string | null;
+      fields?: Array<{ label: string; value: string }> | null;
+      documents?: Array<{ title: string; url: string }> | null;
+    }>(`/api/applications/${id}/appeal`),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
 };

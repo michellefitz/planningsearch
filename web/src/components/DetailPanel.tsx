@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
 import { StatusBadge } from "./ResultsList";
 
@@ -408,6 +408,123 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
   );
 }
 
+type AppealState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | {
+      phase: "loaded";
+      fields: Array<{ label: string; value: string }>;
+      documents: Array<{ title: string; url: string }>;
+    }
+  | { phase: "empty" }
+  | { phase: "failed" };
+
+/**
+ * Appeal detail for applications appealed to An Coimisiún Pleanála (formerly
+ * An Bord Pleanála). Shows the summary we already hold, deep-links the case
+ * file, and loads the fuller national record (parties, board direction,
+ * documentation) on demand — degrading to just the summary + link when the
+ * case site can't be reached.
+ */
+function AppealCard({ detail: d }: { detail: AppDetail }) {
+  const [state, setState] = useState<AppealState>({ phase: "idle" });
+  useEffect(() => setState({ phase: "idle" }), [d.id]);
+  if (!d.appeal_reference) return null;
+
+  const load = async () => {
+    setState({ phase: "loading" });
+    try {
+      const res = await api.appeal(d.id);
+      if (res.fields?.length || res.documents?.length)
+        setState({ phase: "loaded", fields: res.fields ?? [], documents: res.documents ?? [] });
+      else setState({ phase: "empty" });
+    } catch {
+      setState({ phase: "failed" });
+    }
+  };
+
+  return (
+    <section aria-labelledby="appeal-h">
+      <h3 id="appeal-h">Appeal — An Coimisiún Pleanála</h3>
+      <dl className="facts">
+        {d.appeal_status && (
+          <>
+            <dt>Status</dt>
+            <dd>{d.appeal_status}</dd>
+          </>
+        )}
+        {d.appeal_lodged_date && (
+          <>
+            <dt>Lodged</dt>
+            <dd>{d.appeal_lodged_date}</dd>
+          </>
+        )}
+        {d.appeal_decision && (
+          <>
+            <dt>Decision</dt>
+            <dd>
+              {d.appeal_decision}
+              {d.appeal_decision_date && <span className="hint"> — {d.appeal_decision_date}</span>}
+            </dd>
+          </>
+        )}
+        <dt>Case</dt>
+        <dd>{appealRef(d)}</dd>
+      </dl>
+      {d.appeal_url && (
+        <>
+          <a className="btn portal" href={d.appeal_url} target="_blank" rel="noopener noreferrer">
+            View full case file on An Coimisiún Pleanála ↗
+          </a>{" "}
+        </>
+      )}
+      {state.phase === "idle" && (
+        <button type="button" className="btn" onClick={load}>
+          Click to load appeal details
+        </button>
+      )}
+      {state.phase === "loading" && (
+        <span className="hint">Fetching case details from An Coimisiún Pleanála…</span>
+      )}
+      {state.phase === "failed" && (
+        <p className="list-note">
+          Couldn't reach An Coimisiún Pleanála just now — use the case-file link above.
+        </p>
+      )}
+      {state.phase === "empty" && (
+        <p className="list-note">
+          No extra detail to show here — open the case file above for the full national record.
+        </p>
+      )}
+      {state.phase === "loaded" && (
+        <>
+          {state.fields.length > 0 && (
+            <dl className="facts">
+              {state.fields.map((f) => (
+                <Fragment key={f.label}>
+                  <dt>{f.label}</dt>
+                  <dd>{f.value}</dd>
+                </Fragment>
+              ))}
+            </dl>
+          )}
+          {state.documents.length > 0 && (
+            <ul className="doc-list">
+              {state.documents.map((doc) => (
+                <li key={doc.url}>
+                  <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                    {doc.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated }: Props) {
   const glossary = meta?.glossary ?? {};
   const timeline = buildTimeline(d);
@@ -624,6 +741,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           </p>
         )}
       </section>
+
+      <AppealCard detail={d} />
 
       {conditionsLoading && d.decision ? (
         <section aria-labelledby="decision-h" aria-busy="true">
