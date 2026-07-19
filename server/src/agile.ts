@@ -141,25 +141,77 @@ export async function fetchAgileConditions(
   };
 }
 
+export interface AgileDetail {
+  applicant: string | null;
+  agent: string | null;
+  /** Full proposal description — the national dataset truncates this for big
+   *  (e.g. SHD/strategic) applications. */
+  description: string | null;
+  /** Populated only in debug mode: the raw response's field names, to confirm
+   *  which field actually carries the description. */
+  keys?: string[];
+}
+
+// The proposal-description field name varies across the tenants; take the
+// longest non-empty candidate so we never regress on the truncated value.
+const AGILE_DESCRIPTION_FIELDS = [
+  "developmentDescription",
+  "proposalDescription",
+  "proposedDevelopment",
+  "natureOfDevelopment",
+  "developmentProposal",
+  "proposal",
+  "applicationDescription",
+  "longDescription",
+  "description",
+] as const;
+
+function pickLongest(d: Record<string, unknown>, fields: readonly string[]): string | null {
+  let best: string | null = null;
+  for (const f of fields) {
+    const v = String(d[f] ?? "").trim();
+    if (v && v.length > (best?.length ?? 0)) best = v;
+  }
+  return best;
+}
+
+/**
+ * GET /application/{id}: applicant/agent names (absent in the national
+ * dataset) and the full proposal description. Returns null if the id can't be
+ * resolved or the call fails.
+ */
+export async function fetchAgileDetail(
+  authorityId: string,
+  sourceUrl: string | null,
+  reference: string,
+  debug = false
+): Promise<AgileDetail | null> {
+  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
+  if (!client) return null;
+  const id = await resolveAgileId(client, sourceUrl, reference);
+  if (!id) return null;
+  const d = (await getJson(`${AGILE_API}/application/${id}`, client)) as Record<
+    string,
+    unknown
+  > | null;
+  if (!d || typeof d !== "object") return null;
+  return {
+    applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
+    agent: joinName(d.agentForename, d.agentSurname, d.agentName),
+    description: pickLongest(d, AGILE_DESCRIPTION_FIELDS),
+    ...(debug ? { keys: Object.keys(d) } : {}),
+  };
+}
+
 export async function fetchAgileParties(
   authorityId: string,
   sourceUrl: string | null,
   reference: string
 ): Promise<EplanningParties> {
-  const none: EplanningParties = { applicant: null, agent: null };
-  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
-  if (!client) return none;
-  const id = await resolveAgileId(client, sourceUrl, reference);
-  if (!id) return none;
-  const d = (await getJson(`${AGILE_API}/application/${id}`, client)) as Record<
-    string,
-    unknown
-  > | null;
-  if (!d || typeof d !== "object") return none;
-  return {
-    applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
-    agent: joinName(d.agentForename, d.agentSurname, d.agentName),
-  };
+  const detail = await fetchAgileDetail(authorityId, sourceUrl, reference);
+  return detail
+    ? { applicant: detail.applicant, agent: detail.agent }
+    : { applicant: null, agent: null };
 }
 
 /* ------------------------------------------------------------------ */

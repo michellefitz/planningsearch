@@ -588,12 +588,16 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
     ai_summary: string | null;
     applicant_name: string | null;
     agent_name: string | null;
+    description?: string | null;
   } | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [zones, setZones] = useState<ZoningInfo[] | null>(null);
+  // Enrichment can supply a fuller proposal description than the (sometimes
+  // truncated) national one — prefer it for both the display and the summary.
+  const description = enrich?.description ?? d.description ?? null;
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
-  const isLongDesc = (d.description ?? "").length > 400;
+  const isLongDesc = (description ?? "").length > 400;
   // Councils whose decision substance the conditions endpoint can serve —
   // skipping the round-trip (and the placeholder) everywhere else.
   const hasConditionsSource = ["south-dublin", "dublin-city", "fingal", "dlr"].includes(
@@ -686,7 +690,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           // usually a description too thin/truncated to summarise. Say so
           // plainly rather than showing a stale or leaked model reply.
           enrich !== null &&
-          d.description && (
+          description && (
             <p className="detail-summary detail-summary-empty">
               Not enough information to generate a summary.
             </p>
@@ -724,7 +728,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
       <section aria-labelledby="desc-h">
         <h3 id="desc-h">Planning description</h3>
         <p className={`detail-desc ${isLongDesc && !descExpanded ? "clamped" : ""}`}>
-          {withGlossary(d.description ?? "No description available.", glossary)}
+          {withGlossary(description ?? "No description available.", glossary)}
         </p>
         {isLongDesc && (
           <button

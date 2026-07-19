@@ -25,9 +25,9 @@ import {
   AGILE_CLIENT_BY_AUTHORITY,
   agilePortalUrl,
   fetchAgileConditions,
+  fetchAgileDetail,
   fetchAgileDocument,
   fetchAgileDocumentList,
-  fetchAgileParties,
 } from "./agile.js";
 
 function csv(v: unknown): string[] | undefined {
@@ -512,26 +512,54 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       | undefined;
     if (!row) return reply.code(404).send({ error: "Application not found" });
 
-    const needsParties = !row.applicant_name || !row.agent_name;
-    const [aiSummary, parties] = await Promise.all([
-      row.ai_summary
-        ? Promise.resolve(row.ai_summary as string)
-        : summariseDescription(row.description as string, row.application_type as string | null),
-      !needsParties
-        ? Promise.resolve({ applicant: null, agent: null })
-        : String(row.authority_id) in AGILE_CLIENT_BY_AUTHORITY
-          ? fetchAgileParties(
-              row.authority_id as string,
-              row.source_url as string | null,
-              row.planning_reference as string
-            )
-          : row.source_url
-            ? fetchEplanningParties(row.source_url as string)
-            : Promise.resolve({ applicant: null, agent: null }),
-    ]);
+    const authorityId = String(row.authority_id);
+    const dbDescription = (row.description as string | null) ?? null;
+    let description = dbDescription;
+    let parties = { applicant: null, agent: null } as { applicant: string | null; agent: string | null };
 
-    if (aiSummary && !row.ai_summary) {
+    // Agile councils (incl. DLR): one detail call yields both the parties and
+    // the full proposal description — the national feed truncates the latter
+    // for big applications, which is what starves the summary.
+    const debug = (req.query as { debug?: string }).debug === "1";
+    if (authorityId in AGILE_CLIENT_BY_AUTHORITY) {
+      const detail = await fetchAgileDetail(
+        authorityId,
+        row.source_url as string | null,
+        row.planning_reference as string,
+        debug
+      );
+      if (detail) {
+        parties = { applicant: detail.applicant, agent: detail.agent };
+        if (detail.description && detail.description.length > (description?.length ?? 0)) {
+          description = detail.description;
+        }
+        if (debug) {
+          return {
+            agile_detail_keys: detail.keys ?? null,
+            picked_description_len: detail.description?.length ?? 0,
+            description,
+          };
+        }
+      } else if (debug) {
+        return { agile_detail_keys: null, picked_description_len: 0, description };
+      }
+    } else if ((!row.applicant_name || !row.agent_name) && row.source_url) {
+      parties = await fetchEplanningParties(row.source_url as string);
+    }
+
+    // Regenerate the summary when we found a fuller description than the one a
+    // stored summary may have been written from.
+    const descriptionImproved = !!description && description !== dbDescription;
+    const aiSummary =
+      row.ai_summary && !descriptionImproved
+        ? (row.ai_summary as string)
+        : await summariseDescription(description ?? "", row.application_type as string | null);
+
+    if (aiSummary && aiSummary !== row.ai_summary) {
       db.prepare("UPDATE applications SET ai_summary = ? WHERE id = ?").run(aiSummary, id);
+    }
+    if (descriptionImproved) {
+      db.prepare("UPDATE applications SET description = ? WHERE id = ?").run(description, id);
     }
     const applicant = (row.applicant_name as string | null) ?? parties.applicant;
     const agent = (row.agent_name as string | null) ?? parties.agent;
@@ -542,6 +570,11 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
         id
       );
     }
-    return { ai_summary: aiSummary ?? null, applicant_name: applicant, agent_name: agent };
+    return {
+      ai_summary: aiSummary ?? null,
+      applicant_name: applicant,
+      agent_name: agent,
+      description,
+    };
   });
 }

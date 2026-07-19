@@ -510,22 +510,52 @@ async function resolveAgileId(client, sourceUrl, reference) {
   return hit ? String(hit.id) : null;
 }
 
-async function fetchAgileParties(authorityId, sourceUrl, reference) {
-  const none = { applicant: null, agent: null };
+// The proposal-description field name varies across tenants; take the longest
+// non-empty candidate so we never regress on the truncated national value.
+const AGILE_DESCRIPTION_FIELDS = [
+  "developmentDescription",
+  "proposalDescription",
+  "proposedDevelopment",
+  "natureOfDevelopment",
+  "developmentProposal",
+  "proposal",
+  "applicationDescription",
+  "longDescription",
+  "description",
+];
+function pickLongest(d, fields) {
+  let best = null;
+  for (const f of fields) {
+    const v = String(d[f] ?? "").trim();
+    if (v && v.length > (best?.length ?? 0)) best = v;
+  }
+  return best;
+}
+
+async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false) {
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
-  if (!client) return none;
-  const cacheKey = `agile:${authorityId}:${reference}`;
-  if (PARTIES_CACHE.has(cacheKey)) return PARTIES_CACHE.get(cacheKey);
+  if (!client) return null;
+  const cacheKey = `agile-detail:${authorityId}:${reference}`;
+  if (!debug && PARTIES_CACHE.has(cacheKey)) return PARTIES_CACHE.get(cacheKey);
   const id = await resolveAgileId(client, sourceUrl, reference);
-  if (!id) return none;
+  if (!id) return null;
   const d = await agileGetJson(`${AGILE_API}/application/${id}`, client);
-  if (!d || typeof d !== "object") return none;
-  const parties = {
+  if (!d || typeof d !== "object") return null;
+  const detail = {
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
+    description: pickLongest(d, AGILE_DESCRIPTION_FIELDS),
+    ...(debug ? { keys: Object.keys(d) } : {}),
   };
-  if (parties.applicant || parties.agent) PARTIES_CACHE.set(cacheKey, parties);
-  return parties;
+  PARTIES_CACHE.set(cacheKey, detail);
+  return detail;
+}
+
+async function fetchAgileParties(authorityId, sourceUrl, reference) {
+  const detail = await fetchAgileDetail(authorityId, sourceUrl, reference);
+  return detail
+    ? { applicant: detail.applicant, agent: detail.agent }
+    : { applicant: null, agent: null };
 }
 
 const ZONING_CACHE = new Map();
@@ -1433,21 +1463,39 @@ export default async function handler(req, res) {
   if (em) {
     const app = BUNDLE.applications.find((a) => a.id === Number(em[1]));
     if (!app) return send(res, 404, { error: "Application not found" });
-    const needsParties = !(app.applicant_name && app.agent_name);
-    const [aiSummary, parties] = await Promise.all([
-      summariseDescription(app.description, app.application_type),
-      !needsParties
-        ? Promise.resolve({ applicant: null, agent: null })
-        : app.authority_id in AGILE_CLIENT_BY_AUTHORITY
-          ? fetchAgileParties(app.authority_id, app.source_url, app.planning_reference)
-          : app.source_url
-            ? fetchEplanningParties(app.source_url)
-            : Promise.resolve({ applicant: null, agent: null }),
-    ]);
+
+    let description = app.description ?? null;
+    let parties = { applicant: null, agent: null };
+    const debug = p.get("debug") === "1";
+    // Agile councils (incl. DLR): one detail call yields the parties and the
+    // full proposal description — the national feed truncates the latter for
+    // big applications, which is what starves the summary.
+    if (app.authority_id in AGILE_CLIENT_BY_AUTHORITY) {
+      const detail = await fetchAgileDetail(app.authority_id, app.source_url, app.planning_reference, debug);
+      if (detail) {
+        parties = { applicant: detail.applicant, agent: detail.agent };
+        if (detail.description && detail.description.length > (description?.length ?? 0)) {
+          description = detail.description;
+        }
+        if (debug)
+          return send(res, 200, {
+            agile_detail_keys: detail.keys ?? null,
+            picked_description_len: detail.description?.length ?? 0,
+            description,
+          });
+      } else if (debug) {
+        return send(res, 200, { agile_detail_keys: null, picked_description_len: 0, description });
+      }
+    } else if (!(app.applicant_name && app.agent_name) && app.source_url) {
+      parties = await fetchEplanningParties(app.source_url);
+    }
+
+    const aiSummary = await summariseDescription(description, app.application_type);
     return send(res, 200, {
       ai_summary: aiSummary,
       applicant_name: app.applicant_name ?? parties.applicant,
       agent_name: app.agent_name ?? parties.agent,
+      description,
     });
   }
 
