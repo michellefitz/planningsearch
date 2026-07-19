@@ -995,3 +995,85 @@ body {
   font-size: 0.7rem;
   color: var(--ink-3);
 }
+
+/* ── Decision substance (conditions / refusal reasons) ─────────────── */
+
+.decision-headline {
+  font-size: 0.92rem;
+  font-weight: 620;
+  letter-spacing: 0.01em;
+  margin: 0 0 0.75rem;
+}
+.decision-headline .hint {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.condition-group {
+  margin: 0 0 0.9rem;
+}
+.condition-group h4 {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  margin: 0 0 0.35rem;
+}
+.condition-group h4 .count {
+  font-weight: 500;
+  color: var(--ink-3);
+  margin-left: 0.25rem;
+}
+.condition {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  margin: 0 0 0.4rem;
+}
+.condition summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  cursor: pointer;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 520;
+  list-style: none;
+}
+.condition summary::-webkit-details-marker {
+  display: none;
+}
+.condition summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--ink-3);
+  font-weight: 400;
+}
+.condition[open] summary::after {
+  content: "–";
+}
+.condition[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+.condition-num {
+  flex: none;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border-radius: 999px;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-0.05rem);
+}
+.condition-text {
+  margin: 0;
+  padding: 0.6rem 0.75rem 0.7rem;
+  font-size: 0.83rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+  white-space: pre-line;
+}

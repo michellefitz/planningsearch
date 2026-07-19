@@ -296,23 +296,26 @@ const joinName = (fore, sur, whole) => {
   return String(whole ?? "").trim() || null;
 };
 
+async function resolveAgileId(client, sourceUrl, reference) {
+  const fromUrl = sourceUrl?.match(/application-details\/(\d+)/i)?.[1];
+  if (fromUrl) return fromUrl;
+  const found = await agileGetJson(
+    `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`,
+    client
+  );
+  const hit = found?.results?.find(
+    (r) => r.reference?.trim().toLowerCase() === reference.trim().toLowerCase()
+  );
+  return hit ? String(hit.id) : null;
+}
+
 async function fetchAgileParties(authorityId, sourceUrl, reference) {
   const none = { applicant: null, agent: null };
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   if (!client) return none;
   const cacheKey = `agile:${authorityId}:${reference}`;
   if (PARTIES_CACHE.has(cacheKey)) return PARTIES_CACHE.get(cacheKey);
-  let id = sourceUrl?.match(/application-details\/(\d+)/i)?.[1];
-  if (!id) {
-    const found = await agileGetJson(
-      `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`,
-      client
-    );
-    const hit = found?.results?.find(
-      (r) => r.reference?.trim().toLowerCase() === reference.trim().toLowerCase()
-    );
-    id = hit ? String(hit.id) : null;
-  }
+  const id = await resolveAgileId(client, sourceUrl, reference);
   if (!id) return none;
   const d = await agileGetJson(`${AGILE_API}/application/${id}`, client);
   if (!d || typeof d !== "object") return none;
@@ -322,6 +325,43 @@ async function fetchAgileParties(authorityId, sourceUrl, reference) {
   };
   if (parties.applicant || parties.agent) PARTIES_CACHE.set(cacheKey, parties);
   return parties;
+}
+
+const CONDITIONS_CACHE = new Map();
+
+/**
+ * Decision substance from /application/{id}/conditions — "prescriptions"
+ * coded by kind: C condition of grant, R reason for refusal, D directive
+ * (what an F.I. request asked for), I informative, N note.
+ */
+async function fetchAgileConditions(authorityId, sourceUrl, reference) {
+  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
+  if (!client) return null;
+  const cacheKey = `${authorityId}:${reference}`;
+  if (CONDITIONS_CACHE.has(cacheKey)) return CONDITIONS_CACHE.get(cacheKey);
+  const id = await resolveAgileId(client, sourceUrl, reference);
+  if (!id) return null;
+  const d = await agileGetJson(`${AGILE_API}/application/${id}/conditions`, client);
+  if (!d || typeof d !== "object") return null;
+  const items = (d.applicationPrescriptions ?? [])
+    .map((p) => ({
+      code: String(p.prescriptionCode ?? "").trim(),
+      code_label: String(p.prescriptionCodeDescription ?? "").trim(),
+      title: String(p.shortPrescription ?? "").trim(),
+      text: String(p.longPrescription ?? "").replace(/\r\n/g, "\n").trim(),
+      order: Number(p.orderNumber ?? 0),
+    }))
+    .filter((p) => p.title || p.text)
+    .sort((a, b) => a.code.localeCompare(b.code) || a.order - b.order);
+  const decision = String(d.decisionText ?? "").trim() || null;
+  if (!decision && items.length === 0) return null;
+  const result = {
+    decision,
+    decision_date: d.decisionDate ? String(d.decisionDate).slice(0, 10) : null,
+    items,
+  };
+  CONDITIONS_CACHE.set(cacheKey, result);
+  return result;
 }
 
 async function fetchEplanningParties(sourceUrl) {
@@ -599,6 +639,21 @@ export default async function handler(req, res) {
     res.setHeader("Cache-Control", "private, max-age=300");
     res.end(doc.body);
     return;
+  }
+
+  const cm = route.match(/^\/api\/applications\/(\d+)\/conditions$/);
+  if (cm) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(cm[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    if (!(app.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
+      return send(res, 200, { supported: false, conditions: null });
+    }
+    const conditions = await fetchAgileConditions(
+      app.authority_id,
+      app.source_url,
+      app.planning_reference
+    );
+    return send(res, 200, { supported: true, conditions });
   }
 
   const fm = route.match(/^\/api\/applications\/(\d+)\/files$/);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type AppDetail, type Meta } from "../api";
+import { api, type AppDetail, type DecisionConditions, type Meta } from "../api";
 import { StatusBadge } from "./ResultsList";
 
 /**
@@ -214,6 +214,76 @@ function buildStats(d: AppDetail): Array<{ label: string; value: string }> {
   return stats;
 }
 
+/** Prescription codes on the council's decision, in display order. */
+const CONDITION_GROUPS: Array<{ code: string; label: string }> = [
+  { code: "R", label: "Reasons for refusal" },
+  { code: "C", label: "Conditions of this decision" },
+  { code: "D", label: "Further information the council asked for" },
+  { code: "I", label: "Clarifications & informatives" },
+  { code: "N", label: "Notes" },
+];
+
+/**
+ * The substance of the council's decision — conditions of grant, reasons
+ * for refusal, F.I. directives — fetched live from the council's portal API
+ * when the sheet opens (South Dublin / Dublin City / Fingal).
+ */
+function DecisionSection({ detail: d }: { detail: AppDetail }) {
+  const [conditions, setConditions] = useState<DecisionConditions | null>(null);
+
+  useEffect(() => {
+    setConditions(null);
+    let cancelled = false;
+    api
+      .conditions(d.id)
+      .then((res) => {
+        if (!cancelled && res.conditions?.items.length) setConditions(res.conditions);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [d.id]);
+
+  if (!conditions) return null;
+  const groups = CONDITION_GROUPS.map((g) => ({
+    ...g,
+    items: conditions.items.filter((i) => i.code === g.code),
+  })).filter((g) => g.items.length > 0);
+
+  return (
+    <section aria-labelledby="decision-h">
+      <h3 id="decision-h">What the council decided</h3>
+      {conditions.decision && (
+        <p className="decision-headline">
+          {conditions.decision}
+          {conditions.decision_date && <span className="hint"> · {conditions.decision_date}</span>}
+        </p>
+      )}
+      {groups.map((g) => (
+        <div key={g.code} className="condition-group">
+          <h4>
+            {g.label} <span className="count">{g.items.length}</span>
+          </h4>
+          {g.items.map((item, i) => (
+            <details key={`${g.code}-${item.order}-${i}`} className="condition">
+              <summary>
+                <span className="condition-num">{item.order || i + 1}</span>
+                {item.title || `${item.code_label} ${item.order}`}
+              </summary>
+              {item.text && <p className="condition-text">{item.text}</p>}
+            </details>
+          ))}
+        </div>
+      ))}
+      <p className="list-note">
+        Fetched live from the council's planning system — the decision order on the official
+        portal is the authoritative wording.
+      </p>
+    </section>
+  );
+}
+
 type FilesState =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -360,6 +430,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           </p>
         )}
       </section>
+
+      <DecisionSection detail={d} />
 
       <section aria-labelledby="facts-h">
         <h3 id="facts-h">Details</h3>

@@ -88,6 +88,20 @@ export interface AppDetail extends AppSummary {
   }>;
 }
 
+export interface ConditionItem {
+  code: string;
+  code_label: string;
+  title: string;
+  text: string;
+  order: number;
+}
+
+export interface DecisionConditions {
+  decision: string | null;
+  decision_date: string | null;
+  items: ConditionItem[];
+}
+
 export interface SearchState {
   q: string;
   authorities: string[];
@@ -161,6 +175,10 @@ export const api = {
       files: Array<{ title: string; url: string }> | null;
       objection_count: number | null;
     }>(`/api/applications/${id}/files`),
+  conditions: (id: number) =>
+    getJson<{ supported: boolean; conditions: DecisionConditions | null }>(
+      `/api/applications/${id}/conditions`
+    ),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
 };

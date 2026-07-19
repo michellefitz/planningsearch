@@ -12,7 +12,7 @@ import {
   type DiagnosticStep,
 } from "./documents.js";
 import { summariseDescription } from "./summarize.js";
-import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileParties } from "./agile.js";
+import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileConditions, fetchAgileParties } from "./agile.js";
 
 function csv(v: unknown): string[] | undefined {
   if (typeof v !== "string" || !v.trim()) return undefined;
@@ -204,6 +204,27 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     if (doc.disposition) reply.header("Content-Disposition", doc.disposition);
     reply.header("Cache-Control", "private, max-age=300");
     return reply.send(doc.body);
+  });
+
+  // Decision substance (conditions of grant / reasons for refusal / F.I.
+  // directives) from the agile API — fetched on demand when the sheet opens.
+  app.get("/api/applications/:id/conditions", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare("SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?")
+      .get(id) as
+      | { authority_id: string; source_url: string | null; planning_reference: string }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    if (!(row.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
+      return { supported: false, conditions: null };
+    }
+    const conditions = await fetchAgileConditions(
+      row.authority_id,
+      row.source_url,
+      row.planning_reference
+    );
+    return { supported: true, conditions };
   });
 
   app.get("/api/applications/:id", async (req, reply) => {

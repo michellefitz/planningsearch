@@ -34,6 +34,15 @@
   already fetches. Note statutory consultees (e.g. Uisce Éireann) appear
   alongside genuine third-party objectors, so show names, not just a count.
 
+- **Compare similar nearby applications.** With conditions + refusal reasons
+  now available (agile councils), build a "what happened nearby" view: find
+  applications near a location for similar work (extension, attic
+  conversion, new dwelling…), show grant/refusal outcomes, common grant
+  conditions, and recurring refusal reasons — so someone planning work can
+  see what the council actually decided on comparable proposals. Needs the
+  conditions endpoint only for agile councils; Kildare/DLR outcomes are in
+  the bulk data but not their conditions text.
+
 - **"Appealed" filter as an area-level contested signal.** Appeal fields are
   in the bulk dataset (unlike objections); a filter chip would let users see
   contested applications across the map.
