@@ -356,7 +356,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
         : summariseDescription(row.description as string, row.application_type as string | null),
       !needsParties
         ? Promise.resolve({ applicant: null, agent: null })
-        : row.authority_id in AGILE_CLIENT_BY_AUTHORITY
+        : String(row.authority_id) in AGILE_CLIENT_BY_AUTHORITY
           ? fetchAgileParties(
               row.authority_id as string,
               row.source_url as string | null,
