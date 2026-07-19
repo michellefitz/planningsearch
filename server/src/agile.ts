@@ -225,39 +225,72 @@ export async function agilePortalUrl(
   return id ? `${AGILE_PORTAL}/${slug}/application-details/${id}` : null;
 }
 
-/** Normalise any Agile document payload into titled links (tolerant walk). */
-export function parseAgileDocuments(json: unknown): ScannedFile[] {
-  const out: ScannedFile[] = [];
-  const visit = (node: unknown) => {
-    if (Array.isArray(node)) return node.forEach(visit);
-    if (!node || typeof node !== "object") return;
-    const obj = node as Record<string, unknown>;
-    const urlish = [obj.url, obj.downloadUrl, obj.link, obj.href, obj.documentUrl].find(
-      (v): v is string => typeof v === "string" && /^(https?:)?\//.test(v)
-    );
-    const name = [obj.name, obj.title, obj.description, obj.fileName, obj.documentType].find(
-      (v): v is string => typeof v === "string" && v.trim().length > 0
-    );
-    const docId =
-      typeof obj.id === "number" ? obj.id : typeof obj.documentId === "number" ? obj.documentId : null;
-    if (urlish) {
-      out.push({ title: name ?? "Document", url: new URL(urlish, AGILE_API).toString() });
-    } else if (name && docId !== null) {
-      out.push({ title: name, url: `${AGILE_API}/document/${docId}/download` });
+/** Deep link to the citizen portal's application page, via the verified API. */
+const str = (v: unknown): string | null =>
+  typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+
+export interface AgileDocEntry {
+  title: string;
+  documentId: string | null;
+  documentHash: string | null;
+}
+
+/** Top-level array (or the first array inside a wrapper object) of documents. */
+function coerceDocArray(json: unknown): Record<string, unknown>[] {
+  if (Array.isArray(json)) return json as Record<string, unknown>[];
+  if (json && typeof json === "object") {
+    for (const v of Object.values(json)) {
+      if (Array.isArray(v)) return v as Record<string, unknown>[];
     }
-    Object.values(obj).forEach(visit);
-  };
-  visit(json);
-  const seen = new Set<string>();
-  return out.filter((f) => (seen.has(f.url) ? false : (seen.add(f.url), true)));
+  }
+  return [];
 }
 
 /**
- * List an application's documents. The portal's "View Scanned Files" data
- * has not been captured from a browser session yet, so this probes the
- * plausible endpoint/service-header combinations with the verified tenant
- * credentials; every attempt is traceable via ?debug=1. Returns the portal
- * deep link even when no documents endpoint yields files, so the UI can
+ * The verified /api/application/{id}/document shape: a flat array of
+ * { documentHash, documentId (string), name (raw filename), description /
+ * mediaDescription (human title) }. Prefer the description as the title.
+ */
+export function parseAgileDocEntries(json: unknown): AgileDocEntry[] {
+  return coerceDocArray(json)
+    .map((o) => {
+      const documentHash = str(o.documentHash);
+      const documentId = str(o.documentId);
+      if (!documentHash && !documentId) return null;
+      const title = str(o.description) ?? str(o.mediaDescription) ?? str(o.name) ?? "Document";
+      return { title, documentId, documentHash };
+    })
+    .filter((x): x is AgileDocEntry => x !== null);
+}
+
+/** ScannedFile view for the list UI (url is a stable placeholder — the file
+ *  itself is streamed by index through our proxy, which adds tenant headers). */
+export function parseAgileDocuments(json: unknown): ScannedFile[] {
+  return parseAgileDocEntries(json).map((e) => ({
+    title: e.title,
+    url: `${AGILE_API}/document/${e.documentHash ?? e.documentId}`,
+  }));
+}
+
+/** Candidate download URLs for one document (hash preferred; id as fallback). */
+function agileDownloadCandidates(entry: AgileDocEntry, appId: string): string[] {
+  const urls: string[] = [];
+  if (entry.documentHash) {
+    urls.push(`${AGILE_API}/document/${entry.documentHash}`);
+    urls.push(`${AGILE_API}/document/${entry.documentHash}/content`);
+  }
+  if (entry.documentId) {
+    urls.push(`${AGILE_API}/document/${entry.documentId}`);
+    urls.push(`${AGILE_API}/application/${appId}/document/${entry.documentId}`);
+  }
+  return urls;
+}
+
+const CONFIRMED_DOC_ENDPOINT = (id: string) => `${AGILE_API}/application/${id}/document`;
+
+/**
+ * List an application's documents via the verified endpoint. Returns the
+ * portal deep link even when the endpoint yields nothing, so the UI can
  * always land users one click away.
  */
 export async function fetchAgileDocumentList(
@@ -273,20 +306,65 @@ export async function fetchAgileDocumentList(
   trace?.push({ step: "agile_resolve", resolvedId: id === null ? null : Number(id) });
   if (!id) return null;
   const applicationUrl = `${AGILE_PORTAL}/${slug}/application-details/${id}`;
+  const json = await getJsonTraced(CONFIRMED_DOC_ENDPOINT(id), client, "PA", trace);
+  const files = parseAgileDocuments(json);
+  trace?.push({ step: "agile_documents", url: CONFIRMED_DOC_ENDPOINT(id), fileCount: files.length });
+  return { files, applicationUrl };
+}
 
-  const attempts: Array<[string, string]> = [
-    [`${AGILE_API}/application/${id}/documents`, "PA"],
-    [`${AGILE_API}/application/${id}/document`, "PA"],
-    [`${AGILE_API}/application/${id}/documents`, "DMS"],
-    [`${AGILE_API}/document?applicationId=${id}`, "DMS"],
-    [`${AGILE_API}/application/${id}/files`, "PA"],
-  ];
-  for (const [url, service] of attempts) {
-    const json = await getJsonTraced(url, client, service, trace);
-    if (json === null) continue;
-    const files = parseAgileDocuments(json);
-    trace?.push({ step: "agile_documents", url, fileCount: files.length });
-    if (files.length > 0) return { files, applicationUrl };
+export interface FetchedDocument {
+  contentType: string;
+  disposition: string | null;
+  body: Buffer;
+}
+
+/**
+ * Stream one Agile document by its position in the list, adding the tenant
+ * headers a plain browser navigation can't. Re-fetches the (stably ordered)
+ * document list, then tries the candidate download URLs for that entry until
+ * one returns non-JSON bytes. "too_large" for anything over the serverless
+ * response limit; null on any failure.
+ */
+export async function fetchAgileDocument(
+  authorityId: string,
+  sourceUrl: string | null,
+  reference: string,
+  index: number,
+  maxBytes = 4_000_000,
+  trace?: DiagnosticStep[]
+): Promise<FetchedDocument | "too_large" | null> {
+  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
+  if (!client) return null;
+  const id = await resolveAgileId(client, sourceUrl, reference);
+  if (!id) return null;
+  const listJson = await getJsonTraced(CONFIRMED_DOC_ENDPOINT(id), client, "PA", trace);
+  const entries = parseAgileDocEntries(listJson);
+  const target = entries[index];
+  if (!target) {
+    trace?.push({ step: "agile_target", error: `No document at index ${index} of ${entries.length}` });
+    return null;
   }
-  return { files: [], applicationUrl };
+  for (const url of agileDownloadCandidates(target, id)) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25_000);
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { ...headers(client), Accept: "application/pdf,application/octet-stream,*/*" },
+      });
+      const ct = res.headers.get("content-type") ?? "application/octet-stream";
+      trace?.push({ step: "agile_download", url, status: res.status, contentType: ct });
+      if (!res.ok || /application\/json|text\/html/i.test(ct)) continue;
+      const declared = Number(res.headers.get("content-length"));
+      if (Number.isFinite(declared) && declared > maxBytes) return "too_large";
+      const body = Buffer.from(await res.arrayBuffer());
+      if (body.byteLength > maxBytes) return "too_large";
+      return { contentType: ct, disposition: res.headers.get("content-disposition"), body };
+    } catch (err) {
+      trace?.push({ step: "agile_download", url, error: String(err) });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
 }

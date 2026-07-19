@@ -16,6 +16,7 @@ import {
   AGILE_CLIENT_BY_AUTHORITY,
   agilePortalUrl,
   fetchAgileConditions,
+  fetchAgileDocument,
   fetchAgileDocumentList,
   fetchAgileParties,
 } from "./agile.js";
@@ -175,9 +176,10 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const trace: DiagnosticStep[] | undefined = debug ? [] : undefined;
 
     // Councils with a directly-addressable HTML listing (Kildare's iDocs,
-    // South Dublin's regref DMS) use the scraped path below. The remaining
-    // Agile councils (Dublin City, Fingal) go via the citizen portal's JSON
-    // API — direct download URLs, no session proxying needed.
+    // South Dublin & Dublin City document servers) use the scraped path
+    // below. Fingal has no such server, so its documents come from the Agile
+    // citizen-portal API — listed here, streamed per click through the proxy
+    // (the file bytes need the tenant headers a plain browser link can't add).
     const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url, row.planning_reference);
     const auth = AUTHORITY_BY_ID.get(row.authority_id);
     if (!listUrl && auth?.agileSlug) {
@@ -191,7 +193,6 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       if (!result) return { supported: false, files: null, list_url: null };
       return {
         supported: true,
-        direct: true,
         list_url: result.applicationUrl,
         files: result.files.length ? result.files : null,
         objection_count: result.files.length ? countObjectionFiles(result.files) : null,
@@ -258,15 +259,30 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       | { authority_id: string; source_url: string | null; planning_reference: string }
       | undefined;
     if (!row) return reply.code(404).send({ error: "Application not found" });
-    const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url, row.planning_reference);
-    if (!listUrl) return reply.code(404).send({ error: "No scanned files source" });
-
     const query = req.query as Record<string, unknown>;
     const debug = query.debug === "1";
     const trace: DiagnosticStep[] | undefined = debug ? [] : undefined;
-    const doc = await fetchScannedDocument(listUrl, index, 4_000_000, trace);
+
+    const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url, row.planning_reference);
+    const auth = AUTHORITY_BY_ID.get(row.authority_id);
+    const fallbackUrl = listUrl ?? auth?.portalBaseUrl ?? "";
+
+    // Fingal (Agile API) vs. HTML-listing councils use different fetchers,
+    // but both stream one document by list index and degrade to the portal.
+    const doc =
+      !listUrl && auth?.agileSlug
+        ? await fetchAgileDocument(row.authority_id, row.source_url, row.planning_reference, index, 4_000_000, trace)
+        : listUrl
+          ? await fetchScannedDocument(listUrl, index, 4_000_000, trace)
+          : null;
+
     if (debug) {
-      return reply.send({ listUrl, index, result: doc === null ? "null" : doc === "too_large" ? "too_large" : "ok", trace });
+      return reply.send({
+        listUrl,
+        index,
+        result: doc === null ? "null" : doc === "too_large" ? "too_large" : "ok",
+        trace,
+      });
     }
     if (doc === "too_large" || doc === null) {
       const reason =
@@ -278,7 +294,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
         .type("text/html")
         .send(
           `<!doctype html><meta charset="utf-8"><title>PlanView</title>
-           <p>${reason}</p><p><a href="${listUrl}">Open it on the council's scanned-files viewer instead</a>.</p>`
+           <p>${reason}</p><p><a href="${fallbackUrl}">Open it on the council's viewer instead</a>.</p>`
         );
     }
     reply.header("Content-Type", doc.contentType);

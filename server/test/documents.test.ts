@@ -173,25 +173,45 @@ describe("parseFileListHtml", () => {
   });
 });
 
-describe("agile document parsing (verified client)", () => {
-  it("normalises document payloads into titled links", async () => {
+describe("agile document parsing (verified /api/application/{id}/document shape)", () => {
+  // A trimmed slice of a real Fingal response.
+  const RESPONSE = [
+    {
+      documentHash: "SB6XY5JCGJSJTDDMW677",
+      documentId: "1045467",
+      name: "00125498_P001N01L_20240722_1030.pdf",
+      description: "Site Notice",
+      mediaDescription: "Site Notice",
+    },
+    {
+      documentHash: "SB6XY5JCGJH9DY3QPX6L",
+      documentId: "1045468",
+      name: "00125504_P001N01D_20240722_1030.pdf",
+      description: "Application Form - Part A",
+      mediaDescription: "Application Form - Part A",
+    },
+  ];
+
+  it("titles files by description, not the raw filename", async () => {
     const { parseAgileDocuments } = await import("../src/agile.js");
-    const withUrls = parseAgileDocuments({
-      documents: [{ name: "Site Plan", url: "https://planningapi.agileapplications.ie/api/document/9/download" }],
-    });
-    expect(withUrls).toEqual([
-      { title: "Site Plan", url: "https://planningapi.agileapplications.ie/api/document/9/download" },
-    ]);
-    const idOnly = parseAgileDocuments({ documents: [{ id: 12, documentType: "Decision Order" }] });
-    expect(idOnly[0].url).toBe("https://planningapi.agileapplications.ie/api/document/12/download");
-    expect(idOnly[0].title).toBe("Decision Order");
+    const files = parseAgileDocuments(RESPONSE);
+    expect(files.map((f) => f.title)).toEqual(["Site Notice", "Application Form - Part A"]);
+    expect(files[0].url).toContain("/document/SB6XY5JCGJSJTDDMW677");
   });
 
-  it("dedupes and ignores unusable entries", async () => {
-    const { parseAgileDocuments } = await import("../src/agile.js");
-    const files = parseAgileDocuments({
-      a: [{ id: 1, name: "Form" }, { id: 1, name: "Form" }, { noise: true }],
+  it("keeps hash and id for the download proxy", async () => {
+    const { parseAgileDocEntries } = await import("../src/agile.js");
+    const entries = parseAgileDocEntries(RESPONSE);
+    expect(entries[0]).toEqual({
+      title: "Site Notice",
+      documentId: "1045467",
+      documentHash: "SB6XY5JCGJSJTDDMW677",
     });
-    expect(files).toHaveLength(1);
+  });
+
+  it("tolerates a wrapper object and skips entries without hash or id", async () => {
+    const { parseAgileDocEntries } = await import("../src/agile.js");
+    expect(parseAgileDocEntries({ documents: RESPONSE })).toHaveLength(2);
+    expect(parseAgileDocEntries([{ description: "no keys" }])).toHaveLength(0);
   });
 });
