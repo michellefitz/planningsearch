@@ -265,11 +265,11 @@ function DecisionSection({
           {/* A decided appeal supersedes the council decision — say so right
               where the council outcome is stated. */}
           {d.appeal_decision && (
-            <span className="appeal-outcome">
-              {" "}
-              → on appeal: {d.appeal_decision}
+            <>
+              <span className="hint"> → on appeal: </span>
+              <span className="appeal-outcome">{d.appeal_decision}</span>
               {d.appeal_decision_date && <span className="hint"> · {d.appeal_decision_date}</span>}
-            </span>
+            </>
           )}
         </p>
       )}

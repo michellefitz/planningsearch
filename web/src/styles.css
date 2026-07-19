@@ -1008,7 +1008,9 @@ body {
   letter-spacing: 0.01em;
   margin: 0 0 0.75rem;
 }
+/* Dates keep the headline's size — only weight and colour step down. */
 .decision-headline .hint {
+  font-size: inherit;
   font-weight: 400;
   color: var(--ink-2);
 }
