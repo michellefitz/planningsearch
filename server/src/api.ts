@@ -203,7 +203,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     if (!listUrl) {
       return { supported: false, files: null, list_url: null };
     }
-    const files = await fetchScannedFileList(listUrl);
+    const files = await fetchScannedFileList(listUrl, trace);
     if (debug) return { agile: false, list_url: listUrl, files, trace };
     return {
       supported: true,

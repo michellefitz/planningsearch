@@ -238,16 +238,33 @@ export async function fetchEplanningParties(sourceUrl: string): Promise<Eplannin
 }
 
 /** Live-fetch and parse a file listing; returns null when unreachable/unparsable. */
-export async function fetchScannedFileList(listUrl: string): Promise<ScannedFile[] | null> {
+export async function fetchScannedFileList(
+  listUrl: string,
+  trace?: DiagnosticStep[]
+): Promise<ScannedFile[] | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(listUrl, { signal: controller.signal, headers: UA_HEADERS });
+    const html = res.ok ? await res.text() : "";
+    const files = res.ok ? parseFileListHtml(html, listUrl) : [];
+    if (trace) {
+      // Sample the raw anchors so a mismatch between the page and the parser
+      // is visible from a ?debug=1 response.
+      const hrefs = [...html.matchAll(ANCHOR_RE)].slice(0, 12).map((a) => a[1]);
+      trace.push({
+        step: "fetch_list",
+        url: res.url || listUrl,
+        status: res.status,
+        contentType: res.headers.get("content-type") ?? undefined,
+        fileCount: files.length,
+        bodySnippet: `[${html.length} bytes] anchors=${JSON.stringify(hrefs)} :: ${html.slice(0, 1800)}`,
+      });
+    }
     if (!res.ok) return null;
-    const html = await res.text();
-    const files = parseFileListHtml(html, listUrl);
     return files.length > 0 ? files : null;
-  } catch {
+  } catch (err) {
+    trace?.push({ step: "fetch_list", url: listUrl, error: String(err) });
     return null;
   } finally {
     clearTimeout(timer);

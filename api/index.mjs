@@ -138,15 +138,28 @@ const UA_HEADERS = {
   Accept: "text/html",
 };
 
-async function fetchScannedFileList(listUrl) {
+async function fetchScannedFileList(listUrl, trace) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
     const res = await fetch(listUrl, { signal: controller.signal, headers: UA_HEADERS });
+    const html = res.ok ? await res.text() : "";
+    const files = res.ok ? parseFileListHtml(html, listUrl) : [];
+    if (trace) {
+      const hrefs = [...html.matchAll(ANCHOR_RE)].slice(0, 12).map((a) => a[1]);
+      trace.push({
+        step: "fetch_list",
+        url: res.url || listUrl,
+        status: res.status,
+        contentType: res.headers.get("content-type") ?? undefined,
+        fileCount: files.length,
+        bodySnippet: `[${html.length} bytes] anchors=${JSON.stringify(hrefs)} :: ${html.slice(0, 1800)}`,
+      });
+    }
     if (!res.ok) return null;
-    const files = parseFileListHtml(await res.text(), listUrl);
     return files.length > 0 ? files : null;
-  } catch {
+  } catch (err) {
+    trace?.push({ step: "fetch_list", url: listUrl, error: String(err) });
     return null;
   } finally {
     clearTimeout(timer);
@@ -943,7 +956,7 @@ export default async function handler(req, res) {
       });
     }
     if (!listUrl) return send(res, 200, { supported: false, files: null, list_url: null });
-    const files = await fetchScannedFileList(listUrl);
+    const files = await fetchScannedFileList(listUrl, trace);
     if (debug) return send(res, 200, { agile: false, list_url: listUrl, files, trace });
     return send(res, 200, {
       supported: true,
