@@ -331,7 +331,12 @@ function parseEplanningParties(html) {
    tenant-scoped via three headers captured from a browser session. Returns
    applicant AND agent names, both missing from the national dataset. */
 const AGILE_API = "https://planningapi.agileapplications.ie/api";
-const AGILE_CLIENT_BY_AUTHORITY = { "south-dublin": "SD", "dublin-city": "DCC", fingal: "FG" };
+const AGILE_CLIENT_BY_AUTHORITY = {
+  "south-dublin": "SD",
+  "dublin-city": "DCC",
+  fingal: "FG",
+  dlr: "DLR",
+};
 
 async function agileGetJson(url, client) {
   const controller = new AbortController();
@@ -580,6 +585,7 @@ const AGILE_SLUGS = {
   "dublin-city": "dublincity",
   fingal: "fingal",
   "south-dublin": "southdublin",
+  dlr: "dunlaoghaire",
 };
 const AGILE_BASE = "https://planning.agileapplications.ie";
 

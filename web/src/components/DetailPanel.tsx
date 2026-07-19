@@ -407,7 +407,9 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   const isLongDesc = (d.description ?? "").length > 400;
   // Councils whose decision substance the conditions endpoint can serve —
   // skipping the round-trip (and the placeholder) everywhere else.
-  const hasConditionsSource = ["south-dublin", "dublin-city", "fingal"].includes(d.authority_id);
+  const hasConditionsSource = ["south-dublin", "dublin-city", "fingal", "dlr"].includes(
+    d.authority_id
+  );
 
   useEffect(() => {
     setConditions(null);

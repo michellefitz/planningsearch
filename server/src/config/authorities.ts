@@ -69,8 +69,11 @@ export const AUTHORITIES: AuthorityConfig[] = [
     id: "dlr",
     name: "Dún Laoghaire-Rathdown County Council",
     shortName: "Dún Laoghaire-Rathdown",
-    sourceSystem: "swiftlg",
-    portalBaseUrl: "https://planning.dlrcoco.ie/swiftlg",
+    // DLR retired SwiftLG (planning.dlrcoco.ie now hosts an unrelated APEX
+    // housing app) and moved its register to Agile Applications.
+    sourceSystem: "agile",
+    portalBaseUrl: "https://planning.agileapplications.ie/dunlaoghaire",
+    agileSlug: "dunlaoghaire",
     gisUrl: null,
     nationalDbNames: [
       "Dun Laoghaire Rathdown County Council",
@@ -79,8 +82,7 @@ export const AUTHORITIES: AuthorityConfig[] = [
     ],
     nationalDbLike: "Laoghaire",
     portalUrlForReference: (ref) =>
-      // SwiftLG's documented pattern for a direct application view.
-      `https://planning.dlrcoco.ie/swiftlg/apas/run/WPHAPPDETAIL.DisplayUrl?theApnID=${encodeURIComponent(ref)}`,
+      `https://planning.agileapplications.ie/dunlaoghaire/search-applications/?keyword=${encodeURIComponent(ref)}`,
     bbox: [-6.31, 53.2, -6.09, 53.32],
   },
   {

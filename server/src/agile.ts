@@ -17,6 +17,7 @@ export const AGILE_CLIENT_BY_AUTHORITY: Record<string, string> = {
   "south-dublin": "SD",
   "dublin-city": "DCC",
   fingal: "FG",
+  dlr: "DLR",
 };
 
 function headers(client: string): Record<string, string> {
@@ -179,6 +180,7 @@ export const AGILE_SLUG_BY_AUTHORITY: Record<string, string> = {
   "south-dublin": "southdublin",
   "dublin-city": "dublincity",
   fingal: "fingal",
+  dlr: "dunlaoghaire",
 };
 
 async function getJsonTraced(

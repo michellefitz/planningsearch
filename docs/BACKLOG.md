@@ -8,10 +8,11 @@
   `VITE_GOOGLE_MAPS_KEY` in Vercel env vars → redeploy. ($200/month free
   credit ≈ ~25k image loads; metadata checks are free.)
 
-- **Applicant/agent names for DLR.** Kildare (eplanning scrape) and South
-  Dublin / Dublin City / Fingal (agile API, see server/src/agile.ts) are
-  covered; Dún Laoghaire-Rathdown remains — it runs SwiftLG
-  (planning.dlrcoco.ie/swiftlg), which needs its own scraper.
+- **DLR (solved 2026-07).** Dún Laoghaire-Rathdown retired SwiftLG and moved
+  to Agile Applications (x-client DLR, slug dunlaoghaire) — applicant/agent,
+  conditions, and document listings/downloads all work through the same
+  integration as the other agile councils. planning.dlrcoco.ie now hosts an
+  unrelated APEX housing app.
 
 - **Agile API notes (solved).** Base `planningapi.agileapplications.ie/api`,
   tenant headers x-client (SD / DCC / FG) + x-product CITIZENPORTAL +
