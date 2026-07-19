@@ -1077,3 +1077,8 @@ body {
   color: var(--ink-2);
   white-space: pre-line;
 }
+
+.refusal-summary {
+  margin-top: 0.35rem;
+  color: #9f1239;
+}

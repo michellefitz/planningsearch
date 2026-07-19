@@ -228,23 +228,7 @@ const CONDITION_GROUPS: Array<{ code: string; label: string }> = [
  * for refusal, F.I. directives — fetched live from the council's portal API
  * when the sheet opens (South Dublin / Dublin City / Fingal).
  */
-function DecisionSection({ detail: d }: { detail: AppDetail }) {
-  const [conditions, setConditions] = useState<DecisionConditions | null>(null);
-
-  useEffect(() => {
-    setConditions(null);
-    let cancelled = false;
-    api
-      .conditions(d.id)
-      .then((res) => {
-        if (!cancelled && res.conditions?.items.length) setConditions(res.conditions);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [d.id]);
-
+function DecisionSection({ conditions }: { conditions: DecisionConditions | null }) {
   if (!conditions) return null;
   const groups = CONDITION_GROUPS.map((g) => ({
     ...g,
@@ -355,6 +339,21 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   const glossary = meta?.glossary ?? {};
   const timeline = buildTimeline(d);
   const stats = buildStats(d);
+  const [conditions, setConditions] = useState<DecisionConditions | null>(null);
+
+  useEffect(() => {
+    setConditions(null);
+    let cancelled = false;
+    api
+      .conditions(d.id)
+      .then((res) => {
+        if (!cancelled && res.conditions?.items.length) setConditions(res.conditions);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [d.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -385,6 +384,9 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           )}
         </p>
         {d.ai_summary && <p className="detail-summary">✦ {d.ai_summary}</p>}
+        {conditions?.refusal_summary && (
+          <p className="detail-summary refusal-summary">✦ {conditions.refusal_summary}</p>
+        )}
         <PropertyMedia detail={d} />
         <div className="action-row">
           {(!GMAPS_KEY || d.lat == null) && <MapLinks detail={d} />}
@@ -431,7 +433,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         )}
       </section>
 
-      <DecisionSection detail={d} />
+      <DecisionSection conditions={conditions} />
 
       <section aria-labelledby="facts-h">
         <h3 id="facts-h">Details</h3>

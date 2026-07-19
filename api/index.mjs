@@ -383,20 +383,8 @@ async function fetchEplanningParties(sourceUrl) {
   }
 }
 
-async function summariseDescription(description, applicationType) {
-  if (!ANTHROPIC_API_KEY || !description) return null;
-  const cacheKey = description;
-  if (AI_SUMMARY_CACHE.has(cacheKey)) return AI_SUMMARY_CACHE.get(cacheKey);
-  const systemPrompt =
-    "You summarise Irish planning applications in one short sentence of plain English. " +
-    "The reader is a regular person, not a planner or architect. " +
-    "Say what the project actually is: an extension, a new house, a commercial unit, solar panels, etc. " +
-    "Include key details like number of bedrooms or storeys only when stated. " +
-    'Never start with "This application is for". Just state what it is. ' +
-    "Keep it under 30 words.";
-  const userMsg = applicationType
-    ? `Application type: ${applicationType}\nDescription: ${description}`
-    : description;
+async function callHaiku(systemPrompt, userMsg) {
+  if (!ANTHROPIC_API_KEY) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
@@ -410,21 +398,55 @@ async function summariseDescription(description, applicationType) {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 100,
+        max_tokens: 120,
         system: systemPrompt,
         messages: [{ role: "user", content: userMsg }],
       }),
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const text = data.content?.find((b) => b.type === "text")?.text?.trim() || null;
-    if (text) AI_SUMMARY_CACHE.set(cacheKey, text);
-    return text;
+    return data.content?.find((b) => b.type === "text")?.text?.trim() || null;
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function summariseDescription(description, applicationType) {
+  if (!description) return null;
+  if (AI_SUMMARY_CACHE.has(description)) return AI_SUMMARY_CACHE.get(description);
+  const systemPrompt =
+    "You summarise Irish planning applications in one short sentence of plain English. " +
+    "The reader is a regular person, not a planner or architect. " +
+    "Say what the project actually is: an extension, a new house, a commercial unit, solar panels, etc. " +
+    "Include key details like number of bedrooms or storeys only when stated. " +
+    'Never start with "This application is for". Just state what it is. ' +
+    "Keep it under 30 words.";
+  const userMsg = applicationType
+    ? `Application type: ${applicationType}\nDescription: ${description}`
+    : description;
+  const text = await callHaiku(systemPrompt, userMsg);
+  if (text) AI_SUMMARY_CACHE.set(description, text);
+  return text;
+}
+
+const REFUSAL_SUMMARY_CACHE = new Map();
+
+async function summariseRefusal(appId, reasons) {
+  if (!reasons.length) return null;
+  if (REFUSAL_SUMMARY_CACHE.has(appId)) return REFUSAL_SUMMARY_CACHE.get(appId);
+  const systemPrompt =
+    "You explain why an Irish council refused a planning application, in one short sentence " +
+    'of plain English starting with "Refused because". ' +
+    "The reader is a regular person, not a planner. Name the actual problems " +
+    "(too close to a sewer, would overlook neighbours, no drainage details, out of character " +
+    "with the area…), never the policy or plan citations. " +
+    "If there are several reasons, mention the main ones. Keep it under 35 words.";
+  const userMsg = reasons.map((r, i) => `Reason ${i + 1}: ${r.title}\n${r.text}`).join("\n\n");
+  const text = await callHaiku(systemPrompt, userMsg);
+  if (text) REFUSAL_SUMMARY_CACHE.set(appId, text);
+  return text;
 }
 
 function publicApp(a) {
@@ -653,7 +675,12 @@ export default async function handler(req, res) {
       app.source_url,
       app.planning_reference
     );
-    return send(res, 200, { supported: true, conditions });
+    const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
+    const refusalSummary = reasons.length ? await summariseRefusal(app.id, reasons) : null;
+    return send(res, 200, {
+      supported: true,
+      conditions: conditions ? { ...conditions, refusal_summary: refusalSummary } : null,
+    });
   }
 
   const fm = route.match(/^\/api\/applications\/(\d+)\/files$/);

@@ -11,7 +11,7 @@ import {
   fetchScannedFileList,
   type DiagnosticStep,
 } from "./documents.js";
-import { summariseDescription } from "./summarize.js";
+import { summariseDescription, summariseRefusal } from "./summarize.js";
 import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileConditions, fetchAgileParties } from "./agile.js";
 
 function csv(v: unknown): string[] | undefined {
@@ -75,6 +75,8 @@ function publicApplication(row: Record<string, unknown>) {
     ),
   };
 }
+
+const REFUSAL_SUMMARY_CACHE = new Map<number, string>();
 
 export function registerRoutes(app: FastifyInstance, db: Database.Database) {
   app.get("/api/meta", () => {
@@ -224,7 +226,19 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       row.source_url,
       row.planning_reference
     );
-    return { supported: true, conditions };
+    // Refusal reasons are dense planning prose — add a plain-English line
+    // for the sheet header. Cached: the reasons never change once decided.
+    const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
+    let refusalSummary: string | null = null;
+    if (reasons.length) {
+      refusalSummary =
+        REFUSAL_SUMMARY_CACHE.get(id) ?? (await summariseRefusal(reasons));
+      if (refusalSummary) REFUSAL_SUMMARY_CACHE.set(id, refusalSummary);
+    }
+    return {
+      supported: true,
+      conditions: conditions ? { ...conditions, refusal_summary: refusalSummary } : null,
+    };
   });
 
   app.get("/api/applications/:id", async (req, reply) => {

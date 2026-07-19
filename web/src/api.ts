@@ -100,6 +100,7 @@ export interface DecisionConditions {
   decision: string | null;
   decision_date: string | null;
   items: ConditionItem[];
+  refusal_summary?: string | null;
 }
 
 export interface SearchState {
