@@ -259,43 +259,57 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       )
       .all({ id, authority_id: row.authority_id, address_text: row.address_text });
 
-    let aiSummary = (row.ai_summary as string | null) ?? null;
-    if (!aiSummary && row.description) {
-      aiSummary = await summariseDescription(
-        row.description as string,
-        row.application_type as string | null
-      );
-      if (aiSummary) {
-        db.prepare("UPDATE applications SET ai_summary = ? WHERE id = ?").run(aiSummary, id);
-      }
-    }
+    // Slow upstream work (AI summary, party backfill) lives on /enrich so
+    // the sheet renders immediately; cached values still come through here.
+    return {
+      ...publicApplication(row),
+      ai_summary: (row.ai_summary as string | null) ?? null,
+      documents,
+      related,
+    };
+  });
 
-    // Applicant names are redacted in the national dataset and agents are
-    // absent from it entirely; the council portals publish both (eplanning
-    // pages for Kildare, the agile API for South Dublin / Dublin City /
-    // Fingal), so backfill on first view and cache in the DB.
-    if (!row.applicant_name || !row.agent_name) {
-      const parties =
-        row.authority_id in AGILE_CLIENT_BY_AUTHORITY
-          ? await fetchAgileParties(
+  // Enrichment that needs upstream calls: AI summary (Haiku) plus applicant/
+  // agent backfill — redacted/absent in the national dataset but published on
+  // the council portals (eplanning for Kildare, agile API for South Dublin /
+  // Dublin City / Fingal). Fetched in parallel, cached in the DB.
+  app.get("/api/applications/:id/enrich", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db.prepare("SELECT * FROM applications WHERE id = ?").get(id) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+
+    const needsParties = !row.applicant_name || !row.agent_name;
+    const [aiSummary, parties] = await Promise.all([
+      row.ai_summary
+        ? Promise.resolve(row.ai_summary as string)
+        : summariseDescription(row.description as string, row.application_type as string | null),
+      !needsParties
+        ? Promise.resolve({ applicant: null, agent: null })
+        : row.authority_id in AGILE_CLIENT_BY_AUTHORITY
+          ? fetchAgileParties(
               row.authority_id as string,
               row.source_url as string | null,
               row.planning_reference as string
             )
           : row.source_url
-            ? await fetchEplanningParties(row.source_url as string)
-            : { applicant: null, agent: null };
-      if (parties.applicant && !row.applicant_name) row.applicant_name = parties.applicant;
-      if (parties.agent && !row.agent_name) row.agent_name = parties.agent;
-      if (parties.applicant || parties.agent) {
-        db.prepare("UPDATE applications SET applicant_name = ?, agent_name = ? WHERE id = ?").run(
-          row.applicant_name ?? null,
-          row.agent_name ?? null,
-          id
-        );
-      }
-    }
+            ? fetchEplanningParties(row.source_url as string)
+            : Promise.resolve({ applicant: null, agent: null }),
+    ]);
 
-    return { ...publicApplication(row), ai_summary: aiSummary, documents, related };
+    if (aiSummary && !row.ai_summary) {
+      db.prepare("UPDATE applications SET ai_summary = ? WHERE id = ?").run(aiSummary, id);
+    }
+    const applicant = (row.applicant_name as string | null) ?? parties.applicant;
+    const agent = (row.agent_name as string | null) ?? parties.agent;
+    if (parties.applicant || parties.agent) {
+      db.prepare("UPDATE applications SET applicant_name = ?, agent_name = ? WHERE id = ?").run(
+        applicant,
+        agent,
+        id
+      );
+    }
+    return { ai_summary: aiSummary ?? null, applicant_name: applicant, agent_name: agent };
   });
 }

@@ -176,6 +176,12 @@ export const api = {
       files: Array<{ title: string; url: string }> | null;
       objection_count: number | null;
     }>(`/api/applications/${id}/files`),
+  enrich: (id: number) =>
+    getJson<{
+      ai_summary: string | null;
+      applicant_name: string | null;
+      agent_name: string | null;
+    }>(`/api/applications/${id}/enrich`),
   conditions: (id: number) =>
     getJson<{ supported: boolean; conditions: DecisionConditions | null }>(
       `/api/applications/${id}/conditions`

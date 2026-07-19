@@ -296,9 +296,13 @@ const joinName = (fore, sur, whole) => {
   return String(whole ?? "").trim() || null;
 };
 
+const AGILE_ID_CACHE = new Map();
+
 async function resolveAgileId(client, sourceUrl, reference) {
   const fromUrl = sourceUrl?.match(/application-details\/(\d+)/i)?.[1];
   if (fromUrl) return fromUrl;
+  const cacheKey = `${client}:${reference}`;
+  if (AGILE_ID_CACHE.has(cacheKey)) return AGILE_ID_CACHE.get(cacheKey);
   const found = await agileGetJson(
     `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`,
     client
@@ -306,6 +310,7 @@ async function resolveAgileId(client, sourceUrl, reference) {
   const hit = found?.results?.find(
     (r) => r.reference?.trim().toLowerCase() === reference.trim().toLowerCase()
   );
+  if (hit) AGILE_ID_CACHE.set(cacheKey, String(hit.id));
   return hit ? String(hit.id) : null;
 }
 
@@ -714,6 +719,20 @@ export default async function handler(req, res) {
         received_date: a.received_date,
         decision_date: a.decision_date,
       }));
+    // Slow upstream work lives on /enrich so the sheet renders immediately;
+    // anything already in the warm-instance caches still comes through here.
+    return send(res, 200, {
+      ...publicApp(app),
+      ai_summary: AI_SUMMARY_CACHE.get(app.description) ?? null,
+      documents: [],
+      related,
+    });
+  }
+
+  const em = route.match(/^\/api\/applications\/(\d+)\/enrich$/);
+  if (em) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(em[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
     const needsParties = !(app.applicant_name && app.agent_name);
     const [aiSummary, parties] = await Promise.all([
       summariseDescription(app.description, app.application_type),
@@ -725,12 +744,11 @@ export default async function handler(req, res) {
             ? fetchEplanningParties(app.source_url)
             : Promise.resolve({ applicant: null, agent: null }),
     ]);
-    const merged = {
-      ...app,
+    return send(res, 200, {
+      ai_summary: aiSummary,
       applicant_name: app.applicant_name ?? parties.applicant,
       agent_name: app.agent_name ?? parties.agent,
-    };
-    return send(res, 200, { ...publicApp(merged), ai_summary: aiSummary, documents: [], related });
+    });
   }
 
   return send(res, 404, { error: "Not found" });

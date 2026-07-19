@@ -57,6 +57,8 @@ function joinName(fore: unknown, sur: unknown, whole: unknown): string | null {
  * dataset has one, otherwise via the API's reference search (Dublin City
  * rows carry no links at all; Fingal's are truncated at source).
  */
+const AGILE_ID_CACHE = new Map<string, string>();
+
 async function resolveAgileId(
   client: string,
   sourceUrl: string | null,
@@ -64,6 +66,9 @@ async function resolveAgileId(
 ): Promise<string | null> {
   const fromUrl = sourceUrl?.match(/application-details\/(\d+)/i)?.[1];
   if (fromUrl) return fromUrl;
+  const cacheKey = `${client}:${reference}`;
+  const cached = AGILE_ID_CACHE.get(cacheKey);
+  if (cached) return cached;
   const found = (await getJson(
     `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`,
     client
@@ -71,6 +76,7 @@ async function resolveAgileId(
   const hit = found?.results?.find(
     (r) => r.reference?.trim().toLowerCase() === reference.trim().toLowerCase()
   );
+  if (hit) AGILE_ID_CACHE.set(cacheKey, String(hit.id));
   return hit ? String(hit.id) : null;
 }
 

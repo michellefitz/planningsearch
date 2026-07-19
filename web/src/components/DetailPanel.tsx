@@ -340,9 +340,15 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   const timeline = buildTimeline(d);
   const stats = buildStats(d);
   const [conditions, setConditions] = useState<DecisionConditions | null>(null);
+  const [enrich, setEnrich] = useState<{
+    ai_summary: string | null;
+    applicant_name: string | null;
+    agent_name: string | null;
+  } | null>(null);
 
   useEffect(() => {
     setConditions(null);
+    setEnrich(null);
     let cancelled = false;
     api
       .conditions(d.id)
@@ -350,10 +356,24 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         if (!cancelled && res.conditions?.items.length) setConditions(res.conditions);
       })
       .catch(() => {});
+    // AI summary + party backfill need upstream calls, so the detail
+    // endpoint returns without them and they stream in here.
+    if (!d.ai_summary || !d.applicant_name || !d.agent_name) {
+      api
+        .enrich(d.id)
+        .then((res) => {
+          if (!cancelled) setEnrich(res);
+        })
+        .catch(() => {});
+    }
     return () => {
       cancelled = true;
     };
-  }, [d.id]);
+  }, [d.id, d.ai_summary, d.applicant_name, d.agent_name]);
+
+  const aiSummary = d.ai_summary ?? enrich?.ai_summary ?? null;
+  const applicant = d.applicant_name ?? enrich?.applicant_name ?? null;
+  const agent = d.agent_name ?? enrich?.agent_name ?? null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -383,7 +403,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
             </span>
           )}
         </p>
-        {d.ai_summary && <p className="detail-summary">✦ {d.ai_summary}</p>}
+        {aiSummary && <p className="detail-summary">✦ {aiSummary}</p>}
         {conditions?.refusal_summary && (
           <p className="detail-summary refusal-summary">✦ {conditions.refusal_summary}</p>
         )}
@@ -445,9 +465,9 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           <dt>Type</dt>
           <dd>{withGlossary(d.application_type_label, glossary)}</dd>
           <dt>Applicant</dt>
-          <dd>{d.applicant_name ?? "—"}</dd>
+          <dd>{applicant ?? "—"}</dd>
           <dt>Agent / architect</dt>
-          <dd>{d.agent_name ?? "—"}</dd>
+          <dd>{agent ?? "—"}</dd>
           <dt>Decision</dt>
           <dd>{d.decision ?? "Not yet decided"}</dd>
           {d.eircode && (
