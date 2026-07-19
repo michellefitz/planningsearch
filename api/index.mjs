@@ -87,6 +87,39 @@ function resolveDocHref(href, baseUrl) {
   }
 }
 
+// PublicAccess embeds Date_Received as US-format "MM/DD/YYYY hh:mm:ss".
+function publicAccessDate(v) {
+  const m = String(v ?? "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : null;
+}
+
+function parsePublicAccessModel(html, baseUrl) {
+  const candidates = [
+    html.match(/var\s+model\s*=\s*(\{.*?\})\s*;?\s*$/m)?.[1],
+    html.match(/var\s+model\s*=\s*(\{.*\})\s*;?\s*$/m)?.[1],
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    try {
+      const model = JSON.parse(raw);
+      if (!Array.isArray(model.Rows)) continue;
+      const base = new URL(baseUrl);
+      const appRoot = base.pathname.split("/")[1];
+      return model.Rows.filter((r) => r.Guid).map((r) => {
+        const docType = String(r.Doc_Type ?? "").trim() || "Document";
+        const date = publicAccessDate(r.Date_Received);
+        return {
+          title: date ? `${docType} — ${date}` : docType,
+          url: `${base.origin}/${appRoot}/Document/ViewDocument?id=${r.Guid}`,
+        };
+      });
+    } catch {
+      // fall through to the next candidate / anchor-based passes
+    }
+  }
+  return [];
+}
+
 function parseFileListHtml(html, baseUrl) {
   const files = [];
   const seen = new Set();
@@ -95,6 +128,11 @@ function parseFileListHtml(html, baseUrl) {
     seen.add(url);
     files.push({ title: title || fallback, url });
   };
+
+  // NEC PublicAccess (Dublin City) serves the list with no anchors at all —
+  // the rows are embedded as `var model = {...}` JSON and drawn client-side.
+  const modelFiles = parsePublicAccessModel(html, baseUrl);
+  if (modelFiles.length) return modelFiles;
 
   const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
   const cellRe = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;

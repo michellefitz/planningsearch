@@ -68,6 +68,41 @@ function resolveDocHref(href: string, baseUrl: string): string | null {
   }
 }
 
+/** PublicAccess embeds Date_Received as US-format "MM/DD/YYYY hh:mm:ss". */
+function publicAccessDate(v: unknown): string | null {
+  const m = String(v ?? "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : null;
+}
+
+export function parsePublicAccessModel(html: string, baseUrl: string): ScannedFile[] {
+  // The model JSON is emitted on a single line; lazy up to the first `};` at
+  // end-of-line, with a greedy retry in case a string value contains one.
+  const candidates = [
+    html.match(/var\s+model\s*=\s*(\{.*?\})\s*;?\s*$/m)?.[1],
+    html.match(/var\s+model\s*=\s*(\{.*\})\s*;?\s*$/m)?.[1],
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    try {
+      const model = JSON.parse(raw) as { Rows?: Array<Record<string, unknown>> };
+      if (!Array.isArray(model.Rows)) continue;
+      const base = new URL(baseUrl);
+      const appRoot = base.pathname.split("/")[1];
+      return model.Rows.filter((r) => r.Guid).map((r) => {
+        const docType = String(r.Doc_Type ?? "").trim() || "Document";
+        const date = publicAccessDate(r.Date_Received);
+        return {
+          title: date ? `${docType} — ${date}` : docType,
+          url: `${base.origin}/${appRoot}/Document/ViewDocument?id=${r.Guid}`,
+        };
+      });
+    } catch {
+      // fall through to the next candidate / anchor-based passes
+    }
+  }
+  return [];
+}
+
 /**
  * Tolerant parser for a council file-listing HTML page: collects anchors that
  * look like document links and resolves them against the page URL. Built
@@ -88,6 +123,12 @@ export function parseFileListHtml(html: string, baseUrl: string): ScannedFile[] 
     seen.add(url);
     files.push({ title: title || fallback, url });
   };
+
+  // Pass 0: NEC PublicAccess (Dublin City) serves the list with no anchors at
+  // all — the rows are embedded as `var model = {...}` JSON and drawn
+  // client-side. Its Guids resolve as direct GETs on /Document/ViewDocument.
+  const modelFiles = parsePublicAccessModel(html, baseUrl);
+  if (modelFiles.length) return modelFiles;
 
   // Pass 1: table rows — extract Document Type and Comment cells (columns 0–1)
   // from the council's GridView, ignoring # Files, Size, JPEG columns.

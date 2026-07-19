@@ -146,6 +146,31 @@ describe("deriveScannedFilesUrl", () => {
 describe("parseFileListHtml", () => {
   const base = "https://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id=1";
 
+  it("reads Dublin City's PublicAccess embedded model (no anchors in the HTML)", () => {
+    const html = [
+      "<script>",
+      'var model ={"FlexibleColumns":[{"Column":"Guid"}],"Rows":[' +
+        '{"Guid":"228338593A614A7FBA4A353C83C2738B","Doc_Type":"Managers Order Published","Date_Received":"03/30/2026 13:09:44"},' +
+        '{"Guid":"F06DC4AA56484B678665D1D4361AF880","Doc_Type":"Decision Notices","Date_Received":"03/30/2026 11:50:52"}],' +
+        '"FileSystemId":"PL"};',
+      "</script>",
+    ].join("\n");
+    const files = parseFileListHtml(
+      html,
+      "https://webapps.dublincity.ie/PublicAccess_Live/SearchResult/RunThirdPartySearch?FileSystemId=PL&Folder1_Ref=0088/26"
+    );
+    expect(files).toEqual([
+      {
+        title: "Managers Order Published — 2026-03-30",
+        url: "https://webapps.dublincity.ie/PublicAccess_Live/Document/ViewDocument?id=228338593A614A7FBA4A353C83C2738B",
+      },
+      {
+        title: "Decision Notices — 2026-03-30",
+        url: "https://webapps.dublincity.ie/PublicAccess_Live/Document/ViewDocument?id=F06DC4AA56484B678665D1D4361AF880",
+      },
+    ]);
+  });
+
   it("collects document-looking anchors and resolves relative URLs", () => {
     const html = `
       <table>
