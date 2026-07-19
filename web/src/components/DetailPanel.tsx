@@ -273,6 +273,11 @@ function DecisionSection({
           )}
         </p>
       )}
+      {conditions.refusal_summary && (
+        <p className="detail-summary refusal-summary decision-summary">
+          ✦ {conditions.refusal_summary}
+        </p>
+      )}
       {groups.map((g) => (
         <div key={g.code} className="condition-group">
           <h4>
@@ -486,16 +491,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         ) : (
           enrichLoading && (
             <p className="detail-summary loading-line">✦ Writing a plain-English summary…</p>
-          )
-        )}
-        {conditions?.refusal_summary ? (
-          <p className="detail-summary refusal-summary">✦ {conditions.refusal_summary}</p>
-        ) : (
-          conditionsLoading &&
-          d.status === "refused" && (
-            <p className="detail-summary refusal-summary loading-line">
-              ✦ Summarising why it was refused…
-            </p>
           )
         )}
         <PropertyMedia detail={d} />

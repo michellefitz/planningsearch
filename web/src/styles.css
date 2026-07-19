@@ -1159,3 +1159,8 @@ body {
   font-weight: 620;
   color: #166534;
 }
+
+/* Refusal summary lives inside the decision section, above the reasons */
+.decision-summary {
+  margin: 0 0 0.85rem;
+}
