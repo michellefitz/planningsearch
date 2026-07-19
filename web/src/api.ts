@@ -72,6 +72,8 @@ export interface AppDetail extends AppSummary {
   }>;
   source_url: string | null;
   scanned_files_url: string | null;
+  /** Deep link to the An Coimisiún Pleanála case file when an appeal exists. */
+  appeal_url: string | null;
   /** Agile portals: route the portal button through /api/applications/:id/portal. */
   portal_resolver: boolean;
   files_supported: boolean;

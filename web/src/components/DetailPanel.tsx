@@ -74,6 +74,25 @@ function buildTimeline(d: AppDetail): TimelineStep[] {
   return steps;
 }
 
+/**
+ * The appeal reference, linked to the An Coimisiún Pleanála case file when we
+ * could resolve one (appeal_url), otherwise plain text.
+ */
+function appealRef(d: AppDetail) {
+  if (!d.appeal_reference) return null;
+  if (!d.appeal_url) return <>{d.appeal_reference}</>;
+  return (
+    <a
+      href={d.appeal_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="View the appeal case on An Coimisiún Pleanála"
+    >
+      {d.appeal_reference} ↗
+    </a>
+  );
+}
+
 /** Wrap glossary terms found in the text with a tooltip (PRD F3.3). */
 function withGlossary(text: string, glossary: Record<string, string>): JSX.Element {
   const terms = Object.keys(glossary).sort((a, b) => b.length - a.length);
@@ -564,7 +583,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
                 {d.appeal_decision_date && (
                   <span className="hint"> — {d.appeal_decision_date}</span>
                 )}
-                {d.appeal_reference && <span className="hint"> ({d.appeal_reference})</span>}
+                {d.appeal_reference && <span className="hint"> ({appealRef(d)})</span>}
               </dd>
             </>
           ) : (
@@ -573,7 +592,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
                 <dt>Appeal</dt>
                 <dd>
                   {d.appeal_status ?? "Lodged"}
-                  <span className="hint"> ({d.appeal_reference})</span>
+                  <span className="hint"> ({appealRef(d)})</span>
                 </dd>
               </>
             )

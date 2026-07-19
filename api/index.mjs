@@ -63,6 +63,17 @@ function scannedFilesUrl(authorityId, sourceUrl, reference) {
 }
 
 /**
+ * Deep link to the An Coimisiún Pleanála (An Bord Pleanála) case file from an
+ * appeal reference. The operative case number is the six-digit group in any of
+ * the historical formats (ABP-319506-23, ACP-301000-21, PL29N.301702, 319506).
+ */
+function abpCaseUrl(reference) {
+  if (!reference) return null;
+  const m = String(reference).match(/\d{6}/);
+  return m ? `https://www.pleanala.ie/en-ie/case/${m[0]}` : null;
+}
+
+/**
  * Tolerant anchor-scrape of a council file-listing page; [] means "fall back
  * to deep link". Listing pages like Kildare's iDocs GridView label every link
  * "View" and keep the document name in sibling cells of the same table row,
@@ -601,6 +612,7 @@ function publicApp(a) {
     authority_short_name: auth?.short_name ?? a.authority_id,
     portal_url: a.source_url ?? null,
     scanned_files_url: scannedFilesUrl(a.authority_id, a.source_url, a.planning_reference),
+    appeal_url: abpCaseUrl(a.appeal_reference),
     portal_resolver: agile,
     files_supported:
       agile || scannedFilesUrl(a.authority_id, a.source_url, a.planning_reference) !== null,

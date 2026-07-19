@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type Database from "better-sqlite3";
 import { AUTHORITY_BY_ID } from "./config/authorities.js";
+import { abpCaseUrl } from "./abp.js";
 import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
 import {
@@ -83,6 +84,9 @@ function publicApplication(row: Record<string, unknown>) {
       row.source_url as string | null,
       row.planning_reference as string | null
     ),
+    // Deep link to the An Coimisiún Pleanála case file when the register
+    // records an appeal reference (national dataset's AppealRefNumber).
+    appeal_url: abpCaseUrl(row.appeal_reference as string | null),
     // Agile portals need a click-time id lookup for a working deep link; the
     // UI routes the portal button via /api/applications/:id/portal when set.
     portal_resolver: Boolean(auth?.agileSlug),

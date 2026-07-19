@@ -200,6 +200,12 @@ export function generateSeedRecords(): ApplicationRecord[] {
         decision_raw: plan.decisionRaw,
         decision_date: decisionDate,
         appeal_status: appealed ? "Appeal lodged with An Bord Pleanála" : null,
+        appeal_reference: appealed
+          ? `ABP-${300000 + Math.floor(rand() * 30000)}-${String(year).slice(2)}`
+          : null,
+        appeal_lodged_date: appealed && decisionDate ? addDays(decisionDate, 21) : null,
+        appeal_decision: null,
+        appeal_decision_date: null,
         final_grant_date:
           decided && !appealed && plan.decisionRaw === "Grant Permission" && decisionDate
             ? addDays(decisionDate, 28)
