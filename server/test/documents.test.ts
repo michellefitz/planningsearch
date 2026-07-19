@@ -214,4 +214,15 @@ describe("agile document parsing (verified /api/application/{id}/document shape)
     expect(parseAgileDocEntries({ documents: RESPONSE })).toHaveLength(2);
     expect(parseAgileDocEntries([{ description: "no keys" }])).toHaveLength(0);
   });
+
+  it("builds the verified download URL first (/application/document/{hash})", async () => {
+    const { agileDownloadCandidates } = await import("../src/agile.js");
+    const urls = agileDownloadCandidates(
+      { title: "Site Notice", documentId: "1045467", documentHash: "HASH1" },
+      "98513"
+    );
+    expect(urls[0]).toBe(
+      "https://planningapi.agileapplications.ie/api/application/document/HASH1"
+    );
+  });
 });

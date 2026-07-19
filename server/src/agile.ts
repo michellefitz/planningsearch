@@ -272,16 +272,19 @@ export function parseAgileDocuments(json: unknown): ScannedFile[] {
   }));
 }
 
-/** Candidate download URLs for one document (hash preferred; id as fallback). */
-function agileDownloadCandidates(entry: AgileDocEntry, appId: string): string[] {
+/**
+ * Download URLs for one document. The verified pattern (captured from the
+ * portal) is /api/application/document/{documentHash}; the rest are defensive
+ * fallbacks.
+ */
+export function agileDownloadCandidates(entry: AgileDocEntry, appId: string): string[] {
   const urls: string[] = [];
   if (entry.documentHash) {
+    urls.push(`${AGILE_API}/application/document/${entry.documentHash}`);
     urls.push(`${AGILE_API}/document/${entry.documentHash}`);
-    urls.push(`${AGILE_API}/document/${entry.documentHash}/content`);
   }
   if (entry.documentId) {
-    urls.push(`${AGILE_API}/document/${entry.documentId}`);
-    urls.push(`${AGILE_API}/application/${appId}/document/${entry.documentId}`);
+    urls.push(`${AGILE_API}/application/document/${entry.documentId}`);
   }
   return urls;
 }

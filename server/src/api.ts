@@ -265,7 +265,6 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
 
     const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url, row.planning_reference);
     const auth = AUTHORITY_BY_ID.get(row.authority_id);
-    const fallbackUrl = listUrl ?? auth?.portalBaseUrl ?? "";
 
     // Fingal (Agile API) vs. HTML-listing councils use different fetchers,
     // but both stream one document by list index and degrade to the portal.
@@ -285,6 +284,13 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       });
     }
     if (doc === "too_large" || doc === null) {
+      // Land the user on the specific application, not the generic portal.
+      const fallbackUrl =
+        listUrl ??
+        (auth?.agileSlug
+          ? (await agilePortalUrl(row.authority_id, row.source_url, row.planning_reference)) ??
+            auth.portalBaseUrl
+          : auth?.portalBaseUrl ?? "");
       const reason =
         doc === "too_large"
           ? "This document is too large to display here."

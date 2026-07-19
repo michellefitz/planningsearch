@@ -564,14 +564,14 @@ function parseAgileDocuments(json) {
 }
 
 function agileDownloadCandidates(entry, appId) {
+  // Verified pattern: /api/application/document/{documentHash}.
   const urls = [];
   if (entry.documentHash) {
+    urls.push(`${AGILE_API}/application/document/${entry.documentHash}`);
     urls.push(`${AGILE_API}/document/${entry.documentHash}`);
-    urls.push(`${AGILE_API}/document/${entry.documentHash}/content`);
   }
   if (entry.documentId) {
-    urls.push(`${AGILE_API}/document/${entry.documentId}`);
-    urls.push(`${AGILE_API}/application/${appId}/document/${entry.documentId}`);
+    urls.push(`${AGILE_API}/application/document/${entry.documentId}`);
   }
   return urls;
 }
@@ -811,7 +811,6 @@ export default async function handler(req, res) {
     const trace = debug ? [] : undefined;
     const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
     const slug = AGILE_SLUGS[app.authority_id];
-    const fallbackUrl = listUrl ?? (slug ? `${AGILE_BASE}/${slug}` : "");
 
     const doc =
       !listUrl && slug
@@ -824,6 +823,12 @@ export default async function handler(req, res) {
       return send(res, 200, { listUrl, index, result: doc === null ? "null" : doc === "too_large" ? "too_large" : "ok", trace });
     }
     if (doc === "too_large" || doc === null) {
+      // Land the user on the specific application, not the generic portal.
+      const fallbackUrl =
+        listUrl ??
+        (slug
+          ? (await agilePortalUrl(app.authority_id, app.source_url, app.planning_reference)) ?? `${AGILE_BASE}/${slug}`
+          : "");
       const reason =
         doc === "too_large"
           ? "This document is too large to display here."
