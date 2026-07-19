@@ -82,13 +82,15 @@ export const AUTHORITIES: AuthorityConfig[] = [
     id: "south-dublin",
     name: "South Dublin County Council",
     shortName: "South Dublin",
-    sourceSystem: "localgov",
-    portalBaseUrl: "https://planning.localgov.ie",
+    // Migrated from planning.localgov.ie (now 404) to Agile Applications,
+    // same system as Dublin City and Fingal.
+    sourceSystem: "agile",
+    portalBaseUrl: "https://planning.agileapplications.ie/southdublin",
     gisUrl: null,
     nationalDbNames: ["South Dublin County Council", "South Dublin"],
     nationalDbLike: "South Dublin",
     portalUrlForReference: (ref) =>
-      `https://planning.localgov.ie/en/search?query=${encodeURIComponent(ref)}`,
+      `https://planning.agileapplications.ie/southdublin/searches?query=${encodeURIComponent(ref)}`,
     bbox: [-6.55, 53.22, -6.29, 53.37],
   },
   {

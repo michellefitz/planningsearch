@@ -12,6 +12,21 @@
   backfill only covers Kildare; Dublin City / Fingal / DLR / South Dublin use
   agileapplications.ie, which needs its own scraper.
 
+- **Agile documents API (file listings for agile councils).** Findings so
+  far: the SPA calls `GET {apiUrl}application/{id}/document` where apiUrl is
+  resolved at runtime per council from identity.agileapplications.ie service
+  configurations (`/api/configuration/southdublin` returns an empty value
+  anonymously); the cpAPI host `citizenportalapi.agileapplications.ie`
+  rejects direct guesses (404) with/without referer or client headers. Next
+  step would be watching the browser's network tab on an application-details
+  page to capture the real request + auth.
+
+- **Kildare submissions list on the detail sheet.** eplanning pages carry a
+  hidden "Submitter Details" popup (contact name, recorded/acknowledged
+  dates) on applications with submissions — same page the parties backfill
+  already fetches. Note statutory consultees (e.g. Uisce Éireann) appear
+  alongside genuine third-party objectors, so show names, not just a count.
+
 - **"Appealed" filter as an area-level contested signal.** Appeal fields are
   in the bulk dataset (unlike objections); a filter chip would let users see
   contested applications across the map.
