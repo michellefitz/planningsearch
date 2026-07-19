@@ -7,14 +7,23 @@
  * is the same id used by the council's iDocs scanned-file listing:
  *   https://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id={id}
  *
+ * South Dublin: the agile portal loads documents from the council's own DMS,
+ * a plain HTML page addressable by planning reference:
+ *   https://planning.southdublin.ie/Home/Documents?regref={reference}
+ * (Its ViewDocument links are not session-bound — direct PDFs.)
+ *
  * Fetching happens only on user request (no caching, no bulk mirroring) —
  * anything heavier is Phase 0/2 territory per the PRD.
  */
 
 export function deriveScannedFilesUrl(
   authorityId: string,
-  sourceUrl: string | null | undefined
+  sourceUrl: string | null | undefined,
+  reference?: string | null
 ): string | null {
+  if (authorityId === "south-dublin" && reference) {
+    return `https://planning.southdublin.ie/Home/Documents?regref=${encodeURIComponent(reference)}`;
+  }
   if (!sourceUrl) return null;
   if (authorityId === "kildare") {
     const m = sourceUrl.match(/AppFileRefDetails\/(\d+)/i);
@@ -91,7 +100,12 @@ export function parseFileListHtml(html: string, baseUrl: string): ScannedFile[] 
       ? `${docType} — ${comment}`
       : docType;
     const filename = decodeURIComponent(url.split("/").pop() ?? "Document");
-    push(url, GENERIC_LABEL_RE.test(label) ? title : label || title, filename);
+    // Some listings (South Dublin) put extra detail after the link text in
+    // the same cell — prefer the fuller cell over the bare anchor label.
+    const fullerCell = cells.find(
+      (c) => c.length > label.length && c.toLowerCase().includes(label.toLowerCase())
+    );
+    push(url, GENERIC_LABEL_RE.test(label) ? title : fullerCell ?? label ?? title, filename);
   }
 
   // Pass 2: any document anchors not inside a single-link row (non-table

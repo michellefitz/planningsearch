@@ -96,10 +96,17 @@ describe("deriveScannedFilesUrl", () => {
     ).toBe("https://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id=2560786");
   });
 
+  it("maps a South Dublin reference to the council DMS documents page", () => {
+    expect(deriveScannedFilesUrl("south-dublin", null, "SD25A/0157W")).toBe(
+      "https://planning.southdublin.ie/Home/Documents?regref=SD25A%2F0157W"
+    );
+  });
+
   it("returns null for other authorities and unknown URL shapes", () => {
     expect(deriveScannedFilesUrl("dublin-city", "https://planning.agileapplications.ie/dublincity/x/1")).toBeNull();
     expect(deriveScannedFilesUrl("kildare", "https://www.eplanning.ie/KildareCC/searchtypes?query=x")).toBeNull();
     expect(deriveScannedFilesUrl("kildare", null)).toBeNull();
+    expect(deriveScannedFilesUrl("south-dublin", null, null)).toBeNull();
   });
 });
 

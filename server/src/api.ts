@@ -70,7 +70,8 @@ function publicApplication(row: Record<string, unknown>) {
       null,
     scanned_files_url: deriveScannedFilesUrl(
       String(row.authority_id),
-      row.source_url as string | null
+      row.source_url as string | null,
+      row.planning_reference as string | null
     ),
   };
 }
@@ -144,10 +145,12 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
   app.get("/api/applications/:id/files", async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const row = db
-      .prepare("SELECT authority_id, source_url FROM applications WHERE id = ?")
-      .get(id) as { authority_id: string; source_url: string | null } | undefined;
+      .prepare("SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?")
+      .get(id) as
+      | { authority_id: string; source_url: string | null; planning_reference: string }
+      | undefined;
     if (!row) return reply.code(404).send({ error: "Application not found" });
-    const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url);
+    const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url, row.planning_reference);
     if (!listUrl) {
       return { supported: false, files: null, list_url: null };
     }
@@ -169,10 +172,12 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const index = Number(rawIndex);
     if (!Number.isInteger(index) || index < 0) return reply.code(400).send({ error: "Bad index" });
     const row = db
-      .prepare("SELECT authority_id, source_url FROM applications WHERE id = ?")
-      .get(id) as { authority_id: string; source_url: string | null } | undefined;
+      .prepare("SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?")
+      .get(id) as
+      | { authority_id: string; source_url: string | null; planning_reference: string }
+      | undefined;
     if (!row) return reply.code(404).send({ error: "Application not found" });
-    const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url);
+    const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url, row.planning_reference);
     if (!listUrl) return reply.code(404).send({ error: "No scanned files source" });
 
     const query = req.query as Record<string, unknown>;

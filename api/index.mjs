@@ -43,8 +43,13 @@ function haversineKm(aLat, aLng, bLat, bLng) {
 /**
  * Kildare/eplanning: the id in .../AppFileRefDetails/{id}/0 is the same id the
  * council's iDocs scanned-file listing uses.
+ * South Dublin: the agile portal loads documents from the council's own DMS,
+ * a plain HTML page addressable by planning reference (links are direct PDFs).
  */
-function scannedFilesUrl(authorityId, sourceUrl) {
+function scannedFilesUrl(authorityId, sourceUrl, reference) {
+  if (authorityId === "south-dublin" && reference) {
+    return `https://planning.southdublin.ie/Home/Documents?regref=${encodeURIComponent(reference)}`;
+  }
   if (authorityId !== "kildare" || !sourceUrl) return null;
   const m = sourceUrl.match(/AppFileRefDetails\/(\d+)/i);
   return m
@@ -102,7 +107,12 @@ function parseFileListHtml(html, baseUrl) {
       ? `${docType} — ${comment}`
       : docType;
     const filename = decodeURIComponent(url.split("/").pop() ?? "Document");
-    push(url, GENERIC_LABEL_RE.test(label) ? title : label || title, filename);
+    // Some listings (South Dublin) put extra detail after the link text in
+    // the same cell — prefer the fuller cell over the bare anchor label.
+    const fullerCell = cells.find(
+      (c) => c.length > label.length && c.toLowerCase().includes(label.toLowerCase())
+    );
+    push(url, GENERIC_LABEL_RE.test(label) ? title : fullerCell ?? label ?? title, filename);
   }
 
   let m;
@@ -387,7 +397,7 @@ function publicApp(a) {
     authority_name: auth?.name ?? a.authority_id,
     authority_short_name: auth?.short_name ?? a.authority_id,
     portal_url: a.source_url ?? null,
-    scanned_files_url: scannedFilesUrl(a.authority_id, a.source_url),
+    scanned_files_url: scannedFilesUrl(a.authority_id, a.source_url, a.planning_reference),
   };
 }
 
@@ -560,7 +570,9 @@ export default async function handler(req, res) {
   const dm = route.match(/^\/api\/applications\/(\d+)\/files\/(\d+)$/);
   if (dm) {
     const app = BUNDLE.applications.find((a) => a.id === Number(dm[1]));
-    const listUrl = app ? scannedFilesUrl(app.authority_id, app.source_url) : null;
+    const listUrl = app
+      ? scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference)
+      : null;
     if (!listUrl) return send(res, 404, { error: "No scanned files source" });
     const debug = p.get("debug") === "1";
     const trace = debug ? [] : undefined;
@@ -593,7 +605,7 @@ export default async function handler(req, res) {
   if (fm) {
     const app = BUNDLE.applications.find((a) => a.id === Number(fm[1]));
     if (!app) return send(res, 404, { error: "Application not found" });
-    const listUrl = scannedFilesUrl(app.authority_id, app.source_url);
+    const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
     if (!listUrl) return send(res, 200, { supported: false, files: null, list_url: null });
     const files = await fetchScannedFileList(listUrl);
     return send(res, 200, {

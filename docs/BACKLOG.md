@@ -18,7 +18,15 @@
   x-service PA, captured from a browser session. Useful endpoints:
   `/application/search?query={ref}` and `/application/{id}` (rich detail,
   incl. applicant + agent). `/application/{id}/document` exists but returns
-  [] for all three Irish councils — no file listings this way.
+  [] for all three Irish councils — documents come from each council's own
+  DMS instead, loaded in an iframe by the portal SPA.
+
+- **Documents for Dublin City + Fingal.** South Dublin's DMS is solved
+  (plain HTML at planning.southdublin.ie/Home/Documents?regref={ref},
+  direct-PDF links — wired into the scanned-files listing + proxy). Fingal's
+  portal config says DMS=SHAREPOINT and Dublin City's DMS is unknown; both
+  need their iframe DMS URL captured from a browser session on a
+  documents-bearing application, same way South Dublin's was found.
 
 - **Kildare submissions list on the detail sheet.** eplanning pages carry a
   hidden "Submitter Details" popup (contact name, recorded/acknowledged
