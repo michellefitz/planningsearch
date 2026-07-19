@@ -83,7 +83,9 @@ describe("featureToRecord", () => {
     expect(rec.further_info_requested_date).toBe("2019-11-19");
     expect(rec.eircode).toBe("K67X2Y8"); // DevelopmentPostcode
     expect(rec.is_domestic_guess).toBe(1); // OneOffHouse=Yes
-    expect(rec.source_url).toContain("eplanning.ie/CarlowCC"); // LinkAppDetails preferred verbatim
+    // Fingal is Agile-hosted: a LinkAppDetails pointing anywhere else is
+    // stale and gets replaced with the Agile portal fallback.
+    expect(rec.source_url).toContain("planning.agileapplications.ie/fingal");
     expect(rec.lat).toBeCloseTo(53.4597);
     expect(rec.lng).toBeCloseTo(-6.2181);
   });

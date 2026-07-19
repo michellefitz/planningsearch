@@ -15,6 +15,8 @@ export interface AuthorityConfig {
   shortName: string;
   sourceSystem: SourceSystem;
   portalBaseUrl: string;
+  /** Path slug on planning.agileapplications.ie for Agile-hosted councils. */
+  agileSlug?: string;
   gisUrl: string | null;
   /** Values used for this authority in the national dataset's PlanningAuthority field. */
   nationalDbNames: string[];
@@ -38,13 +40,15 @@ export const AUTHORITIES: AuthorityConfig[] = [
     shortName: "Dublin City",
     sourceSystem: "agile",
     portalBaseUrl: "https://planning.agileapplications.ie/dublincity",
+    agileSlug: "dublincity",
     gisUrl: "https://mapzone.dublincity.ie",
     nationalDbNames: ["Dublin City Council", "Dublin City"],
     nationalDbLike: "Dublin City",
     portalUrlForReference: (ref) =>
-      // Agile has no stable per-reference URL without its internal id; land on
-      // search with the reference pre-filled so it is one click away.
-      `https://planning.agileapplications.ie/dublincity/searches?query=${encodeURIComponent(ref)}`,
+      // Agile's stable per-application URL needs its internal id (resolved at
+      // click time by /api/applications/:id/portal); the floor is the search
+      // page with the reference pre-filled.
+      `https://planning.agileapplications.ie/dublincity/search-applications/?keyword=${encodeURIComponent(ref)}`,
     bbox: [-6.387, 53.298, -6.11, 53.411],
   },
   {
@@ -53,11 +57,12 @@ export const AUTHORITIES: AuthorityConfig[] = [
     shortName: "Fingal",
     sourceSystem: "agile",
     portalBaseUrl: "https://planning.agileapplications.ie/fingal",
+    agileSlug: "fingal",
     gisUrl: null,
     nationalDbNames: ["Fingal County Council", "Fingal"],
     nationalDbLike: "Fingal",
     portalUrlForReference: (ref) =>
-      `https://planning.agileapplications.ie/fingal/searches?query=${encodeURIComponent(ref)}`,
+      `https://planning.agileapplications.ie/fingal/search-applications/?keyword=${encodeURIComponent(ref)}`,
     bbox: [-6.5, 53.35, -6.05, 53.64],
   },
   {
@@ -82,15 +87,17 @@ export const AUTHORITIES: AuthorityConfig[] = [
     id: "south-dublin",
     name: "South Dublin County Council",
     shortName: "South Dublin",
-    // Migrated from planning.localgov.ie (now 404) to Agile Applications,
-    // same system as Dublin City and Fingal.
+    // SDCC migrated its live register from planning.southdublin.ie / the
+    // localgov portal to Agile Applications; the old LinkAppDetails URLs in
+    // the national dataset are dead and are replaced at ingest.
     sourceSystem: "agile",
     portalBaseUrl: "https://planning.agileapplications.ie/southdublin",
+    agileSlug: "southdublin",
     gisUrl: null,
     nationalDbNames: ["South Dublin County Council", "South Dublin"],
     nationalDbLike: "South Dublin",
     portalUrlForReference: (ref) =>
-      `https://planning.agileapplications.ie/southdublin/searches?query=${encodeURIComponent(ref)}`,
+      `https://planning.agileapplications.ie/southdublin/search-applications/?keyword=${encodeURIComponent(ref)}`,
     bbox: [-6.55, 53.22, -6.29, 53.37],
   },
   {

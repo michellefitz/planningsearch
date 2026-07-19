@@ -6,9 +6,11 @@ import { search, suggest, type SearchFilters } from "./search.js";
 import {
   countObjectionFiles,
   deriveScannedFilesUrl,
+  fetchAgileFileList,
   fetchEplanningParties,
   fetchScannedDocument,
   fetchScannedFileList,
+  resolveAgileApplicationUrl,
   type DiagnosticStep,
 } from "./documents.js";
 import { summariseDescription, summariseRefusal } from "./summarize.js";
@@ -72,6 +74,17 @@ function publicApplication(row: Record<string, unknown>) {
       String(row.authority_id),
       row.source_url as string | null,
       row.planning_reference as string | null
+    ),
+    // Agile portals need a click-time id lookup for a working deep link; the
+    // UI routes the portal button via /api/applications/:id/portal when set.
+    portal_resolver: Boolean(auth?.agileSlug),
+    files_supported: Boolean(
+      auth?.agileSlug ||
+        deriveScannedFilesUrl(
+          String(row.authority_id),
+          row.source_url as string | null,
+          row.planning_reference as string | null
+        )
     ),
   };
 }
@@ -147,22 +160,78 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
   app.get("/api/applications/:id/files", async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const row = db
-      .prepare("SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?")
+      .prepare(
+        "SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?"
+      )
       .get(id) as
       | { authority_id: string; source_url: string | null; planning_reference: string }
       | undefined;
     if (!row) return reply.code(404).send({ error: "Application not found" });
+    const debug = (req.query as { debug?: string }).debug === "1";
+    const trace: DiagnosticStep[] | undefined = debug ? [] : undefined;
+
+    // Councils with a directly-addressable HTML listing (Kildare's iDocs,
+    // South Dublin's regref DMS) use the scraped path below. The remaining
+    // Agile councils (Dublin City, Fingal) go via the citizen portal's JSON
+    // API — direct download URLs, no session proxying needed.
     const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url, row.planning_reference);
+    const auth = AUTHORITY_BY_ID.get(row.authority_id);
+    if (!listUrl && auth?.agileSlug) {
+      const result = await fetchAgileFileList(auth.agileSlug, row.planning_reference, trace);
+      if (debug) return { agile: true, result, trace };
+      if (!result) return { supported: false, files: null, list_url: null };
+      return {
+        supported: true,
+        direct: true,
+        list_url: result.applicationUrl,
+        files: result.files.length ? result.files : null,
+        objection_count: result.files.length ? countObjectionFiles(result.files) : null,
+      };
+    }
     if (!listUrl) {
       return { supported: false, files: null, list_url: null };
     }
     const files = await fetchScannedFileList(listUrl);
+    if (debug) return { agile: false, list_url: listUrl, files, trace };
     return {
       supported: true,
       list_url: listUrl,
       files,
       objection_count: files ? countObjectionFiles(files) : null,
     };
+  });
+
+  // Resolve the official portal deep link at click time. Agile councils need
+  // their internal application id (not derivable from the reference), so we
+  // look it up live and redirect; everything else 302s straight to source_url.
+  app.get("/api/applications/:id/portal", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare(
+        "SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?"
+      )
+      .get(id) as
+      | { authority_id: string; source_url: string | null; planning_reference: string }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    const auth = AUTHORITY_BY_ID.get(row.authority_id);
+    const fallback =
+      row.source_url ?? auth?.portalUrlForReference(row.planning_reference) ?? null;
+    const debug = (req.query as { debug?: string }).debug === "1";
+    const trace: DiagnosticStep[] | undefined = debug ? [] : undefined;
+    if (auth?.agileSlug) {
+      const resolved = await resolveAgileApplicationUrl(
+        auth.agileSlug,
+        row.planning_reference,
+        trace
+      );
+      if (debug) return { resolved, fallback, trace };
+      if (resolved) return reply.redirect(resolved, 302);
+    } else if (debug) {
+      return { resolved: null, fallback, trace: [] };
+    }
+    if (!fallback) return reply.code(404).send({ error: "No portal link" });
+    return reply.redirect(fallback, 302);
   });
 
   // Proxy a single document view. The council's file URLs are session-bound,

@@ -247,6 +247,7 @@ export interface FetchedDocument {
 
 export interface DiagnosticStep {
   step: string;
+  url?: string;
   status?: number;
   contentType?: string;
   cookies?: string;
@@ -254,6 +255,7 @@ export interface DiagnosticStep {
   fileCount?: number;
   targetUrl?: string;
   extractedInner?: string | null;
+  resolvedId?: number | null;
   error?: string;
 }
 
@@ -354,4 +356,191 @@ export async function fetchScannedDocument(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Agile Applications (Dublin City, Fingal, South Dublin)             */
+/* ------------------------------------------------------------------ */
+
+const AGILE_BASE = "https://planning.agileapplications.ie";
+
+/**
+ * Candidate JSON endpoints for resolving a planning reference to Agile's
+ * internal application id. The citizen portal is a SPA whose API is not
+ * publicly documented; these are tried in order and every attempt is
+ * traceable via ?debug=1 so the first live run identifies the real one.
+ */
+export function agileSearchCandidates(slug: string, reference: string): string[] {
+  const q = encodeURIComponent(reference);
+  return [
+    `${AGILE_BASE}/${slug}/api/application/search?keyword=${q}`,
+    `${AGILE_BASE}/api/${slug}/application/search?keyword=${q}`,
+    `${AGILE_BASE}/${slug}/api/applications?keyword=${q}`,
+    `${AGILE_BASE}/${slug}/api/search/applications?keyword=${q}`,
+    `${AGILE_BASE}/api/application/search?council=${slug}&keyword=${q}`,
+  ];
+}
+
+export function agileDocumentCandidates(slug: string, applicationId: number): string[] {
+  return [
+    `${AGILE_BASE}/${slug}/api/application/${applicationId}/documents`,
+    `${AGILE_BASE}/api/${slug}/application/${applicationId}/documents`,
+    `${AGILE_BASE}/${slug}/api/applications/${applicationId}/documents`,
+  ];
+}
+
+const normalizeRef = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * Walk arbitrary JSON from an Agile search response and find the internal id
+ * of the object whose reference-like field matches our planning reference.
+ */
+export function extractAgileApplicationId(json: unknown, reference: string): number | null {
+  const want = normalizeRef(reference);
+  if (!want) return null;
+  let fallback: number | null = null;
+  const visit = (node: unknown): number | null => {
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const hit = visit(item);
+        if (hit !== null) return hit;
+      }
+      return null;
+    }
+    if (node && typeof node === "object") {
+      const obj = node as Record<string, unknown>;
+      const id =
+        typeof obj.id === "number" ? obj.id
+        : typeof obj.applicationId === "number" ? obj.applicationId
+        : null;
+      if (id !== null) {
+        const matches = Object.values(obj).some(
+          (v) => typeof v === "string" && normalizeRef(v) === want
+        );
+        if (matches) return id;
+        if (fallback === null) fallback = id;
+      }
+      for (const v of Object.values(obj)) {
+        const hit = visit(v);
+        if (hit !== null) return hit;
+      }
+    }
+    return null;
+  };
+  const exact = visit(json);
+  if (exact !== null) return exact;
+  // Single-result responses often omit/abbreviate the reference field; if the
+  // response contained exactly one candidate id, trust it.
+  return fallback;
+}
+
+const AGILE_JSON_HEADERS = {
+  "User-Agent": "PlanView/0.1 (planning register viewer; respectful on-demand fetch)",
+  Accept: "application/json",
+};
+
+async function tryAgileJson(
+  url: string,
+  trace?: DiagnosticStep[]
+): Promise<unknown | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: AGILE_JSON_HEADERS });
+    const ct = res.headers.get("content-type") ?? "";
+    const step: DiagnosticStep = { step: "agile_api", url, status: res.status, contentType: ct };
+    if (!res.ok || !/json/i.test(ct)) {
+      if (/text\/html/i.test(ct)) step.bodySnippet = (await res.text()).slice(0, 300);
+      trace?.push(step);
+      return null;
+    }
+    const body = await res.json();
+    step.bodySnippet = JSON.stringify(body).slice(0, 400);
+    trace?.push(step);
+    return body;
+  } catch (err) {
+    trace?.push({ step: "agile_api", url, error: String(err) });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Resolve the Agile citizen-portal application-details URL for a reference.
+ * Returns null when no candidate endpoint yields an id (caller falls back to
+ * the portal search page).
+ */
+export async function resolveAgileApplicationUrl(
+  slug: string,
+  reference: string,
+  trace?: DiagnosticStep[]
+): Promise<string | null> {
+  for (const url of agileSearchCandidates(slug, reference)) {
+    const json = await tryAgileJson(url, trace);
+    if (json === null) continue;
+    const id = extractAgileApplicationId(json, reference);
+    trace?.push({ step: "agile_resolve", url, resolvedId: id });
+    if (id !== null) return `${AGILE_BASE}/${slug}/application-details/${id}`;
+  }
+  return null;
+}
+
+/** Normalise an Agile documents-endpoint response into ScannedFile entries. */
+export function parseAgileDocuments(json: unknown, slug: string): ScannedFile[] {
+  const out: ScannedFile[] = [];
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== "object") return;
+    const obj = node as Record<string, unknown>;
+    const urlish = [obj.url, obj.downloadUrl, obj.link, obj.href, obj.documentUrl].find(
+      (v): v is string => typeof v === "string" && /^(https?:)?\//.test(v)
+    );
+    const name = [obj.name, obj.title, obj.description, obj.fileName, obj.documentType].find(
+      (v): v is string => typeof v === "string" && v.trim().length > 0
+    );
+    const docId = typeof obj.id === "number" ? obj.id : null;
+    if (urlish) {
+      out.push({
+        title: name ?? "Document",
+        url: new URL(urlish, `${AGILE_BASE}/${slug}/`).toString(),
+      });
+    } else if (name && docId !== null) {
+      // No direct URL in the payload: the portal's document download route.
+      out.push({
+        title: name,
+        url: `${AGILE_BASE}/${slug}/api/document/${docId}/download`,
+      });
+    }
+    Object.values(obj).forEach(visit);
+  };
+  visit(json);
+  const seen = new Set<string>();
+  return out.filter((f) => (seen.has(f.url) ? false : (seen.add(f.url), true)));
+}
+
+/** List an Agile application's documents; null when nothing resolvable. */
+export async function fetchAgileFileList(
+  slug: string,
+  reference: string,
+  trace?: DiagnosticStep[]
+): Promise<{ files: ScannedFile[]; applicationUrl: string } | null> {
+  for (const searchUrl of agileSearchCandidates(slug, reference)) {
+    const json = await tryAgileJson(searchUrl, trace);
+    if (json === null) continue;
+    const id = extractAgileApplicationId(json, reference);
+    if (id === null) continue;
+    for (const docsUrl of agileDocumentCandidates(slug, id)) {
+      const docsJson = await tryAgileJson(docsUrl, trace);
+      if (docsJson === null) continue;
+      const files = parseAgileDocuments(docsJson, slug);
+      trace?.push({ step: "agile_documents", url: docsUrl, fileCount: files.length });
+      if (files.length > 0) {
+        return { files, applicationUrl: `${AGILE_BASE}/${slug}/application-details/${id}` };
+      }
+    }
+    // Id resolved but no docs endpoint worked — still useful for the portal link.
+    return { files: [], applicationUrl: `${AGILE_BASE}/${slug}/application-details/${id}` };
+  }
+  return null;
 }

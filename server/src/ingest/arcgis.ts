@@ -123,11 +123,15 @@ export function featureToRecord(
   }
 
   const auth = AUTHORITY_BY_ID.get(authorityId)!;
-  // The source data truncates some URLs (Fingal's agile links cut off at
-  // ~50 chars) — a truncated deep link 404s, so prefer the search fallback.
+  // Two classes of unusable LinkAppDetails for Agile-hosted councils:
+  // truncated agile URLs (Fingal's cut off at ~50 chars → 404), and links to
+  // retired portals (South Dublin pre-migration). Both fall back to the
+  // portal search URL; a click-time resolver upgrades it to a deep link.
   let link = str(attrs, FIELD_MAP.link);
-  if (link && /agileapplications\.ie/i.test(link) && !/application-details\/\d+/i.test(link)) {
-    link = null;
+  if (auth.sourceSystem === "agile" && link) {
+    const usableAgile =
+      /agileapplications\.ie/i.test(link) && /application-details\/\d+/i.test(link);
+    if (!usableAgile) link = null;
   }
   const sourceUrl = link ?? auth.portalUrlForReference(reference);
 

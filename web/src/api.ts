@@ -68,6 +68,9 @@ export interface AppDetail extends AppSummary {
   }>;
   source_url: string | null;
   scanned_files_url: string | null;
+  /** Agile portals: route the portal button through /api/applications/:id/portal. */
+  portal_resolver: boolean;
+  files_supported: boolean;
   last_synced: string | null;
   documents: Array<{
     id: number;
@@ -172,6 +175,7 @@ export const api = {
   files: (id: number) =>
     getJson<{
       supported: boolean;
+      direct?: boolean;
       list_url: string | null;
       files: Array<{ title: string; url: string }> | null;
       objection_count: number | null;

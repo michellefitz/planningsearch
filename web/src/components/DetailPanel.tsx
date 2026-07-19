@@ -271,20 +271,30 @@ function DecisionSection({ conditions }: { conditions: DecisionConditions | null
 type FilesState =
   | { phase: "idle" }
   | { phase: "loading" }
-  | { phase: "loaded"; files: Array<{ title: string; url: string }>; objections: number }
+  | {
+      phase: "loaded";
+      files: Array<{ title: string; url: string }>;
+      objections: number;
+      direct: boolean;
+    }
   | { phase: "failed" };
 
 function ScannedFiles({ detail: d }: { detail: AppDetail }) {
   const [state, setState] = useState<FilesState>({ phase: "idle" });
   useEffect(() => setState({ phase: "idle" }), [d.id]);
-  if (!d.scanned_files_url) return null;
+  if (!d.scanned_files_url && !d.files_supported) return null;
 
   const load = async () => {
     setState({ phase: "loading" });
     try {
       const res = await api.files(d.id);
       if (res.files?.length)
-        setState({ phase: "loaded", files: res.files, objections: res.objection_count ?? 0 });
+        setState({
+          phase: "loaded",
+          files: res.files,
+          objections: res.objection_count ?? 0,
+          direct: Boolean(res.direct),
+        });
       else setState({ phase: "failed" });
     } catch {
       setState({ phase: "failed" });
@@ -293,9 +303,13 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
 
   return (
     <div className="scanned-files">
-      <a className="btn portal" href={d.scanned_files_url} target="_blank" rel="noopener noreferrer">
-        View scanned files on council viewer ↗
-      </a>{" "}
+      {d.scanned_files_url && (
+        <>
+          <a className="btn portal" href={d.scanned_files_url} target="_blank" rel="noopener noreferrer">
+            View scanned files on council viewer ↗
+          </a>{" "}
+        </>
+      )}
       {state.phase === "idle" && (
         <button type="button" className="btn" onClick={load}>
           List files here
@@ -304,7 +318,7 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
       {state.phase === "loading" && <span className="hint">Fetching file list from the council…</span>}
       {state.phase === "failed" && (
         <p className="list-note">
-          Couldn't read the council's file list just now — use the scanned-files link above.
+          Couldn't read the council's file list just now — use the official portal link above.
         </p>
       )}
       {state.phase === "loaded" && state.objections > 0 && (
@@ -317,11 +331,11 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
         <ul className="doc-list">
           {state.files.map((f, i) => (
             <li key={f.url}>
-              {/* Proxied through our API: the council's raw file URLs are
-                  session-bound and serve the wrong document outside the
-                  session that produced them. */}
+              {/* direct=true (Agile): stable download URLs, link straight out.
+                  Otherwise (Kildare iDocs): session-bound URLs, proxied
+                  through our API so each click is self-contained. */}
               <a
-                href={`/api/applications/${d.id}/files/${i}`}
+                href={state.direct ? f.url : `/api/applications/${d.id}/files/${i}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -439,7 +453,14 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         <div className="action-row">
           {(!GMAPS_KEY || d.lat == null) && <MapLinks detail={d} />}
           {d.portal_url && (
-            <a className="btn btn-primary" href={d.portal_url} target="_blank" rel="noopener noreferrer">
+            <a
+              className="btn btn-primary"
+              // Agile portals need a click-time internal-id lookup for a
+              // working deep link; the resolver 302s to the right page.
+              href={d.portal_resolver ? `/api/applications/${d.id}/portal` : d.portal_url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Official {d.authority_short_name} portal ↗
             </a>
           )}

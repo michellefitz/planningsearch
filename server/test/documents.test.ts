@@ -161,3 +161,51 @@ describe("parseFileListHtml", () => {
     expect(parseFileListHtml(html, base)).toHaveLength(1);
   });
 });
+
+describe("agile helpers", () => {
+  it("builds candidate search and document URLs for a slug", async () => {
+    const { agileSearchCandidates, agileDocumentCandidates } = await import("../src/documents.js");
+    const search = agileSearchCandidates("southdublin", "SD24A/0258");
+    expect(search[0]).toBe(
+      "https://planning.agileapplications.ie/southdublin/api/application/search?keyword=SD24A%2F0258"
+    );
+    expect(search.length).toBeGreaterThanOrEqual(3);
+    const docs = agileDocumentCandidates("southdublin", 61255);
+    expect(docs[0]).toContain("/southdublin/api/application/61255/documents");
+  });
+
+  it("extracts the internal id whose reference field matches", async () => {
+    const { extractAgileApplicationId } = await import("../src/documents.js");
+    const json = {
+      results: [
+        { id: 61250, reference: "SD24A/0111", address: "x" },
+        { id: 61255, reference: "SD24A/0258", address: "y" },
+      ],
+    };
+    expect(extractAgileApplicationId(json, "SD24A/0258")).toBe(61255);
+    // Tolerant of formatting differences in the reference.
+    expect(extractAgileApplicationId(json, "sd24a-0258")).toBe(61255);
+  });
+
+  it("falls back to the only id when references are absent", async () => {
+    const { extractAgileApplicationId } = await import("../src/documents.js");
+    expect(extractAgileApplicationId({ data: [{ id: 777, address: "1 Main St" }] }, "SD24A/0258")).toBe(777);
+    expect(extractAgileApplicationId({ data: [] }, "SD24A/0258")).toBeNull();
+  });
+
+  it("normalises document payloads into titled links", async () => {
+    const { parseAgileDocuments } = await import("../src/documents.js");
+    const withUrls = parseAgileDocuments(
+      { documents: [{ name: "Site Plan", url: "/southdublin/api/document/9/download" }] },
+      "southdublin"
+    );
+    expect(withUrls).toEqual([
+      {
+        title: "Site Plan",
+        url: "https://planning.agileapplications.ie/southdublin/api/document/9/download",
+      },
+    ]);
+    const idOnly = parseAgileDocuments({ documents: [{ id: 12, name: "Decision Order" }] }, "fingal");
+    expect(idOnly[0].url).toContain("/fingal/api/document/12/download");
+  });
+});
