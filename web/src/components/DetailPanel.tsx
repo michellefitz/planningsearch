@@ -352,7 +352,7 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
       )}
       {state.phase === "idle" && (
         <button type="button" className="btn" onClick={load}>
-          List files here
+          Click to load scanned files
         </button>
       )}
       {state.phase === "loading" && <span className="hint">Fetching file list from the council…</span>}
