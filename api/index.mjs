@@ -708,7 +708,8 @@ const APPEAL_SUMMARY_PROMPT =
   "height and scale, drainage…), never policy or plan citations. " +
   "FORMAT: plain prose only — no Markdown, asterisks, bold, headings, bullet points, section labels " +
   "or a title. Do not restate the address as a heading; begin directly with the summary. " +
-  "Use only what the material states — never invent details.";
+  "Use only what the material states — never invent details. " +
+  NO_LEAK_RULE;
 
 function sanitiseSummary(text) {
   return text
@@ -716,6 +717,23 @@ function sanitiseSummary(text) {
     .replace(/^\s*#{1,6}\s+/gm, "")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+// The model must summarise or say nothing — never address the reader. Appended
+// to every summary prompt; the sentinel it yields is turned into null below.
+const NO_LEAK_RULE =
+  "Output only the summary itself — never address the reader, never ask a question, never mention " +
+  "that information is missing or incomplete, never refer to yourself. If the material does not " +
+  "contain enough to write the summary, reply with exactly this single word and nothing else: INSUFFICIENT";
+
+const LEAK_RE =
+  /\b(?:I (?:don'?t|do not|cannot|can'?t|couldn'?t|am unable|'?m unable|'?m sorry)|as an AI|could you (?:provide|clarify|share)|please provide|not enough (?:info|information|detail)|appears? (?:incomplete|to be incomplete)|the (?:description|text) (?:appears|seems|is) |would you like|unable to (?:summari|determine|tell))/i;
+
+function isUsableSummary(text) {
+  if (!text) return null;
+  const t = text.trim();
+  if (!t || /^insufficient[.!]?$/i.test(t) || LEAK_RE.test(t)) return null;
+  return t;
 }
 
 async function summariseAppeal(context, pdfBase64) {
@@ -730,7 +748,8 @@ async function summariseAppeal(context, pdfBase64) {
   } else {
     text = await callClaude(APPEAL_SUMMARY_PROMPT, context, 320);
   }
-  return text ? sanitiseSummary(text) : null;
+  const usable = isUsableSummary(text);
+  return usable ? sanitiseSummary(usable) : null;
 }
 
 const DECISION_DOC_RE = /board\s*(order|direction)|inspector|decision|determination/i;
@@ -782,11 +801,12 @@ async function summariseDescription(description, applicationType) {
     "Say what the project actually is: an extension, a new house, a commercial unit, solar panels, etc. " +
     "Include key details like number of bedrooms or storeys only when stated. " +
     'Never start with "This application is for". Just state what it is. ' +
-    "Keep it under 30 words.";
+    "Keep it under 30 words. " +
+    NO_LEAK_RULE;
   const userMsg = applicationType
     ? `Application type: ${applicationType}\nDescription: ${description}`
     : description;
-  const text = await callHaiku(systemPrompt, userMsg);
+  const text = isUsableSummary(await callHaiku(systemPrompt, userMsg));
   if (text) AI_SUMMARY_CACHE.set(description, text);
   return text;
 }
@@ -802,9 +822,10 @@ async function summariseRefusal(appId, reasons) {
     "The reader is a regular person, not a planner. Name the actual problems " +
     "(too close to a sewer, would overlook neighbours, no drainage details, out of character " +
     "with the area…), never the policy or plan citations. " +
-    "If there are several reasons, mention the main ones. Keep it under 35 words.";
+    "If there are several reasons, mention the main ones. Keep it under 35 words. " +
+    NO_LEAK_RULE;
   const userMsg = reasons.map((r, i) => `Reason ${i + 1}: ${r.title}\n${r.text}`).join("\n\n");
-  const text = await callHaiku(systemPrompt, userMsg);
+  const text = isUsableSummary(await callHaiku(systemPrompt, userMsg));
   if (text) REFUSAL_SUMMARY_CACHE.set(appId, text);
   return text;
 }

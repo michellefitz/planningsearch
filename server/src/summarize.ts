@@ -2,13 +2,23 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = "claude-haiku-4-5-20251001";
 const TIMEOUT_MS = 10_000;
 
+// Shared to every prompt: the model must produce a summary or nothing at all —
+// never a message addressed to the reader. The truncated/partial descriptions
+// the national dataset sometimes carries otherwise draw a conversational "I
+// don't have enough information…" reply, which must never reach the UI.
+const NO_LEAK_RULE =
+  `Output only the summary itself — never address the reader, never ask a question, never mention ` +
+  `that information is missing or incomplete, never refer to yourself. If the material does not ` +
+  `contain enough to write the summary, reply with exactly this single word and nothing else: INSUFFICIENT`;
+
 const DESCRIPTION_PROMPT =
   `You summarise Irish planning applications in one short sentence of plain English. ` +
   `The reader is a regular person, not a planner or architect. ` +
   `Say what the project actually is: an extension, a new house, a commercial unit, solar panels, etc. ` +
   `Include key details like number of bedrooms or storeys only when stated. ` +
   `Never start with "This application is for". Just state what it is. ` +
-  `Keep it under 30 words.`;
+  `Keep it under 30 words. ` +
+  NO_LEAK_RULE;
 
 const REFUSAL_PROMPT =
   `You explain why an Irish council refused a planning application, in one short sentence ` +
@@ -16,7 +26,22 @@ const REFUSAL_PROMPT =
   `The reader is a regular person, not a planner. Name the actual problems ` +
   `(too close to a sewer, would overlook neighbours, no drainage details, out of character ` +
   `with the area…), never the policy or plan citations. ` +
-  `If there are several reasons, mention the main ones. Keep it under 35 words.`;
+  `If there are several reasons, mention the main ones. Keep it under 35 words. ` +
+  NO_LEAK_RULE;
+
+// Assistant-voice tells that mean the model refused or asked for more rather
+// than summarising. Any of these means "no usable summary" → return null.
+const LEAK_RE =
+  /\b(?:I (?:don'?t|do not|cannot|can'?t|couldn'?t|am unable|'?m unable|'?m sorry)|as an AI|could you (?:provide|clarify|share)|please provide|not enough (?:info|information|detail)|appears? (?:incomplete|to be incomplete)|the (?:description|text) (?:appears|seems|is) |would you like|unable to (?:summari|determine|tell))/i;
+
+/** Gate a model reply: null unless it is a real summary (not the INSUFFICIENT
+ *  sentinel and not a conversational refusal/prompt leak). */
+export function isUsableSummary(text: string | null): string | null {
+  if (!text) return null;
+  const t = text.trim();
+  if (!t || /^insufficient[.!]?$/i.test(t) || LEAK_RE.test(t)) return null;
+  return t;
+}
 
 type ContentBlock =
   | { type: "text"; text: string }
@@ -70,7 +95,7 @@ export async function summariseDescription(
   const userMsg = applicationType
     ? `Application type: ${applicationType}\nDescription: ${description}`
     : description;
-  return callHaiku(DESCRIPTION_PROMPT, userMsg);
+  return isUsableSummary(await callHaiku(DESCRIPTION_PROMPT, userMsg));
 }
 
 export async function summariseRefusal(
@@ -80,7 +105,7 @@ export async function summariseRefusal(
   const userMsg = reasons
     .map((r, i) => `Reason ${i + 1}: ${r.title}\n${r.text}`)
     .join("\n\n");
-  return callHaiku(REFUSAL_PROMPT, userMsg);
+  return isUsableSummary(await callHaiku(REFUSAL_PROMPT, userMsg));
 }
 
 const APPEAL_PROMPT =
@@ -93,7 +118,8 @@ const APPEAL_PROMPT =
   `height and scale, drainage…), never policy or plan citations. ` +
   `FORMAT: plain prose only — no Markdown, asterisks, bold, headings, bullet points, section labels ` +
   `or a title. Do not restate the address as a heading; begin directly with the summary. ` +
-  `Use only what the material states — never invent details.`;
+  `Use only what the material states — never invent details. ` +
+  NO_LEAK_RULE;
 
 /** Belt-and-braces cleanup for the odd time the model still emits Markdown. */
 function sanitiseSummary(text: string): string {
@@ -126,5 +152,6 @@ export async function summariseAppeal(
   } else {
     text = await callClaude(APPEAL_PROMPT, context, 320);
   }
-  return text ? sanitiseSummary(text) : null;
+  const usable = isUsableSummary(text);
+  return usable ? sanitiseSummary(usable) : null;
 }

@@ -679,9 +679,17 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         </p>
         {aiSummary ? (
           <p className="detail-summary">✦ {aiSummary}</p>
+        ) : enrichLoading ? (
+          <p className="detail-summary loading-line">✦ Writing a plain-English summary…</p>
         ) : (
-          enrichLoading && (
-            <p className="detail-summary loading-line">✦ Writing a plain-English summary…</p>
+          // Enrichment ran (enrich resolved) but produced no usable summary —
+          // usually a description too thin/truncated to summarise. Say so
+          // plainly rather than showing a stale or leaked model reply.
+          enrich !== null &&
+          d.description && (
+            <p className="detail-summary detail-summary-empty">
+              Not enough information to generate a summary.
+            </p>
           )
         )}
         <PropertyMedia detail={d} />

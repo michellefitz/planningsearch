@@ -601,6 +601,16 @@ body {
   border-radius: 10px;
 }
 
+/* Graceful "couldn't summarise" state — muted, not the blue AI card. */
+.detail-summary-empty {
+  color: var(--ink-3);
+  font-size: 0.85rem;
+  font-style: italic;
+  background: none;
+  border: 0;
+  padding: 0.35rem 0 0;
+}
+
 .media-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
