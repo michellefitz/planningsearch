@@ -127,6 +127,7 @@ export function extractFrameSrc(html: string): string | null {
     /<meta\b[^>]*http-equiv\s*=\s*["']refresh["'][^>]*content\s*=\s*["'][^"']*url=([^"']+)["']/i
   );
   if (refresh) return refresh[1].trim();
+  // JS-driven shells: window.location / location.href / location.replace(...)
   const jsLoc = html.match(
     /(?:window\.|document\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i
   );
