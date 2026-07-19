@@ -6,15 +6,19 @@ import { search, suggest, type SearchFilters } from "./search.js";
 import {
   countObjectionFiles,
   deriveScannedFilesUrl,
-  fetchAgileFileList,
   fetchEplanningParties,
   fetchScannedDocument,
   fetchScannedFileList,
-  resolveAgileApplicationUrl,
   type DiagnosticStep,
 } from "./documents.js";
 import { summariseDescription, summariseRefusal } from "./summarize.js";
-import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileConditions, fetchAgileParties } from "./agile.js";
+import {
+  AGILE_CLIENT_BY_AUTHORITY,
+  agilePortalUrl,
+  fetchAgileConditions,
+  fetchAgileDocumentList,
+  fetchAgileParties,
+} from "./agile.js";
 
 function csv(v: unknown): string[] | undefined {
   if (typeof v !== "string" || !v.trim()) return undefined;
@@ -177,7 +181,12 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url, row.planning_reference);
     const auth = AUTHORITY_BY_ID.get(row.authority_id);
     if (!listUrl && auth?.agileSlug) {
-      const result = await fetchAgileFileList(auth.agileSlug, row.planning_reference, trace);
+      const result = await fetchAgileDocumentList(
+        row.authority_id,
+        row.source_url,
+        row.planning_reference,
+        trace
+      );
       if (debug) return { agile: true, result, trace };
       if (!result) return { supported: false, files: null, list_url: null };
       return {
@@ -220,8 +229,9 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const debug = (req.query as { debug?: string }).debug === "1";
     const trace: DiagnosticStep[] | undefined = debug ? [] : undefined;
     if (auth?.agileSlug) {
-      const resolved = await resolveAgileApplicationUrl(
-        auth.agileSlug,
+      const resolved = await agilePortalUrl(
+        row.authority_id,
+        row.source_url,
         row.planning_reference,
         trace
       );

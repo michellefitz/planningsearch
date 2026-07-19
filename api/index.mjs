@@ -481,76 +481,27 @@ function publicApp(a) {
   };
 }
 
-const normalizeRef = (s) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-function agileSearchCandidates(slug, reference) {
-  const q = encodeURIComponent(reference);
-  return [
-    `${AGILE_BASE}/${slug}/api/application/search?keyword=${q}`,
-    `${AGILE_BASE}/api/${slug}/application/search?keyword=${q}`,
-    `${AGILE_BASE}/${slug}/api/applications?keyword=${q}`,
-    `${AGILE_BASE}/${slug}/api/search/applications?keyword=${q}`,
-    `${AGILE_BASE}/api/application/search?council=${slug}&keyword=${q}`,
-  ];
-}
-
-function agileDocumentCandidates(slug, applicationId) {
-  return [
-    `${AGILE_BASE}/${slug}/api/application/${applicationId}/documents`,
-    `${AGILE_BASE}/api/${slug}/application/${applicationId}/documents`,
-    `${AGILE_BASE}/${slug}/api/applications/${applicationId}/documents`,
-  ];
-}
-
-function extractAgileApplicationId(json, reference) {
-  const want = normalizeRef(reference);
-  if (!want) return null;
-  let fallback = null;
-  const visit = (node) => {
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const hit = visit(item);
-        if (hit !== null) return hit;
-      }
-      return null;
-    }
-    if (node && typeof node === "object") {
-      const id =
-        typeof node.id === "number" ? node.id
-        : typeof node.applicationId === "number" ? node.applicationId
-        : null;
-      if (id !== null) {
-        const matches = Object.values(node).some(
-          (v) => typeof v === "string" && normalizeRef(v) === want
-        );
-        if (matches) return id;
-        if (fallback === null) fallback = id;
-      }
-      for (const v of Object.values(node)) {
-        const hit = visit(v);
-        if (hit !== null) return hit;
-      }
-    }
-    return null;
-  };
-  const exact = visit(json);
-  return exact !== null ? exact : fallback;
-}
-
-const AGILE_JSON_HEADERS = {
-  "User-Agent": "PlanView/0.1 (planning register viewer; respectful on-demand fetch)",
-  Accept: "application/json",
-};
-
-async function tryAgileJson(url, trace) {
+async function agileGetTraced(url, client, service, trace) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
+  const timer = setTimeout(() => controller.abort(), 12000);
   try {
-    const res = await fetch(url, { signal: controller.signal, headers: AGILE_JSON_HEADERS });
-    const ct = res.headers.get("content-type") ?? "";
-    const step = { step: "agile_api", url, status: res.status, contentType: ct };
-    if (!res.ok || !/json/i.test(ct)) {
-      if (/text\/html/i.test(ct)) step.bodySnippet = (await res.text()).slice(0, 300);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": UA_HEADERS["User-Agent"],
+        Accept: "application/json",
+        "x-client": client,
+        "x-product": "CITIZENPORTAL",
+        "x-service": service,
+      },
+    });
+    const step = {
+      step: "agile_api",
+      url: `${url} [x-service=${service}]`,
+      status: res.status,
+      contentType: res.headers.get("content-type") ?? undefined,
+    };
+    if (!res.ok) {
       trace?.push(step);
       return null;
     }
@@ -566,18 +517,17 @@ async function tryAgileJson(url, trace) {
   }
 }
 
-async function resolveAgileApplicationUrl(slug, reference, trace) {
-  for (const url of agileSearchCandidates(slug, reference)) {
-    const json = await tryAgileJson(url, trace);
-    if (json === null) continue;
-    const id = extractAgileApplicationId(json, reference);
-    trace?.push({ step: "agile_resolve", url, resolvedId: id });
-    if (id !== null) return `${AGILE_BASE}/${slug}/application-details/${id}`;
-  }
-  return null;
+/** Deep link to the citizen portal's application page, via the verified API. */
+async function agilePortalUrl(authorityId, sourceUrl, reference, trace) {
+  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
+  const slug = AGILE_SLUGS[authorityId];
+  if (!client || !slug) return null;
+  const id = await resolveAgileId(client, sourceUrl, reference);
+  trace?.push({ step: "agile_resolve", resolvedId: id === null ? null : Number(id) });
+  return id ? `${AGILE_BASE}/${slug}/application-details/${id}` : null;
 }
 
-function parseAgileDocuments(json, slug) {
+function parseAgileDocuments(json) {
   const out = [];
   const visit = (node) => {
     if (Array.isArray(node)) return node.forEach(visit);
@@ -588,11 +538,12 @@ function parseAgileDocuments(json, slug) {
     const name = [node.name, node.title, node.description, node.fileName, node.documentType].find(
       (v) => typeof v === "string" && v.trim().length > 0
     );
-    const docId = typeof node.id === "number" ? node.id : null;
+    const docId =
+      typeof node.id === "number" ? node.id : typeof node.documentId === "number" ? node.documentId : null;
     if (urlish) {
-      out.push({ title: name ?? "Document", url: new URL(urlish, `${AGILE_BASE}/${slug}/`).toString() });
+      out.push({ title: name ?? "Document", url: new URL(urlish, AGILE_API).toString() });
     } else if (name && docId !== null) {
-      out.push({ title: name, url: `${AGILE_BASE}/${slug}/api/document/${docId}/download` });
+      out.push({ title: name, url: `${AGILE_API}/document/${docId}/download` });
     }
     Object.values(node).forEach(visit);
   };
@@ -601,24 +552,34 @@ function parseAgileDocuments(json, slug) {
   return out.filter((f) => (seen.has(f.url) ? false : (seen.add(f.url), true)));
 }
 
-async function fetchAgileFileList(slug, reference, trace) {
-  for (const searchUrl of agileSearchCandidates(slug, reference)) {
-    const json = await tryAgileJson(searchUrl, trace);
+/**
+ * List an application's documents via the verified tenant API, probing the
+ * plausible endpoint/service combinations (traceable via ?debug=1). Always
+ * returns the portal deep link when the id resolves, even with no files.
+ */
+async function fetchAgileDocumentList(authorityId, sourceUrl, reference, trace) {
+  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
+  const slug = AGILE_SLUGS[authorityId];
+  if (!client || !slug) return null;
+  const id = await resolveAgileId(client, sourceUrl, reference);
+  trace?.push({ step: "agile_resolve", resolvedId: id === null ? null : Number(id) });
+  if (!id) return null;
+  const applicationUrl = `${AGILE_BASE}/${slug}/application-details/${id}`;
+  const attempts = [
+    [`${AGILE_API}/application/${id}/documents`, "PA"],
+    [`${AGILE_API}/application/${id}/document`, "PA"],
+    [`${AGILE_API}/application/${id}/documents`, "DMS"],
+    [`${AGILE_API}/document?applicationId=${id}`, "DMS"],
+    [`${AGILE_API}/application/${id}/files`, "PA"],
+  ];
+  for (const [url, service] of attempts) {
+    const json = await agileGetTraced(url, client, service, trace);
     if (json === null) continue;
-    const id = extractAgileApplicationId(json, reference);
-    if (id === null) continue;
-    for (const docsUrl of agileDocumentCandidates(slug, id)) {
-      const docsJson = await tryAgileJson(docsUrl, trace);
-      if (docsJson === null) continue;
-      const files = parseAgileDocuments(docsJson, slug);
-      trace?.push({ step: "agile_documents", url: docsUrl, fileCount: files.length });
-      if (files.length > 0) {
-        return { files, applicationUrl: `${AGILE_BASE}/${slug}/application-details/${id}` };
-      }
-    }
-    return { files: [], applicationUrl: `${AGILE_BASE}/${slug}/application-details/${id}` };
+    const files = parseAgileDocuments(json);
+    trace?.push({ step: "agile_documents", url, fileCount: files.length });
+    if (files.length > 0) return { files, applicationUrl };
   }
-  return null;
+  return { files: [], applicationUrl };
 }
 
 function csv(v) {
@@ -853,7 +814,7 @@ export default async function handler(req, res) {
     const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
     const slug = AGILE_SLUGS[app.authority_id];
     if (!listUrl && slug) {
-      const result = await fetchAgileFileList(slug, app.planning_reference, trace);
+      const result = await fetchAgileDocumentList(app.authority_id, app.source_url, app.planning_reference, trace);
       if (debug) return send(res, 200, { agile: true, result, trace });
       if (!result) return send(res, 200, { supported: false, files: null, list_url: null });
       return send(res, 200, {
@@ -884,7 +845,7 @@ export default async function handler(req, res) {
     const debug = p.get("debug") === "1";
     const trace = debug ? [] : undefined;
     let resolved = null;
-    if (slug) resolved = await resolveAgileApplicationUrl(slug, app.planning_reference, trace);
+    if (slug) resolved = await agilePortalUrl(app.authority_id, app.source_url, app.planning_reference, trace);
     if (debug) return send(res, 200, { resolved, fallback, trace });
     const dest = resolved ?? fallback;
     if (!dest) return send(res, 404, { error: "No portal link" });

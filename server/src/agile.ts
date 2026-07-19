@@ -160,3 +160,133 @@ export async function fetchAgileParties(
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Portal deep links and document listings                             */
+/* ------------------------------------------------------------------ */
+
+import type { DiagnosticStep, ScannedFile } from "./documents.js";
+
+const AGILE_PORTAL = "https://planning.agileapplications.ie";
+
+export const AGILE_SLUG_BY_AUTHORITY: Record<string, string> = {
+  "south-dublin": "southdublin",
+  "dublin-city": "dublincity",
+  fingal: "fingal",
+};
+
+async function getJsonTraced(
+  url: string,
+  client: string,
+  service: string,
+  trace?: DiagnosticStep[]
+): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { ...headers(client), "x-service": service },
+    });
+    const step: DiagnosticStep = {
+      step: "agile_api",
+      url: `${url} [x-service=${service}]`,
+      status: res.status,
+      contentType: res.headers.get("content-type") ?? undefined,
+    };
+    if (!res.ok) {
+      trace?.push(step);
+      return null;
+    }
+    const body = await res.json();
+    step.bodySnippet = JSON.stringify(body).slice(0, 400);
+    trace?.push(step);
+    return body;
+  } catch (err) {
+    trace?.push({ step: "agile_api", url, error: String(err) });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Deep link to the citizen portal's application page, via the verified API. */
+export async function agilePortalUrl(
+  authorityId: string,
+  sourceUrl: string | null,
+  reference: string,
+  trace?: DiagnosticStep[]
+): Promise<string | null> {
+  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
+  const slug = AGILE_SLUG_BY_AUTHORITY[authorityId];
+  if (!client || !slug) return null;
+  const id = await resolveAgileId(client, sourceUrl, reference);
+  trace?.push({ step: "agile_resolve", resolvedId: id === null ? null : Number(id) });
+  return id ? `${AGILE_PORTAL}/${slug}/application-details/${id}` : null;
+}
+
+/** Normalise any Agile document payload into titled links (tolerant walk). */
+export function parseAgileDocuments(json: unknown): ScannedFile[] {
+  const out: ScannedFile[] = [];
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== "object") return;
+    const obj = node as Record<string, unknown>;
+    const urlish = [obj.url, obj.downloadUrl, obj.link, obj.href, obj.documentUrl].find(
+      (v): v is string => typeof v === "string" && /^(https?:)?\//.test(v)
+    );
+    const name = [obj.name, obj.title, obj.description, obj.fileName, obj.documentType].find(
+      (v): v is string => typeof v === "string" && v.trim().length > 0
+    );
+    const docId =
+      typeof obj.id === "number" ? obj.id : typeof obj.documentId === "number" ? obj.documentId : null;
+    if (urlish) {
+      out.push({ title: name ?? "Document", url: new URL(urlish, AGILE_API).toString() });
+    } else if (name && docId !== null) {
+      out.push({ title: name, url: `${AGILE_API}/document/${docId}/download` });
+    }
+    Object.values(obj).forEach(visit);
+  };
+  visit(json);
+  const seen = new Set<string>();
+  return out.filter((f) => (seen.has(f.url) ? false : (seen.add(f.url), true)));
+}
+
+/**
+ * List an application's documents. The portal's "View Scanned Files" data
+ * has not been captured from a browser session yet, so this probes the
+ * plausible endpoint/service-header combinations with the verified tenant
+ * credentials; every attempt is traceable via ?debug=1. Returns the portal
+ * deep link even when no documents endpoint yields files, so the UI can
+ * always land users one click away.
+ */
+export async function fetchAgileDocumentList(
+  authorityId: string,
+  sourceUrl: string | null,
+  reference: string,
+  trace?: DiagnosticStep[]
+): Promise<{ files: ScannedFile[]; applicationUrl: string } | null> {
+  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
+  const slug = AGILE_SLUG_BY_AUTHORITY[authorityId];
+  if (!client || !slug) return null;
+  const id = await resolveAgileId(client, sourceUrl, reference);
+  trace?.push({ step: "agile_resolve", resolvedId: id === null ? null : Number(id) });
+  if (!id) return null;
+  const applicationUrl = `${AGILE_PORTAL}/${slug}/application-details/${id}`;
+
+  const attempts: Array<[string, string]> = [
+    [`${AGILE_API}/application/${id}/documents`, "PA"],
+    [`${AGILE_API}/application/${id}/document`, "PA"],
+    [`${AGILE_API}/application/${id}/documents`, "DMS"],
+    [`${AGILE_API}/document?applicationId=${id}`, "DMS"],
+    [`${AGILE_API}/application/${id}/files`, "PA"],
+  ];
+  for (const [url, service] of attempts) {
+    const json = await getJsonTraced(url, client, service, trace);
+    if (json === null) continue;
+    const files = parseAgileDocuments(json);
+    trace?.push({ step: "agile_documents", url, fileCount: files.length });
+    if (files.length > 0) return { files, applicationUrl };
+  }
+  return { files: [], applicationUrl };
+}
