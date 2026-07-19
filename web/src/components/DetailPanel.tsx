@@ -28,7 +28,6 @@ function buildTimeline(d: AppDetail): TimelineStep[] {
   const decided = Boolean(d.decision_date);
   const steps: TimelineStep[] = [
     { label: "Received", date: d.received_date, state: d.received_date ? "done" : "future" },
-    { label: "Validated", date: d.validated_date, state: d.validated_date ? "done" : "future" },
   ];
   if (d.further_info_requested_date) {
     steps.push({
@@ -243,7 +242,13 @@ const CONDITION_GROUPS: Array<{ code: string; label: string }> = [
  * for refusal, F.I. directives — fetched live from the council's portal API
  * when the sheet opens (South Dublin / Dublin City / Fingal).
  */
-function DecisionSection({ conditions }: { conditions: DecisionConditions | null }) {
+function DecisionSection({
+  conditions,
+  detail: d,
+}: {
+  conditions: DecisionConditions | null;
+  detail: AppDetail;
+}) {
   if (!conditions) return null;
   const groups = CONDITION_GROUPS.map((g) => ({
     ...g,
@@ -257,6 +262,15 @@ function DecisionSection({ conditions }: { conditions: DecisionConditions | null
         <p className="decision-headline">
           {conditions.decision}
           {conditions.decision_date && <span className="hint"> · {conditions.decision_date}</span>}
+          {/* A decided appeal supersedes the council decision — say so right
+              where the council outcome is stated. */}
+          {d.appeal_decision && (
+            <span className="appeal-outcome">
+              {" "}
+              → on appeal: {d.appeal_decision}
+              {d.appeal_decision_date && <span className="hint"> · {d.appeal_decision_date}</span>}
+            </span>
+          )}
         </p>
       )}
       {groups.map((g) => (
@@ -264,15 +278,21 @@ function DecisionSection({ conditions }: { conditions: DecisionConditions | null
           <h4>
             {g.label} <span className="count">{g.items.length}</span>
           </h4>
-          {g.items.map((item, i) => (
-            <details key={`${g.code}-${item.order}-${i}`} className="condition">
-              <summary>
-                <span className="condition-num">{item.order || i + 1}</span>
-                {item.title || `${item.code_label} ${item.order}`}
-              </summary>
-              {item.text && <p className="condition-text">{item.text}</p>}
-            </details>
-          ))}
+          {g.items.map((item, i) => {
+            const title = item.title || `${item.code_label} ${item.order}`;
+            // Repeated titles (An Bord Pleanála conditions all arrive as
+            // "ABP Condition") get their number appended to stay scannable.
+            const dup = g.items.filter((x) => x.title === item.title).length > 1;
+            return (
+              <details key={`${g.code}-${item.order}-${i}`} className="condition">
+                <summary>
+                  <span className="condition-num">{item.order || i + 1}</span>
+                  {dup && item.order ? `${title} ${item.order}` : title}
+                </summary>
+                {item.text && <p className="condition-text">{item.text}</p>}
+              </details>
+            );
+          })}
         </div>
       ))}
       <p className="list-note">
@@ -600,7 +620,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           </div>
         </section>
       ) : (
-        <DecisionSection conditions={conditions} />
+        <DecisionSection conditions={conditions} detail={d} />
       )}
 
       <section aria-labelledby="docs-h">
