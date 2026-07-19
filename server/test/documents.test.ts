@@ -102,8 +102,19 @@ describe("deriveScannedFilesUrl", () => {
     );
   });
 
+  it("maps a Dublin City reference to the PublicAccess document search", () => {
+    expect(deriveScannedFilesUrl("dublin-city", null, "3526/22")).toBe(
+      "https://webapps.dublincity.ie/PublicAccess_Live/SearchResult/RunThirdPartySearch?FileSystemId=PL&Folder1_Ref=3526/22"
+    );
+    // Spaces and other characters still get encoded; only the slash stays raw.
+    expect(deriveScannedFilesUrl("dublin-city", null, "WEB 1234/25")).toContain(
+      "Folder1_Ref=WEB%201234/25"
+    );
+  });
+
   it("returns null for other authorities and unknown URL shapes", () => {
     expect(deriveScannedFilesUrl("dublin-city", "https://planning.agileapplications.ie/dublincity/x/1")).toBeNull();
+    expect(deriveScannedFilesUrl("fingal", null, "F25A/0101")).toBeNull();
     expect(deriveScannedFilesUrl("kildare", "https://www.eplanning.ie/KildareCC/searchtypes?query=x")).toBeNull();
     expect(deriveScannedFilesUrl("kildare", null)).toBeNull();
     expect(deriveScannedFilesUrl("south-dublin", null, null)).toBeNull();

@@ -50,6 +50,11 @@ function scannedFilesUrl(authorityId, sourceUrl, reference) {
   if (authorityId === "south-dublin" && reference) {
     return `https://planning.southdublin.ie/Home/Documents?regref=${encodeURIComponent(reference)}`;
   }
+  if (authorityId === "dublin-city" && reference) {
+    // DCC's PublicAccess document server, addressable by planning reference.
+    const ref = encodeURIComponent(reference).replace(/%2F/gi, "/");
+    return `https://webapps.dublincity.ie/PublicAccess_Live/SearchResult/RunThirdPartySearch?FileSystemId=PL&Folder1_Ref=${ref}`;
+  }
   if (authorityId !== "kildare" || !sourceUrl) return null;
   const m = sourceUrl.match(/AppFileRefDetails\/(\d+)/i);
   return m
