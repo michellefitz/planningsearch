@@ -8,18 +8,17 @@
   `VITE_GOOGLE_MAPS_KEY` in Vercel env vars → redeploy. ($200/month free
   credit ≈ ~25k image loads; metadata checks are free.)
 
-- **Applicant names for the four Dublin authorities.** The eplanning.ie
-  backfill only covers Kildare; Dublin City / Fingal / DLR / South Dublin use
-  agileapplications.ie, which needs its own scraper.
+- **Applicant/agent names for DLR.** Kildare (eplanning scrape) and South
+  Dublin / Dublin City / Fingal (agile API, see server/src/agile.ts) are
+  covered; Dún Laoghaire-Rathdown remains — it runs SwiftLG
+  (planning.dlrcoco.ie/swiftlg), which needs its own scraper.
 
-- **Agile documents API (file listings for agile councils).** Findings so
-  far: the SPA calls `GET {apiUrl}application/{id}/document` where apiUrl is
-  resolved at runtime per council from identity.agileapplications.ie service
-  configurations (`/api/configuration/southdublin` returns an empty value
-  anonymously); the cpAPI host `citizenportalapi.agileapplications.ie`
-  rejects direct guesses (404) with/without referer or client headers. Next
-  step would be watching the browser's network tab on an application-details
-  page to capture the real request + auth.
+- **Agile API notes (solved).** Base `planningapi.agileapplications.ie/api`,
+  tenant headers x-client (SD / DCC / FG) + x-product CITIZENPORTAL +
+  x-service PA, captured from a browser session. Useful endpoints:
+  `/application/search?query={ref}` and `/application/{id}` (rich detail,
+  incl. applicant + agent). `/application/{id}/document` exists but returns
+  [] for all three Irish councils — no file listings this way.
 
 - **Kildare submissions list on the detail sheet.** eplanning pages carry a
   hidden "Submitter Details" popup (contact name, recorded/acknowledged

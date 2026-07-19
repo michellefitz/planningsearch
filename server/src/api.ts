@@ -12,6 +12,7 @@ import {
   type DiagnosticStep,
 } from "./documents.js";
 import { summariseDescription } from "./summarize.js";
+import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileParties } from "./agile.js";
 
 function csv(v: unknown): string[] | undefined {
   if (typeof v !== "string" || !v.trim()) return undefined;
@@ -230,10 +231,20 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     }
 
     // Applicant names are redacted in the national dataset and agents are
-    // absent from it entirely; eplanning portal pages publish both, so
-    // backfill on first view and cache in the DB.
-    if ((!row.applicant_name || !row.agent_name) && row.source_url) {
-      const parties = await fetchEplanningParties(row.source_url as string);
+    // absent from it entirely; the council portals publish both (eplanning
+    // pages for Kildare, the agile API for South Dublin / Dublin City /
+    // Fingal), so backfill on first view and cache in the DB.
+    if (!row.applicant_name || !row.agent_name) {
+      const parties =
+        row.authority_id in AGILE_CLIENT_BY_AUTHORITY
+          ? await fetchAgileParties(
+              row.authority_id as string,
+              row.source_url as string | null,
+              row.planning_reference as string
+            )
+          : row.source_url
+            ? await fetchEplanningParties(row.source_url as string)
+            : { applicant: null, agent: null };
       if (parties.applicant && !row.applicant_name) row.applicant_name = parties.applicant;
       if (parties.agent && !row.agent_name) row.agent_name = parties.agent;
       if (parties.applicant || parties.agent) {

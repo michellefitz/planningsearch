@@ -123,7 +123,13 @@ export function featureToRecord(
   }
 
   const auth = AUTHORITY_BY_ID.get(authorityId)!;
-  const sourceUrl = str(attrs, FIELD_MAP.link) ?? auth.portalUrlForReference(reference);
+  // The source data truncates some URLs (Fingal's agile links cut off at
+  // ~50 chars) — a truncated deep link 404s, so prefer the search fallback.
+  let link = str(attrs, FIELD_MAP.link);
+  if (link && /agileapplications\.ie/i.test(link) && !/application-details\/\d+/i.test(link)) {
+    link = null;
+  }
+  const sourceUrl = link ?? auth.portalUrlForReference(reference);
 
   // The dataset's own one-off-house flag is a strong domestic signal on top
   // of the description heuristic.

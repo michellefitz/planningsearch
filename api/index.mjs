@@ -251,6 +251,69 @@ function parseEplanningParties(html) {
   return { applicant, agent };
 }
 
+/* Agile Applications citizen-portal API (South Dublin, Dublin City, Fingal):
+   tenant-scoped via three headers captured from a browser session. Returns
+   applicant AND agent names, both missing from the national dataset. */
+const AGILE_API = "https://planningapi.agileapplications.ie/api";
+const AGILE_CLIENT_BY_AUTHORITY = { "south-dublin": "SD", "dublin-city": "DCC", fingal: "FG" };
+
+async function agileGetJson(url, client) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": UA_HEADERS["User-Agent"],
+        Accept: "application/json",
+        "x-client": client,
+        "x-product": "CITIZENPORTAL",
+        "x-service": "PA",
+      },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const joinName = (fore, sur, whole) => {
+  const parts = [fore, sur].map((v) => String(v ?? "").trim()).filter(Boolean);
+  if (parts.length) return parts.join(" ");
+  return String(whole ?? "").trim() || null;
+};
+
+async function fetchAgileParties(authorityId, sourceUrl, reference) {
+  const none = { applicant: null, agent: null };
+  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
+  if (!client) return none;
+  const cacheKey = `agile:${authorityId}:${reference}`;
+  if (PARTIES_CACHE.has(cacheKey)) return PARTIES_CACHE.get(cacheKey);
+  let id = sourceUrl?.match(/application-details\/(\d+)/i)?.[1];
+  if (!id) {
+    const found = await agileGetJson(
+      `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`,
+      client
+    );
+    const hit = found?.results?.find(
+      (r) => r.reference?.trim().toLowerCase() === reference.trim().toLowerCase()
+    );
+    id = hit ? String(hit.id) : null;
+  }
+  if (!id) return none;
+  const d = await agileGetJson(`${AGILE_API}/application/${id}`, client);
+  if (!d || typeof d !== "object") return none;
+  const parties = {
+    applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
+    agent: joinName(d.agentForename, d.agentSurname, d.agentName),
+  };
+  if (parties.applicant || parties.agent) PARTIES_CACHE.set(cacheKey, parties);
+  return parties;
+}
+
 async function fetchEplanningParties(sourceUrl) {
   const none = { applicant: null, agent: null };
   if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return none;
@@ -557,11 +620,16 @@ export default async function handler(req, res) {
         received_date: a.received_date,
         decision_date: a.decision_date,
       }));
+    const needsParties = !(app.applicant_name && app.agent_name);
     const [aiSummary, parties] = await Promise.all([
       summariseDescription(app.description, app.application_type),
-      (app.applicant_name && app.agent_name) || !app.source_url
+      !needsParties
         ? Promise.resolve({ applicant: null, agent: null })
-        : fetchEplanningParties(app.source_url),
+        : app.authority_id in AGILE_CLIENT_BY_AUTHORITY
+          ? fetchAgileParties(app.authority_id, app.source_url, app.planning_reference)
+          : app.source_url
+            ? fetchEplanningParties(app.source_url)
+            : Promise.resolve({ applicant: null, agent: null }),
     ]);
     const merged = {
       ...app,
