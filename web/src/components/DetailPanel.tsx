@@ -521,21 +521,21 @@ function AppealCard({ detail: d }: { detail: AppDetail }) {
         <dt>Case</dt>
         <dd>{appealRef(d)}</dd>
       </dl>
-      {d.appeal_url && (
-        <>
+      <div className="appeal-actions">
+        {d.appeal_url && (
           <a className="btn portal" href={d.appeal_url} target="_blank" rel="noopener noreferrer">
-            View full case file on An Coimisiún Pleanála ↗
-          </a>{" "}
-        </>
-      )}
-      {state.phase === "idle" && (
-        <button type="button" className="btn" onClick={load}>
-          Click to load appeal details
-        </button>
-      )}
-      {state.phase === "loading" && (
-        <span className="hint">Fetching case details from An Coimisiún Pleanála…</span>
-      )}
+            View full case file ↗
+          </a>
+        )}
+        {state.phase === "idle" && (
+          <button type="button" className="btn" onClick={load}>
+            Click to load appeal details
+          </button>
+        )}
+        {state.phase === "loading" && (
+          <span className="hint">Fetching case details from An Coimisiún Pleanála…</span>
+        )}
+      </div>
       {state.phase === "failed" && (
         <p className="list-note">
           Couldn't reach An Coimisiún Pleanála just now — use the case-file link above.
@@ -547,7 +547,7 @@ function AppealCard({ detail: d }: { detail: AppDetail }) {
         </p>
       )}
       {state.phase === "loaded" && (
-        <>
+        <div className="appeal-details">
           {state.fields.length > 0 && (
             <dl className="facts">
               {state.fields.map((f) => (
@@ -559,17 +559,20 @@ function AppealCard({ detail: d }: { detail: AppDetail }) {
             </dl>
           )}
           {state.documents.length > 0 && (
-            <ul className="doc-list">
-              {state.documents.map((doc) => (
-                <li key={doc.url}>
-                  <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                    {doc.title}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <>
+              <p className="doc-list-label">Case documents</p>
+              <ul className="doc-list">
+                {state.documents.map((doc) => (
+                  <li key={doc.url}>
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                      {doc.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
-        </>
+        </div>
       )}
     </section>
   );

@@ -1091,9 +1091,35 @@ body {
   border-color: #fca5a5;
 }
 
-/* Appeal (An Coimisiún Pleanála) AI summary */
+/* Appeal (An Coimisiún Pleanála) section */
 .appeal-summary {
   margin: 0.3rem 0 0.8rem;
+}
+/* Action buttons sit below the facts list with breathing room, wrapping
+   onto their own lines on narrow screens rather than colliding. */
+.appeal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+.appeal-actions .portal {
+  text-decoration: none;
+}
+.appeal-details {
+  margin-top: 0.9rem;
+}
+.appeal-details .facts + .doc-list-label {
+  margin-top: 0.8rem;
+}
+.doc-list-label {
+  margin: 0 0 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }
 .btn.ai {
   background: #eef2ff;
