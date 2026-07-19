@@ -1136,3 +1136,28 @@ body {
     animation: none;
   }
 }
+
+/* Zoning (MyPlan GZT lookup at the application's location) */
+
+.zone-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  margin: 0 0 0.5rem;
+  background: var(--surface);
+}
+.zone-name {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 620;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.zone-objective {
+  margin: 0.3rem 0 0.2rem;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+}

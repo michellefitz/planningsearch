@@ -43,6 +43,13 @@
   conditions endpoint only for agile councils; Kildare/DLR outcomes are in
   the bulk data but not their conditions text.
 
+- **Zoning as a map overlay.** The detail sheet now shows zoning via a live
+  point query against the national GZT layer (MyPlan / DHLGH,
+  services.arcgis.com/NzlPQPKn5QF9v2US → GZT_Current_Plan). Drawing zones on
+  the map itself is a separate job — the layer is ~83k polygons nationally,
+  so it wants the hosted vector tile endpoint (or a bbox-filtered GeoJSON
+  fetch at high zoom only) plus the official COLOUR field for fills.
+
 - **"Appealed" filter as an area-level contested signal.** Appeal fields are
   in the bulk dataset (unlike objections); a filter chip would let users see
   contested applications across the map.

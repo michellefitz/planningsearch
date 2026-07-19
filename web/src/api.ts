@@ -106,6 +106,14 @@ export interface DecisionConditions {
   refusal_summary?: string | null;
 }
 
+export interface ZoningInfo {
+  zone: string;
+  general: string | null;
+  objective: string | null;
+  plan: string | null;
+  plan_level: string | null;
+}
+
 export interface SearchState {
   q: string;
   authorities: string[];
@@ -186,6 +194,10 @@ export const api = {
       applicant_name: string | null;
       agent_name: string | null;
     }>(`/api/applications/${id}/enrich`),
+  zoning: (id: number) =>
+    getJson<{ supported: boolean; zones: ZoningInfo[] | null }>(
+      `/api/applications/${id}/zoning`
+    ),
   conditions: (id: number) =>
     getJson<{ supported: boolean; conditions: DecisionConditions | null }>(
       `/api/applications/${id}/conditions`

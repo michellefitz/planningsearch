@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type AppDetail, type DecisionConditions, type Meta } from "../api";
+import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
 import { StatusBadge } from "./ResultsList";
 
 /**
@@ -362,6 +362,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   } | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
+  const [zones, setZones] = useState<ZoningInfo[] | null>(null);
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
   const isLongDesc = (d.description ?? "").length > 400;
   // Councils whose decision substance the conditions endpoint can serve —
@@ -372,7 +373,16 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
     setConditions(null);
     setEnrich(null);
     setDescExpanded(false);
+    setZones(null);
     let cancelled = false;
+    if (d.lat != null && d.lng != null) {
+      api
+        .zoning(d.id)
+        .then((res) => {
+          if (!cancelled && res.zones?.length) setZones(res.zones);
+        })
+        .catch(() => {});
+    }
     if (hasConditionsSource) {
       setConditionsLoading(true);
       api
@@ -522,6 +532,31 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           )}
         </dl>
       </section>
+
+      {zones && (
+        <section aria-labelledby="zoning-h">
+          <h3 id="zoning-h">Zoning</h3>
+          {zones.map((z) => (
+            <div key={z.zone} className="zone-card">
+              <p className="zone-name">
+                {z.zone}
+                {z.general && <span className="tag">{z.general}</span>}
+              </p>
+              {z.objective && <p className="zone-objective">{z.objective}</p>}
+              {z.plan && (
+                <p className="hint">
+                  {z.plan}
+                  {z.plan_level === "LAP" && " (Local Area Plan)"}
+                </p>
+              )}
+            </div>
+          ))}
+          <p className="list-note">
+            From the MyPlan generalised zoning layer (DHLGH) at this application's map location —
+            the council's development plan is the authoritative source.
+          </p>
+        </section>
+      )}
 
       <section aria-labelledby="timeline-h">
         <h3 id="timeline-h">Timeline</h3>

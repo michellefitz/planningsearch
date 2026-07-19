@@ -14,6 +14,7 @@ import {
   type DiagnosticStep,
 } from "./documents.js";
 import { summariseDescription, summariseRefusal } from "./summarize.js";
+import { fetchZoning } from "./zoning.js";
 import {
   AGILE_CLIENT_BY_AUTHORITY,
   agilePortalUrl,
@@ -316,6 +317,19 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
 
   // Decision substance (conditions of grant / reasons for refusal / F.I.
   // directives) from the agile API — fetched on demand when the sheet opens.
+  // Land-use zoning at the application's location, from the national GZT
+  // layer (MyPlan / DHLGH) — one live point-in-polygon query, on demand.
+  app.get("/api/applications/:id/zoning", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare("SELECT lat, lng FROM applications WHERE id = ?")
+      .get(id) as { lat: number | null; lng: number | null } | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    if (row.lat == null || row.lng == null) return { supported: false, zones: null };
+    const zones = await fetchZoning(row.lat, row.lng);
+    return { supported: true, zones };
+  });
+
   app.get("/api/applications/:id/conditions", async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const row = db
