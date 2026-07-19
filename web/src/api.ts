@@ -113,7 +113,6 @@ export interface ZoningInfo {
   plan: string | null;
   plan_level: string | null;
   plan_url: string | null;
-  about_url: string | null;
 }
 
 export interface SearchState {

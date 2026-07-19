@@ -16,7 +16,6 @@ export interface ZoningInfo {
   plan: string | null;
   plan_level: string | null;
   plan_url: string | null;
-  about_url: string | null;
 }
 
 function urlOrNull(v: unknown): string | null {
@@ -30,7 +29,9 @@ export async function fetchZoning(lat: number, lng: number): Promise<ZoningInfo[
     geometryType: "esriGeometryPoint",
     spatialRel: "esriSpatialRelIntersects",
     where: "CURRENT_PLAN=1",
-    outFields: "ZONE_ORIG,ZONE_GZT,GZT_DESC,ZONE_DESC,PLAN_NAME,PLAN_LEVEL,ZONE_LINK,GZT_LINK",
+    // GZT_LINK is omitted: the dataset's links point at the decommissioned
+    // viewer.myplan.ie host, so they no longer resolve.
+    outFields: "ZONE_ORIG,ZONE_GZT,GZT_DESC,ZONE_DESC,PLAN_NAME,PLAN_LEVEL,ZONE_LINK",
     returnGeometry: "false",
     f: "json",
   });
@@ -53,7 +54,6 @@ export async function fetchZoning(lat: number, lng: number): Promise<ZoningInfo[
         plan: String(a.PLAN_NAME ?? "").trim() || null,
         plan_level: String(a.PLAN_LEVEL ?? "").trim() || null,
         plan_url: urlOrNull(a.ZONE_LINK),
-        about_url: urlOrNull(a.GZT_LINK),
       }))
       .filter((z) => z.zone);
     // Development Plan zoning first, then Local Area Plans.

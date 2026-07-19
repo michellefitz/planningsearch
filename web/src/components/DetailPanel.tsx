@@ -650,12 +650,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
                   {z.plan_level === "LAP" ? ", Local Area Plan" : ""})
                 </span>
               )}{" "}
-              {z.about_url && (
-                <a href={z.about_url} target="_blank" rel="noopener noreferrer">
-                  What this means ↗
-                </a>
-              )}
-              {z.about_url && z.plan_url && " · "}
               {z.plan_url && (
                 <a href={z.plan_url} target="_blank" rel="noopener noreferrer">
                   Development plan ↗
