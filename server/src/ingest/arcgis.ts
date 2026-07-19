@@ -42,6 +42,10 @@ export const FIELD_MAP = {
   fiReceived: "FIRecDate",
   grantDate: "GrantDate",
   appealStatus: "AppealStatus",
+  appealReference: "AppealRefNumber",
+  appealLodged: "AppealSubmittedDate",
+  appealDecision: "AppealDecision",
+  appealDecisionDate: "AppealDecisionDate",
   applicant: "ApplicantForename", // often null (redacted at source); see buildApplicantName
   applicantSurname: "ApplicantSurname",
   eircode: "DevelopmentPostcode",
@@ -139,6 +143,9 @@ export function featureToRecord(
   // of the description heuristic.
   const oneOff = /^y(es)?$/i.test(str(attrs, FIELD_MAP.oneOffHouse) ?? "");
   const withdrawnDate = isoDate(attrs, FIELD_MAP.withdrawn);
+  // A decided appeal supersedes the council's decision (An Bord Pleanála's
+  // outcome is the operative one), so status comes from it when present.
+  const appealDecision = str(attrs, FIELD_MAP.appealDecision);
 
   return {
     authority_id: authorityId,
@@ -147,7 +154,11 @@ export function featureToRecord(
     application_type: normalizeApplicationType(typeRaw),
     application_type_raw: typeRaw,
     is_domestic_guess: oneOff || guessIsDomestic(description) ? 1 : 0,
-    status: withdrawnDate ? "withdrawn" : normalizeStatus(statusRaw, decisionRaw),
+    status: withdrawnDate
+      ? "withdrawn"
+      : appealDecision
+        ? normalizeStatus("decided", appealDecision)
+        : normalizeStatus(statusRaw, decisionRaw),
     status_raw: statusRaw,
     received_date: isoDate(attrs, FIELD_MAP.received),
     validated_date: null,
@@ -158,6 +169,10 @@ export function featureToRecord(
     decision_raw: decisionRaw,
     decision_date: isoDate(attrs, FIELD_MAP.decisionDate),
     appeal_status: str(attrs, FIELD_MAP.appealStatus),
+    appeal_reference: str(attrs, FIELD_MAP.appealReference),
+    appeal_lodged_date: isoDate(attrs, FIELD_MAP.appealLodged),
+    appeal_decision: appealDecision,
+    appeal_decision_date: isoDate(attrs, FIELD_MAP.appealDecisionDate),
     final_grant_date: isoDate(attrs, FIELD_MAP.grantDate),
     applicant_name: buildApplicantName(attrs),
     agent_name: null,

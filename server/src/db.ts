@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS applications (
   decision_raw TEXT,
   decision_date TEXT,
   appeal_status TEXT,
+  appeal_reference TEXT,
+  appeal_lodged_date TEXT,
+  appeal_decision TEXT,
+  appeal_decision_date TEXT,
   final_grant_date TEXT,
   applicant_name TEXT,
   agent_name TEXT,
@@ -122,6 +126,10 @@ export function openDb(dbPath: string = DB_PATH, opts: OpenDbOptions = {}): Data
   try { db.exec("ALTER TABLE applications ADD COLUMN floor_area_sqm REAL"); } catch {}
   try { db.exec("ALTER TABLE applications ADD COLUMN site_area_ha REAL"); } catch {}
   try { db.exec("ALTER TABLE applications ADD COLUMN expiry_date TEXT"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN appeal_reference TEXT"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN appeal_lodged_date TEXT"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN appeal_decision TEXT"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN appeal_decision_date TEXT"); } catch {}
   seedAuthorities(db);
   return db;
 }
@@ -167,6 +175,10 @@ export interface ApplicationRecord {
   decision_raw: string | null;
   decision_date: string | null;
   appeal_status: string | null;
+  appeal_reference: string | null;
+  appeal_lodged_date: string | null;
+  appeal_decision: string | null;
+  appeal_decision_date: string | null;
   final_grant_date: string | null;
   applicant_name: string | null;
   agent_name: string | null;
@@ -190,7 +202,8 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       authority_id, planning_reference, description, application_type, application_type_raw,
       is_domestic_guess, status, status_raw, received_date, validated_date,
       further_info_requested_date, further_info_received_date, decision_due_date,
-      decision, decision_raw, decision_date, appeal_status, final_grant_date,
+      decision, decision_raw, decision_date, appeal_status, appeal_reference,
+      appeal_lodged_date, appeal_decision, appeal_decision_date, final_grant_date,
       applicant_name, agent_name, address_text, eircode,
       num_residential_units, floor_area_sqm, site_area_ha, expiry_date,
       lat, lng, geom_polygon, source_url, last_synced
@@ -198,7 +211,8 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       @authority_id, @planning_reference, @description, @application_type, @application_type_raw,
       @is_domestic_guess, @status, @status_raw, @received_date, @validated_date,
       @further_info_requested_date, @further_info_received_date, @decision_due_date,
-      @decision, @decision_raw, @decision_date, @appeal_status, @final_grant_date,
+      @decision, @decision_raw, @decision_date, @appeal_status, @appeal_reference,
+      @appeal_lodged_date, @appeal_decision, @appeal_decision_date, @final_grant_date,
       @applicant_name, @agent_name, @address_text, @eircode,
       @num_residential_units, @floor_area_sqm, @site_area_ha, @expiry_date,
       @lat, @lng, @geom_polygon, @source_url, @last_synced
@@ -219,6 +233,10 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       decision_raw = excluded.decision_raw,
       decision_date = excluded.decision_date,
       appeal_status = excluded.appeal_status,
+      appeal_reference = excluded.appeal_reference,
+      appeal_lodged_date = excluded.appeal_lodged_date,
+      appeal_decision = excluded.appeal_decision,
+      appeal_decision_date = excluded.appeal_decision_date,
       final_grant_date = excluded.final_grant_date,
       applicant_name = excluded.applicant_name,
       agent_name = excluded.agent_name,

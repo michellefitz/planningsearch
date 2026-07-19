@@ -62,6 +62,31 @@ describe("featureToRecord", () => {
     expect(featureToRecord(CARLOW_SAMPLE)).toBeNull();
   });
 
+  it("lets a decided appeal trump the council decision (3014/23 values)", () => {
+    const feature: ArcgisFeature = {
+      attributes: {
+        ...CARLOW_SAMPLE.attributes,
+        PlanningAuthority: "Dublin City Council",
+        ApplicationNumber: "3014/23",
+        ApplicationStatus: "Appeal Decided",
+        Decision: "REFUSE PERMISSION",
+        AppealRefNumber: "ABP-316177-23",
+        AppealSubmittedDate: 1680480000000,
+        AppealDecision: "GRANT PERMISSION",
+        AppealDecisionDate: 1716336000000,
+        LinkAppDetails: null,
+      },
+      geometry: { x: -6.26, y: 53.35 },
+    };
+    const rec = featureToRecord(feature, "2026-07-19T00:00:00Z")!;
+    expect(rec.status).toBe("granted");
+    expect(rec.decision).toBe("REFUSE PERMISSION");
+    expect(rec.appeal_reference).toBe("ABP-316177-23");
+    expect(rec.appeal_lodged_date).toBe("2023-04-03");
+    expect(rec.appeal_decision).toBe("GRANT PERMISSION");
+    expect(rec.appeal_decision_date).toBe("2024-05-22");
+  });
+
   it("maps the verified live schema for an in-scope authority", () => {
     const feature: ArcgisFeature = {
       attributes: {

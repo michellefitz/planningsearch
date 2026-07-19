@@ -51,8 +51,23 @@ function buildTimeline(d: AppDetail): TimelineStep[] {
     date: d.decision_date,
     state: decided ? "done" : "future",
   });
-  if (d.appeal_status) {
-    steps.push({ label: `Appeal — ${d.appeal_status}`, date: null, state: "current" });
+  // An Bord Pleanála appeal: lodged, then (once decided) the operative
+  // outcome — it supersedes the council's decision above.
+  if (d.appeal_lodged_date || d.appeal_reference || d.appeal_decision || d.appeal_status) {
+    steps.push({
+      label: d.appeal_reference ? `Appeal lodged — ${d.appeal_reference}` : "Appeal lodged",
+      date: d.appeal_lodged_date,
+      state: d.appeal_decision ? "done" : "current",
+    });
+    if (d.appeal_decision) {
+      steps.push({
+        label: `Appeal decided — ${d.appeal_decision}`,
+        date: d.appeal_decision_date,
+        state: "done",
+      });
+    } else if (d.appeal_status) {
+      steps.push({ label: `Appeal — ${d.appeal_status}`, date: null, state: "current" });
+    }
   }
   if (d.final_grant_date) {
     steps.push({ label: "Final grant issued", date: d.final_grant_date, state: "done" });
@@ -524,6 +539,28 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           <dd>{agent ?? "—"}</dd>
           <dt>Decision</dt>
           <dd>{d.decision ?? "Not yet decided"}</dd>
+          {d.appeal_decision ? (
+            <>
+              <dt>Appeal decision</dt>
+              <dd>
+                {d.appeal_decision}
+                {d.appeal_decision_date && (
+                  <span className="hint"> — {d.appeal_decision_date}</span>
+                )}
+                {d.appeal_reference && <span className="hint"> ({d.appeal_reference})</span>}
+              </dd>
+            </>
+          ) : (
+            d.appeal_reference && (
+              <>
+                <dt>Appeal</dt>
+                <dd>
+                  {d.appeal_status ?? "Lodged"}
+                  <span className="hint"> ({d.appeal_reference})</span>
+                </dd>
+              </>
+            )
+          )}
           {d.eircode && (
             <>
               <dt>Eircode</dt>
