@@ -75,6 +75,17 @@ beforeAll(() => {
     lat: 53.3211,
     lng: -6.2654,
   });
+  upsertApplication(db, {
+    ...base,
+    planning_reference: "F26A/0311",
+    authority_id: "fingal",
+    status: "appealed",
+    appeal_reference: "ABP-319506-26",
+    appeal_status: "Appeal lodged with An Bord Pleanála",
+    address_text: "5 Strand Street, Malahide, Co. Dublin",
+    lat: 53.4508,
+    lng: -6.1547,
+  });
 });
 
 afterAll(() => {
@@ -122,6 +133,12 @@ describe("search", () => {
   it("filters by domestic heuristic", () => {
     const { results } = search(db, { domesticOnly: true });
     expect(results.every((r) => r.is_domestic_guess === 1)).toBe(true);
+  });
+
+  it("restricts to applications with an appeal on record", () => {
+    const { results } = search(db, { appealedOnly: true });
+    expect(results).toHaveLength(1);
+    expect(results[0].planning_reference).toBe("F26A/0311");
   });
 
   it("restricts to a bounding box (search this area, F1.4)", () => {

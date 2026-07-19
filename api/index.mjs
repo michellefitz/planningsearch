@@ -931,6 +931,7 @@ function applyFilters(rows, p) {
   const statuses = csv(p.get("status"));
   const types = csv(p.get("type"));
   const domestic = p.get("domestic") === "1" || p.get("domestic") === "true";
+  const appealed = p.get("appealed") === "1" || p.get("appealed") === "true";
   const rf = p.get("receivedFrom"), rt = p.get("receivedTo");
   const df = p.get("decisionFrom"), dt = p.get("decisionTo");
   const bbox = parseBbox(p.get("bbox"));
@@ -939,6 +940,7 @@ function applyFilters(rows, p) {
     if (statuses && !statuses.includes(a.status)) return false;
     if (types && !types.includes(a.application_type)) return false;
     if (domestic && a.is_domestic_guess !== 1) return false;
+    if (appealed && !a.appeal_reference) return false;
     if (rf && (!a.received_date || a.received_date < rf)) return false;
     if (rt && (!a.received_date || a.received_date > rt)) return false;
     if (df && (!a.decision_date || a.decision_date < df)) return false;

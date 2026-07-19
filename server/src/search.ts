@@ -6,6 +6,7 @@ export interface SearchFilters {
   statuses?: string[];
   types?: string[];
   domesticOnly?: boolean;
+  appealedOnly?: boolean;
   receivedFrom?: string;
   receivedTo?: string;
   decisionFrom?: string;
@@ -117,6 +118,7 @@ function buildWhere(f: SearchFilters, alias = "a"): WhereClause {
     clauses.push(`${alias}.application_type IN (${keys.join(",")})`);
   }
   if (f.domesticOnly) clauses.push(`${alias}.is_domestic_guess = 1`);
+  if (f.appealedOnly) clauses.push(`${alias}.appeal_reference IS NOT NULL`);
   if (f.receivedFrom) {
     params.rf = f.receivedFrom;
     clauses.push(`${alias}.received_date >= @rf`);

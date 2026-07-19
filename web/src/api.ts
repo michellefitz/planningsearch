@@ -126,6 +126,7 @@ export interface SearchState {
   authorities: string[];
   statuses: string[];
   domesticOnly: boolean;
+  appealedOnly: boolean;
   receivedFrom: string;
   receivedTo: string;
   useMapArea: boolean;
@@ -137,6 +138,7 @@ export const EMPTY_SEARCH: SearchState = {
   authorities: [],
   statuses: [],
   domesticOnly: false,
+  appealedOnly: false,
   receivedFrom: "",
   receivedTo: "",
   useMapArea: false,
@@ -153,6 +155,7 @@ export function searchParams(
   if (s.authorities.length) p.set("authority", s.authorities.join(","));
   if (s.statuses.length) p.set("status", s.statuses.join(","));
   if (s.domesticOnly) p.set("domestic", "1");
+  if (s.appealedOnly) p.set("appealed", "1");
   if (s.receivedFrom) p.set("receivedFrom", s.receivedFrom);
   if (s.receivedTo) p.set("receivedTo", s.receivedTo);
   if (s.useMapArea && bbox) p.set("bbox", bbox.join(","));

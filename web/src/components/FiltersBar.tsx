@@ -82,6 +82,14 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
         <label className="toggle-row">
           <input
             type="checkbox"
+            checked={state.appealedOnly}
+            onChange={(e) => onChange({ ...state, appealedOnly: e.target.checked })}
+          />
+          Appealed to An Coimisiún Pleanála <em className="hint">(has an appeal on record)</em>
+        </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
             checked={state.useMapArea}
             onChange={(e) => onChange({ ...state, useMapArea: e.target.checked })}
           />
@@ -110,6 +118,7 @@ function countActive(s: SearchState): number {
     s.authorities.length +
     s.statuses.length +
     (s.domesticOnly ? 1 : 0) +
+    (s.appealedOnly ? 1 : 0) +
     (s.receivedFrom ? 1 : 0) +
     (s.receivedTo ? 1 : 0) +
     (s.useMapArea ? 1 : 0)
