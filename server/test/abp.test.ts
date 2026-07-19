@@ -5,6 +5,7 @@ import {
   parseAppealCase,
   parseAppealCaseDocuments,
   parseAppealCaseFields,
+  pickAppealDocument,
 } from "../src/abp.js";
 
 describe("abpCaseNumber", () => {
@@ -106,5 +107,27 @@ describe("parseAppealCaseDocuments", () => {
     const out = parseAppealCase(html, "https://www.pleanala.ie/en-ie/case/1");
     expect(out.fields).toHaveLength(1);
     expect(out.documents).toHaveLength(1);
+  });
+});
+
+describe("pickAppealDocument", () => {
+  it("prefers a board-order / inspector document over other PDFs", () => {
+    const docs = [
+      { title: "Application Form", url: "https://x/form.pdf" },
+      { title: "Board Order", url: "https://x/order.pdf" },
+      { title: "Observation", url: "https://x/obs.pdf" },
+    ];
+    expect(pickAppealDocument(docs)?.title).toBe("Board Order");
+  });
+
+  it("falls back to the first PDF and skips non-PDFs", () => {
+    expect(
+      pickAppealDocument([
+        { title: "Scanned map", url: "https://x/map.tiff" },
+        { title: "Cover", url: "https://x/cover.pdf" },
+      ])?.title
+    ).toBe("Cover");
+    expect(pickAppealDocument([{ title: "Notes", url: "https://x/notes.tiff" }])).toBeNull();
+    expect(pickAppealDocument([])).toBeNull();
   });
 });

@@ -18,10 +18,19 @@ const REFUSAL_PROMPT =
   `with the area…), never the policy or plan citations. ` +
   `If there are several reasons, mention the main ones. Keep it under 35 words.`;
 
-async function callHaiku(system: string, userMsg: string): Promise<string | null> {
+type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "document"; source: { type: "base64"; media_type: "application/pdf"; data: string } };
+
+async function callClaude(
+  system: string,
+  content: string | ContentBlock[],
+  maxTokens = 120,
+  timeoutMs = TIMEOUT_MS
+): Promise<string | null> {
   if (!ANTHROPIC_API_KEY) return null;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -33,9 +42,9 @@ async function callHaiku(system: string, userMsg: string): Promise<string | null
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 120,
+        max_tokens: maxTokens,
         system,
-        messages: [{ role: "user", content: userMsg }],
+        messages: [{ role: "user", content }],
       }),
     });
     if (!res.ok) return null;
@@ -50,6 +59,8 @@ async function callHaiku(system: string, userMsg: string): Promise<string | null
     clearTimeout(timer);
   }
 }
+
+const callHaiku = (system: string, userMsg: string) => callClaude(system, userMsg);
 
 export async function summariseDescription(
   description: string,
@@ -70,4 +81,35 @@ export async function summariseRefusal(
     .map((r, i) => `Reason ${i + 1}: ${r.title}\n${r.text}`)
     .join("\n\n");
   return callHaiku(REFUSAL_PROMPT, userMsg);
+}
+
+const APPEAL_PROMPT =
+  `You explain the outcome of an Irish planning appeal to a regular person in plain English. ` +
+  `Appeals are decided nationally by An Coimisiún Pleanála (formerly An Bord Pleanála), and the ` +
+  `Commission's decision replaces the council's. In 2-3 short sentences: say who appealed and ` +
+  `what was at stake, then — if the appeal has been decided — what the Commission decided and the ` +
+  `main practical reasons. If it is not yet decided, say it is still under consideration and what ` +
+  `is being contested. Name real issues (overlooking neighbours, traffic, height and scale, ` +
+  `drainage…), never policy or plan citations. Use only what the material states — never invent details.`;
+
+/**
+ * Plain-English summary of an appeal and (where decided) the Commission's
+ * decision. When a case document (board order / inspector's report) is
+ * supplied it is attached for the model to read directly; otherwise the
+ * summary is drawn from the structured context alone.
+ */
+export async function summariseAppeal(
+  context: string,
+  pdfBase64?: string | null
+): Promise<string | null> {
+  if (!context.trim() && !pdfBase64) return null;
+  if (pdfBase64) {
+    const content: ContentBlock[] = [
+      { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+      { type: "text", text: `${context}\n\nSummarise this appeal and its decision for a general reader.` },
+    ];
+    // PDFs take longer to process, so allow a wider window and more tokens.
+    return callClaude(APPEAL_PROMPT, content, 320, 25_000);
+  }
+  return callClaude(APPEAL_PROMPT, context, 320);
 }

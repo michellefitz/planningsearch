@@ -163,6 +163,55 @@ const ABP_FETCH_HEADERS = {
   "Accept-Language": "en-IE,en;q=0.9",
 };
 
+// Documents whose title names the decision reasoning are the most useful to
+// summarise; everything else (application forms, observations) is secondary.
+const DECISION_DOC_RE = /board\s*(order|direction)|inspector|decision|determination/i;
+const PDF_URL_RE = /\.pdf($|[?#])/i;
+
+/** Pick the case document most worth summarising — a decision/board document
+ *  if present, else the first PDF. Non-PDFs are skipped (can't be fed to the
+ *  model as a document block). */
+export function pickAppealDocument(documents: AppealCaseDoc[]): AppealCaseDoc | null {
+  const pdfs = documents.filter((d) => PDF_URL_RE.test(d.url));
+  if (!pdfs.length) return null;
+  return pdfs.find((d) => DECISION_DOC_RE.test(d.title)) ?? pdfs[0];
+}
+
+/** Fetch a case document and return it base64-encoded, or null if it is not a
+ *  PDF, is too large, or is unreachable. Never throws. */
+export async function fetchAppealDocumentBase64(
+  url: string,
+  maxBytes = 12_000_000,
+  trace?: AbpDiagnosticStep[]
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: ABP_FETCH_HEADERS });
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!res.ok) {
+      trace?.push({ step: "abp_doc_fetch", url, status: res.status, contentType, error: "non-200" });
+      return null;
+    }
+    if (!/pdf/i.test(contentType) && !PDF_URL_RE.test(url)) {
+      trace?.push({ step: "abp_doc_fetch", url, status: res.status, contentType, error: "not-pdf" });
+      return null;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > maxBytes) {
+      trace?.push({ step: "abp_doc_fetch", url, status: res.status, contentType, error: `too-large ${buf.length}` });
+      return null;
+    }
+    trace?.push({ step: "abp_doc_fetch", url, status: res.status, contentType, bodySnippet: `${buf.length} bytes` });
+    return buf.toString("base64");
+  } catch (err) {
+    trace?.push({ step: "abp_doc_fetch", url, error: err instanceof Error ? err.message : String(err) });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Fetch and parse an An Coimisiún Pleanála case page on demand. Returns null
  * (never throws) if the page is unreachable or blocked, so the caller can fall

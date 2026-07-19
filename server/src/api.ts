@@ -1,7 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import type Database from "better-sqlite3";
 import { AUTHORITY_BY_ID } from "./config/authorities.js";
-import { abpCaseUrl, fetchAppealCase } from "./abp.js";
+import {
+  abpCaseUrl,
+  fetchAppealCase,
+  fetchAppealDocumentBase64,
+  pickAppealDocument,
+} from "./abp.js";
 import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
 import {
@@ -14,7 +19,7 @@ import {
   safeFilename,
   type DiagnosticStep,
 } from "./documents.js";
-import { summariseDescription, summariseRefusal } from "./summarize.js";
+import { summariseAppeal, summariseDescription, summariseRefusal } from "./summarize.js";
 import { fetchZoning } from "./zoning.js";
 import {
   AGILE_CLIENT_BY_AUTHORITY,
@@ -103,6 +108,7 @@ function publicApplication(row: Record<string, unknown>) {
 }
 
 const REFUSAL_SUMMARY_CACHE = new Map<number, string>();
+const APPEAL_SUMMARY_CACHE = new Map<number, { summary: string; based_on_document: string | null }>();
 
 export function registerRoutes(app: FastifyInstance, db: Database.Database) {
   app.get("/api/meta", () => {
@@ -262,6 +268,62 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       fields: details?.fields ?? null,
       documents: details?.documents ?? null,
     };
+  });
+
+  // AI plain-English summary of an appeal and its decision. Reads the most
+  // relevant case document (board order / inspector's report) directly where
+  // one is available, falling back to the structured record. On-demand and
+  // cached — the model call plus a document fetch is too costly to run eagerly.
+  app.get("/api/applications/:id/appeal-summary", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare(
+        `SELECT description, decision, appeal_reference, appeal_status,
+                appeal_decision, appeal_decision_date
+         FROM applications WHERE id = ?`
+      )
+      .get(id) as
+      | {
+          description: string | null;
+          decision: string | null;
+          appeal_reference: string | null;
+          appeal_status: string | null;
+          appeal_decision: string | null;
+          appeal_decision_date: string | null;
+        }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    const caseUrl = abpCaseUrl(row.appeal_reference);
+    if (!caseUrl) return { supported: false };
+
+    const cached = APPEAL_SUMMARY_CACHE.get(id);
+    if (cached) return { supported: true, ...cached };
+
+    const debug = (req.query as { debug?: string }).debug === "1";
+    const trace = debug ? [] : undefined;
+    const details = await fetchAppealCase(caseUrl, trace);
+
+    const context = [
+      row.description ? `Development: ${row.description}` : null,
+      `Council decision: ${row.decision ?? "unknown"}`,
+      row.appeal_status ? `Appeal status: ${row.appeal_status}` : null,
+      row.appeal_decision
+        ? `An Coimisiún Pleanála decision: ${row.appeal_decision}${row.appeal_decision_date ? ` on ${row.appeal_decision_date}` : ""}`
+        : null,
+      ...(details?.fields ?? []).map((f) => `${f.label}: ${f.value}`),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const doc = details ? pickAppealDocument(details.documents) : null;
+    const pdf = doc ? await fetchAppealDocumentBase64(doc.url, 12_000_000, trace) : null;
+    const summary = await summariseAppeal(context, pdf);
+
+    if (debug) return { case_url: caseUrl, based_on_document: pdf ? doc?.title : null, summary, trace };
+    if (!summary) return { supported: true, summary: null, based_on_document: null };
+    const result = { summary, based_on_document: pdf ? (doc?.title ?? null) : null };
+    APPEAL_SUMMARY_CACHE.set(id, result);
+    return { supported: true, ...result };
   });
 
   // Resolve the official portal deep link at click time. Agile councils need

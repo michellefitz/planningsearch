@@ -660,6 +660,97 @@ async function callHaiku(systemPrompt, userMsg) {
   }
 }
 
+async function callClaude(systemPrompt, content, maxTokens = 120, timeoutMs = 10000) {
+  if (!ANTHROPIC_API_KEY) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: "user", content }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.content?.find((b) => b.type === "text")?.text?.trim() || null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const APPEAL_SUMMARY_PROMPT =
+  "You explain the outcome of an Irish planning appeal to a regular person in plain English. " +
+  "Appeals are decided nationally by An Coimisiún Pleanála (formerly An Bord Pleanála), and the " +
+  "Commission's decision replaces the council's. In 2-3 short sentences: say who appealed and " +
+  "what was at stake, then — if the appeal has been decided — what the Commission decided and the " +
+  "main practical reasons. If it is not yet decided, say it is still under consideration and what " +
+  "is being contested. Name real issues (overlooking neighbours, traffic, height and scale, " +
+  "drainage…), never policy or plan citations. Use only what the material states — never invent details.";
+
+async function summariseAppeal(context, pdfBase64) {
+  if (!context.trim() && !pdfBase64) return null;
+  if (pdfBase64) {
+    const content = [
+      { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+      { type: "text", text: `${context}\n\nSummarise this appeal and its decision for a general reader.` },
+    ];
+    return callClaude(APPEAL_SUMMARY_PROMPT, content, 320, 25000);
+  }
+  return callClaude(APPEAL_SUMMARY_PROMPT, context, 320);
+}
+
+const DECISION_DOC_RE = /board\s*(order|direction)|inspector|decision|determination/i;
+const PDF_URL_RE = /\.pdf($|[?#])/i;
+
+function pickAppealDocument(documents) {
+  const pdfs = (documents ?? []).filter((d) => PDF_URL_RE.test(d.url));
+  if (!pdfs.length) return null;
+  return pdfs.find((d) => DECISION_DOC_RE.test(d.title)) ?? pdfs[0];
+}
+
+async function fetchAppealDocumentBase64(url, maxBytes = 12_000_000, trace) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: ABP_FETCH_HEADERS });
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!res.ok) {
+      trace?.push({ step: "abp_doc_fetch", url, status: res.status, contentType, error: "non-200" });
+      return null;
+    }
+    if (!/pdf/i.test(contentType) && !PDF_URL_RE.test(url)) {
+      trace?.push({ step: "abp_doc_fetch", url, status: res.status, contentType, error: "not-pdf" });
+      return null;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > maxBytes) {
+      trace?.push({ step: "abp_doc_fetch", url, status: res.status, contentType, error: `too-large ${buf.length}` });
+      return null;
+    }
+    trace?.push({ step: "abp_doc_fetch", url, status: res.status, contentType, bodySnippet: `${buf.length} bytes` });
+    return buf.toString("base64");
+  } catch (err) {
+    trace?.push({ step: "abp_doc_fetch", url, error: err instanceof Error ? err.message : String(err) });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const APPEAL_SUMMARY_CACHE = new Map();
+
 async function summariseDescription(description, applicationType) {
   if (!description) return null;
   if (AI_SUMMARY_CACHE.has(description)) return AI_SUMMARY_CACHE.get(description);
@@ -1181,6 +1272,39 @@ export default async function handler(req, res) {
       fields: details?.fields ?? null,
       documents: details?.documents ?? null,
     });
+  }
+
+  const asm = route.match(/^\/api\/applications\/(\d+)\/appeal-summary$/);
+  if (asm) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(asm[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    const caseUrl = abpCaseUrl(app.appeal_reference);
+    if (!caseUrl) return send(res, 200, { supported: false });
+    const cached = APPEAL_SUMMARY_CACHE.get(app.id);
+    if (cached) return send(res, 200, { supported: true, ...cached });
+
+    const debug = p.get("debug") === "1";
+    const trace = debug ? [] : undefined;
+    const details = await fetchAppealCase(caseUrl, trace);
+    const context = [
+      app.description ? `Development: ${app.description}` : null,
+      `Council decision: ${app.decision ?? "unknown"}`,
+      app.appeal_status ? `Appeal status: ${app.appeal_status}` : null,
+      app.appeal_decision
+        ? `An Coimisiún Pleanála decision: ${app.appeal_decision}${app.appeal_decision_date ? ` on ${app.appeal_decision_date}` : ""}`
+        : null,
+      ...(details?.fields ?? []).map((f) => `${f.label}: ${f.value}`),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const doc = details ? pickAppealDocument(details.documents) : null;
+    const pdf = doc ? await fetchAppealDocumentBase64(doc.url, 12_000_000, trace) : null;
+    const summary = await summariseAppeal(context, pdf);
+    if (debug) return send(res, 200, { case_url: caseUrl, based_on_document: pdf ? doc?.title : null, summary, trace });
+    if (!summary) return send(res, 200, { supported: true, summary: null, based_on_document: null });
+    const result = { summary, based_on_document: pdf ? doc?.title ?? null : null };
+    APPEAL_SUMMARY_CACHE.set(app.id, result);
+    return send(res, 200, { supported: true, ...result });
   }
 
   const fm = route.match(/^\/api\/applications\/(\d+)\/files$/);

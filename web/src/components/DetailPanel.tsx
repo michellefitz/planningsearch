@@ -426,9 +426,20 @@ type AppealState =
  * documentation) on demand — degrading to just the summary + link when the
  * case site can't be reached.
  */
+type AppealSummaryState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "loaded"; summary: string; source: string | null }
+  | { phase: "empty" }
+  | { phase: "failed" };
+
 function AppealCard({ detail: d }: { detail: AppDetail }) {
   const [state, setState] = useState<AppealState>({ phase: "idle" });
-  useEffect(() => setState({ phase: "idle" }), [d.id]);
+  const [summary, setSummary] = useState<AppealSummaryState>({ phase: "idle" });
+  useEffect(() => {
+    setState({ phase: "idle" });
+    setSummary({ phase: "idle" });
+  }, [d.id]);
   if (!d.appeal_reference) return null;
 
   const load = async () => {
@@ -443,9 +454,48 @@ function AppealCard({ detail: d }: { detail: AppDetail }) {
     }
   };
 
+  const loadSummary = async () => {
+    setSummary({ phase: "loading" });
+    try {
+      const res = await api.appealSummary(d.id);
+      if (res.summary)
+        setSummary({ phase: "loaded", summary: res.summary, source: res.based_on_document ?? null });
+      else setSummary({ phase: "empty" });
+    } catch {
+      setSummary({ phase: "failed" });
+    }
+  };
+
   return (
     <section aria-labelledby="appeal-h">
       <h3 id="appeal-h">Appeal — An Coimisiún Pleanála</h3>
+
+      <div className="appeal-summary">
+        {summary.phase === "idle" && (
+          <button type="button" className="btn ai" onClick={loadSummary}>
+            ✨ Summarise the appeal &amp; decision
+          </button>
+        )}
+        {summary.phase === "loading" && (
+          <span className="hint">Reading the case file and writing a summary…</span>
+        )}
+        {summary.phase === "failed" && (
+          <p className="list-note">Couldn't generate a summary just now — try again shortly.</p>
+        )}
+        {summary.phase === "empty" && (
+          <p className="list-note">Not enough on the case file yet to summarise.</p>
+        )}
+        {summary.phase === "loaded" && (
+          <blockquote className="ai-summary">
+            {summary.summary}
+            <footer className="hint">
+              AI summary{summary.source ? ` · from "${summary.source}"` : ""} — verify against the
+              case file.
+            </footer>
+          </blockquote>
+        )}
+      </div>
+
       <dl className="facts">
         {d.appeal_status && (
           <>

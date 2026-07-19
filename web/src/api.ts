@@ -224,6 +224,12 @@ export const api = {
       fields?: Array<{ label: string; value: string }> | null;
       documents?: Array<{ title: string; url: string }> | null;
     }>(`/api/applications/${id}/appeal`),
+  appealSummary: (id: number) =>
+    getJson<{
+      supported: boolean;
+      summary?: string | null;
+      based_on_document?: string | null;
+    }>(`/api/applications/${id}/appeal-summary`),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
 };

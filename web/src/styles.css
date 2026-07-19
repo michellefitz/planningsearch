@@ -1091,6 +1091,33 @@ body {
   border-color: #fca5a5;
 }
 
+/* Appeal (An Coimisiún Pleanála) AI summary */
+.appeal-summary {
+  margin: 0.3rem 0 0.8rem;
+}
+.btn.ai {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+}
+.btn.ai:hover {
+  background: #e0e7ff;
+}
+.ai-summary {
+  margin: 0.5rem 0 0;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: #1e3a5f;
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+}
+.ai-summary footer {
+  margin-top: 0.45rem;
+  font-size: 0.78rem;
+}
+
 /* Long planning descriptions clamp to ~6 lines until expanded */
 .detail-desc.clamped {
   display: -webkit-box;
