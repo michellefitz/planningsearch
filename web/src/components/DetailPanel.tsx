@@ -340,36 +340,51 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   const timeline = buildTimeline(d);
   const stats = buildStats(d);
   const [conditions, setConditions] = useState<DecisionConditions | null>(null);
+  const [conditionsLoading, setConditionsLoading] = useState(false);
   const [enrich, setEnrich] = useState<{
     ai_summary: string | null;
     applicant_name: string | null;
     agent_name: string | null;
   } | null>(null);
+  const [enrichLoading, setEnrichLoading] = useState(false);
+  // Councils whose decision substance the conditions endpoint can serve —
+  // skipping the round-trip (and the placeholder) everywhere else.
+  const hasConditionsSource = ["south-dublin", "dublin-city", "fingal"].includes(d.authority_id);
 
   useEffect(() => {
     setConditions(null);
     setEnrich(null);
     let cancelled = false;
-    api
-      .conditions(d.id)
-      .then((res) => {
-        if (!cancelled && res.conditions?.items.length) setConditions(res.conditions);
-      })
-      .catch(() => {});
+    if (hasConditionsSource) {
+      setConditionsLoading(true);
+      api
+        .conditions(d.id)
+        .then((res) => {
+          if (!cancelled && res.conditions?.items.length) setConditions(res.conditions);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setConditionsLoading(false);
+        });
+    }
     // AI summary + party backfill need upstream calls, so the detail
     // endpoint returns without them and they stream in here.
     if (!d.ai_summary || !d.applicant_name || !d.agent_name) {
+      setEnrichLoading(true);
       api
         .enrich(d.id)
         .then((res) => {
           if (!cancelled) setEnrich(res);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setEnrichLoading(false);
+        });
     }
     return () => {
       cancelled = true;
     };
-  }, [d.id, d.ai_summary, d.applicant_name, d.agent_name]);
+  }, [d.id, d.ai_summary, d.applicant_name, d.agent_name, hasConditionsSource]);
 
   const aiSummary = d.ai_summary ?? enrich?.ai_summary ?? null;
   const applicant = d.applicant_name ?? enrich?.applicant_name ?? null;
@@ -403,9 +418,22 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
             </span>
           )}
         </p>
-        {aiSummary && <p className="detail-summary">✦ {aiSummary}</p>}
-        {conditions?.refusal_summary && (
+        {aiSummary ? (
+          <p className="detail-summary">✦ {aiSummary}</p>
+        ) : (
+          enrichLoading && (
+            <p className="detail-summary loading-line">✦ Writing a plain-English summary…</p>
+          )
+        )}
+        {conditions?.refusal_summary ? (
           <p className="detail-summary refusal-summary">✦ {conditions.refusal_summary}</p>
+        ) : (
+          conditionsLoading &&
+          d.status === "refused" && (
+            <p className="detail-summary refusal-summary loading-line">
+              ✦ Summarising why it was refused…
+            </p>
+          )
         )}
         <PropertyMedia detail={d} />
         <div className="action-row">
@@ -453,7 +481,19 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         )}
       </section>
 
-      <DecisionSection conditions={conditions} />
+      {conditionsLoading && d.decision ? (
+        <section aria-labelledby="decision-h" aria-busy="true">
+          <h3 id="decision-h">What the council decided</h3>
+          <p className="loading-line">Fetching the decision record from the council…</p>
+          <div className="skeleton-block" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </section>
+      ) : (
+        <DecisionSection conditions={conditions} />
+      )}
 
       <section aria-labelledby="facts-h">
         <h3 id="facts-h">Details</h3>
