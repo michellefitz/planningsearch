@@ -124,6 +124,14 @@ export function parseAppealCaseFields(html: string): AppealCaseField[] {
 
 const ANCHOR_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const CASE_DOC_HREF_RE = /\.(pdf|docx?|tiff?)([?#]|$)|case\s*documentation|\/document|getfile/i;
+// Trailing "(… .PDF format 285KB)" / "(report.pdf)" clutter the anchor text.
+const DOC_META_PAREN_RE = /\s*\([^)]*(?:\.pdf|format|\d\s*[kmg]b)[^)]*\)\s*$/i;
+
+/** Strip file-format/size clutter the case site appends to document labels. */
+export function cleanDocTitle(raw: string): string {
+  const t = raw.replace(DOC_META_PAREN_RE, "").trim();
+  return t || raw.trim();
+}
 
 /** Links to case documentation (inspector's report, board direction, PDFs). */
 export function parseAppealCaseDocuments(html: string, baseUrl: string): AppealCaseDoc[] {
@@ -141,7 +149,9 @@ export function parseAppealCaseDocuments(html: string, baseUrl: string): AppealC
     if (seen.has(url)) continue;
     seen.add(url);
     const text = clean(m[2]);
-    const title = text || decodeURIComponent(url.split("/").pop() ?? "Document");
+    const title = text
+      ? cleanDocTitle(text)
+      : decodeURIComponent(url.split("/").pop() ?? "Document");
     out.push({ title, url });
   }
   return out;

@@ -119,6 +119,11 @@ function parseAppealCaseFields(html) {
 
 const ABP_ANCHOR_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const ABP_DOC_HREF_RE = /\.(pdf|docx?|tiff?)([?#]|$)|case\s*documentation|\/document|getfile/i;
+const ABP_DOC_META_PAREN_RE = /\s*\([^)]*(?:\.pdf|format|\d\s*[kmg]b)[^)]*\)\s*$/i;
+function cleanDocTitle(raw) {
+  const t = raw.replace(ABP_DOC_META_PAREN_RE, "").trim();
+  return t || raw.trim();
+}
 
 function parseAppealCaseDocuments(html, baseUrl) {
   const out = [];
@@ -135,7 +140,10 @@ function parseAppealCaseDocuments(html, baseUrl) {
     if (seen.has(url)) continue;
     seen.add(url);
     const text = abpClean(m[2]);
-    out.push({ title: text || decodeURIComponent(url.split("/").pop() ?? "Document"), url });
+    out.push({
+      title: text ? cleanDocTitle(text) : decodeURIComponent(url.split("/").pop() ?? "Document"),
+      url,
+    });
   }
   return out;
 }
@@ -693,22 +701,36 @@ async function callClaude(systemPrompt, content, maxTokens = 120, timeoutMs = 10
 const APPEAL_SUMMARY_PROMPT =
   "You explain the outcome of an Irish planning appeal to a regular person in plain English. " +
   "Appeals are decided nationally by An Coimisiún Pleanála (formerly An Bord Pleanála), and the " +
-  "Commission's decision replaces the council's. In 2-3 short sentences: say who appealed and " +
-  "what was at stake, then — if the appeal has been decided — what the Commission decided and the " +
-  "main practical reasons. If it is not yet decided, say it is still under consideration and what " +
-  "is being contested. Name real issues (overlooking neighbours, traffic, height and scale, " +
-  "drainage…), never policy or plan citations. Use only what the material states — never invent details.";
+  "Commission's decision replaces the council's. Write a short, flowing summary of a few sentences: " +
+  "who appealed and what was at stake, then — if the appeal has been decided — what the Commission " +
+  "decided and the main practical reasons. If it is not yet decided, say it is still under " +
+  "consideration and what is being contested. Name real issues (overlooking neighbours, traffic, " +
+  "height and scale, drainage…), never policy or plan citations. " +
+  "FORMAT: plain prose only — no Markdown, asterisks, bold, headings, bullet points, section labels " +
+  "or a title. Do not restate the address as a heading; begin directly with the summary. " +
+  "Use only what the material states — never invent details.";
+
+function sanitiseSummary(text) {
+  return text
+    .replace(/\*\*/g, "")
+    .replace(/^\s*#{1,6}\s+/gm, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
 
 async function summariseAppeal(context, pdfBase64) {
   if (!context.trim() && !pdfBase64) return null;
+  let text;
   if (pdfBase64) {
     const content = [
       { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
       { type: "text", text: `${context}\n\nSummarise this appeal and its decision for a general reader.` },
     ];
-    return callClaude(APPEAL_SUMMARY_PROMPT, content, 320, 25000);
+    text = await callClaude(APPEAL_SUMMARY_PROMPT, content, 320, 25000);
+  } else {
+    text = await callClaude(APPEAL_SUMMARY_PROMPT, context, 320);
   }
-  return callClaude(APPEAL_SUMMARY_PROMPT, context, 320);
+  return text ? sanitiseSummary(text) : null;
 }
 
 const DECISION_DOC_RE = /board\s*(order|direction)|inspector|decision|determination/i;

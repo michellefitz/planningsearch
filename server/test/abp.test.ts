@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   abpCaseNumber,
   abpCaseUrl,
+  cleanDocTitle,
   parseAppealCase,
   parseAppealCaseDocuments,
   parseAppealCaseFields,
@@ -107,6 +108,28 @@ describe("parseAppealCaseDocuments", () => {
     const out = parseAppealCase(html, "https://www.pleanala.ie/en-ie/case/1");
     expect(out.fields).toHaveLength(1);
     expect(out.documents).toHaveLength(1);
+  });
+});
+
+describe("cleanDocTitle", () => {
+  it("strips trailing file-format/size clutter", () => {
+    expect(cleanDocTitle("Inspectors Report (320/R320138.pdf, .PDF format 285KB)")).toBe(
+      "Inspectors Report"
+    );
+    expect(cleanDocTitle("Board Order (2 MB)")).toBe("Board Order");
+  });
+
+  it("leaves clean titles and meaningful parentheses untouched", () => {
+    expect(cleanDocTitle("Board Direction")).toBe("Board Direction");
+    expect(cleanDocTitle("Observation (John Murphy)")).toBe("Observation (John Murphy)");
+  });
+
+  it("applies within document parsing", () => {
+    const docs = parseAppealCaseDocuments(
+      `<a href="/x/r320138.pdf">Inspectors Report (320/R320138.pdf, .PDF format 285KB)</a>`,
+      "https://www.pleanala.ie/en-ie/case/320138"
+    );
+    expect(docs[0].title).toBe("Inspectors Report");
   });
 });
 

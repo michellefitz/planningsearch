@@ -86,11 +86,23 @@ export async function summariseRefusal(
 const APPEAL_PROMPT =
   `You explain the outcome of an Irish planning appeal to a regular person in plain English. ` +
   `Appeals are decided nationally by An Coimisiún Pleanála (formerly An Bord Pleanála), and the ` +
-  `Commission's decision replaces the council's. In 2-3 short sentences: say who appealed and ` +
-  `what was at stake, then — if the appeal has been decided — what the Commission decided and the ` +
-  `main practical reasons. If it is not yet decided, say it is still under consideration and what ` +
-  `is being contested. Name real issues (overlooking neighbours, traffic, height and scale, ` +
-  `drainage…), never policy or plan citations. Use only what the material states — never invent details.`;
+  `Commission's decision replaces the council's. Write a short, flowing summary of a few sentences: ` +
+  `who appealed and what was at stake, then — if the appeal has been decided — what the Commission ` +
+  `decided and the main practical reasons. If it is not yet decided, say it is still under ` +
+  `consideration and what is being contested. Name real issues (overlooking neighbours, traffic, ` +
+  `height and scale, drainage…), never policy or plan citations. ` +
+  `FORMAT: plain prose only — no Markdown, asterisks, bold, headings, bullet points, section labels ` +
+  `or a title. Do not restate the address as a heading; begin directly with the summary. ` +
+  `Use only what the material states — never invent details.`;
+
+/** Belt-and-braces cleanup for the odd time the model still emits Markdown. */
+function sanitiseSummary(text: string): string {
+  return text
+    .replace(/\*\*/g, "")
+    .replace(/^\s*#{1,6}\s+/gm, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
 
 /**
  * Plain-English summary of an appeal and (where decided) the Commission's
@@ -103,13 +115,16 @@ export async function summariseAppeal(
   pdfBase64?: string | null
 ): Promise<string | null> {
   if (!context.trim() && !pdfBase64) return null;
+  let text: string | null;
   if (pdfBase64) {
     const content: ContentBlock[] = [
       { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
       { type: "text", text: `${context}\n\nSummarise this appeal and its decision for a general reader.` },
     ];
     // PDFs take longer to process, so allow a wider window and more tokens.
-    return callClaude(APPEAL_PROMPT, content, 320, 25_000);
+    text = await callClaude(APPEAL_PROMPT, content, 320, 25_000);
+  } else {
+    text = await callClaude(APPEAL_PROMPT, context, 320);
   }
-  return callClaude(APPEAL_PROMPT, context, 320);
+  return text ? sanitiseSummary(text) : null;
 }
