@@ -9,6 +9,8 @@ import {
   fetchEplanningParties,
   fetchScannedDocument,
   fetchScannedFileList,
+  presentDocument,
+  safeFilename,
   type DiagnosticStep,
 } from "./documents.js";
 import { summariseDescription, summariseRefusal } from "./summarize.js";
@@ -303,8 +305,11 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
            <p>${reason}</p><p><a href="${fallbackUrl}">Open it on the council's viewer instead</a>.</p>`
         );
     }
-    reply.header("Content-Type", doc.contentType);
-    if (doc.disposition) reply.header("Content-Disposition", doc.disposition);
+    // Open PDFs/images in the tab; download only what the browser can't render.
+    const { contentType, disposition } = presentDocument(doc.contentType, doc.filename);
+    const cd = doc.filename ? `${disposition}; filename="${safeFilename(doc.filename)}"` : disposition;
+    reply.header("Content-Type", contentType);
+    reply.header("Content-Disposition", cd);
     reply.header("Cache-Control", "private, max-age=300");
     return reply.send(doc.body);
   });

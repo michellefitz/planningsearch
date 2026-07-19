@@ -50,6 +50,8 @@ const DOC_HREF_RE =
   /\.(pdf|tiff?|jpe?g|png|doc|docx)([?#]|$)|getfile|getdocument|viewdocument|download|openfile|docid=|fileid=/i;
 /** Anchor text that names the action, not the document ("View", "Open", …). */
 const GENERIC_LABEL_RE = /^(view|open|download|show|file|document|link)?$/i;
+/** A DD/MM/YYYY (or -/.- separated) date as councils display it. */
+const DATE_RE = /\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\b/;
 
 function stripTags(html: string): string {
   return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -111,7 +113,14 @@ export function parseFileListHtml(html: string, baseUrl: string): ScannedFile[] 
     const fullerCell = cells.find(
       (c) => c.length > label.length && c.toLowerCase().includes(label.toLowerCase())
     );
-    push(url, GENERIC_LABEL_RE.test(label) ? title : fullerCell ?? label ?? title, filename);
+    let displayTitle = GENERIC_LABEL_RE.test(label) ? title : fullerCell ?? label ?? title;
+    // Append a document date from the row if one is present and not already
+    // shown (Dublin City / South Dublin listings carry a received date).
+    const dateInRow = cells.map((c) => c.match(DATE_RE)?.[1]).find(Boolean);
+    if (dateInRow && !displayTitle.includes(dateInRow)) {
+      displayTitle = `${displayTitle} — ${dateInRow}`;
+    }
+    push(url, displayTitle, filename);
   }
 
   // Pass 2: any document anchors not inside a single-link row (non-table
@@ -247,8 +256,60 @@ export async function fetchScannedFileList(listUrl: string): Promise<ScannedFile
 
 export interface FetchedDocument {
   contentType: string;
-  disposition: string | null;
+  /** Best filename for the download/tab title, if known. */
+  filename: string | null;
   body: Buffer;
+}
+
+const EXT_CONTENT_TYPE: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  svg: "image/svg+xml",
+};
+
+/**
+ * Decide how the proxy should present a document. Councils frequently send a
+ * generic octet-stream type and/or Content-Disposition: attachment, which
+ * forces a download; for PDFs and images we normalise the type and switch to
+ * inline so they open in a browser tab. Types the browser can't render (e.g.
+ * .docx) stay as an attachment.
+ */
+export function presentDocument(
+  rawType: string | null | undefined,
+  filename: string | null | undefined
+): { contentType: string; disposition: "inline" | "attachment" } {
+  const ext = filename?.toLowerCase().match(/\.([a-z0-9]+)(?:$|[?#])/)?.[1];
+  let contentType = (rawType ?? "").split(";")[0].trim();
+  if (!contentType || /octet-stream/i.test(contentType)) {
+    contentType = (ext && EXT_CONTENT_TYPE[ext]) || contentType || "application/octet-stream";
+  }
+  const inlineable = /^application\/pdf$/i.test(contentType) || /^image\//i.test(contentType);
+  return { contentType, disposition: inlineable ? "inline" : "attachment" };
+}
+
+/** Filename from a Content-Disposition header, if present. */
+export function filenameFromDisposition(disposition: string | null): string | null {
+  if (!disposition) return null;
+  const star = disposition.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].replace(/^["']|["']$/g, "").trim());
+    } catch {
+      /* fall through */
+    }
+  }
+  const plain = disposition.match(/filename="?([^";]+)"?/i);
+  return plain ? plain[1].trim() : null;
+}
+
+/** Strip characters that can't appear in a Content-Disposition filename. */
+export function safeFilename(name: string): string {
+  return name.replace(/[\r\n"\\]/g, "").replace(/[/]/g, "-").trim().slice(0, 150);
 }
 
 export interface DiagnosticStep {
@@ -353,7 +414,9 @@ export async function fetchScannedDocument(
     if (body.byteLength > maxBytes) return "too_large";
     return {
       contentType,
-      disposition: docRes.headers.get("content-disposition"),
+      filename:
+        filenameFromDisposition(docRes.headers.get("content-disposition")) ??
+        (decodeURIComponent(new URL(currentUrl).pathname.split("/").pop() ?? "") || target.title),
       body,
     };
   } catch (err) {

@@ -6,7 +6,29 @@ import {
   extractFrameSrc,
   parseEplanningParties,
   parseFileListHtml,
+  presentDocument,
 } from "../src/documents.js";
+
+describe("presentDocument", () => {
+  it("opens PDFs and images inline, normalising a generic type by extension", () => {
+    expect(presentDocument("application/pdf", "Site Notice.pdf")).toEqual({
+      contentType: "application/pdf",
+      disposition: "inline",
+    });
+    expect(presentDocument("application/octet-stream", "plan.PDF")).toEqual({
+      contentType: "application/pdf",
+      disposition: "inline",
+    });
+    expect(presentDocument(null, "map.tiff").disposition).toBe("inline");
+  });
+
+  it("downloads types the browser can't render", () => {
+    expect(presentDocument("application/octet-stream", "report.docx")).toEqual({
+      contentType: "application/octet-stream",
+      disposition: "attachment",
+    });
+  });
+});
 
 describe("parseEplanningParties", () => {
   // Trimmed from a real eplanning.ie AppFileRefDetails page.
@@ -163,6 +185,22 @@ describe("parseFileListHtml", () => {
     expect(files[0].url).toContain("fileid=1");
   });
 
+  it("appends a document date from the row when one is present", () => {
+    const html = `
+      <table>
+        <tr><td><a href="ViewDocument?fileId=9">Site Layout Plan</a></td><td>14/03/2025</td></tr>
+      </table>`;
+    expect(parseFileListHtml(html, base)[0].title).toBe("Site Layout Plan — 14/03/2025");
+  });
+
+  it("does not double-append a date already in the title", () => {
+    const html = `
+      <table>
+        <tr><td>Application Form</td><td>02/06/2026</td><td><a href="getFile.aspx?fileid=1">View</a></td></tr>
+      </table>`;
+    expect(parseFileListHtml(html, base)[0].title).toBe("Application Form — 02/06/2026");
+  });
+
   it("returns an empty list for unrecognisable markup (deep-link fallback)", () => {
     expect(parseFileListHtml("<html><body>No anchors here</body></html>", base)).toEqual([]);
   });
@@ -192,18 +230,27 @@ describe("agile document parsing (verified /api/application/{id}/document shape)
     },
   ];
 
-  it("titles files by description, not the raw filename", async () => {
+  it("titles files by description with the received date appended", async () => {
     const { parseAgileDocuments } = await import("../src/agile.js");
-    const files = parseAgileDocuments(RESPONSE);
-    expect(files.map((f) => f.title)).toEqual(["Site Notice", "Application Form - Part A"]);
+    const files = parseAgileDocuments(
+      RESPONSE.map((d) => ({ ...d, receivedDate: "2024-07-18T00:00:00" }))
+    );
+    expect(files.map((f) => f.title)).toEqual([
+      "Site Notice — 18/07/2024",
+      "Application Form - Part A — 18/07/2024",
+    ]);
     expect(files[0].url).toContain("/document/SB6XY5JCGJSJTDDMW677");
   });
 
-  it("keeps hash and id for the download proxy", async () => {
+  it("keeps hash, id, raw name and date for the download proxy", async () => {
     const { parseAgileDocEntries } = await import("../src/agile.js");
-    const entries = parseAgileDocEntries(RESPONSE);
+    const entries = parseAgileDocEntries([
+      { ...RESPONSE[0], receivedDate: "2024-07-18T00:00:00" },
+    ]);
     expect(entries[0]).toEqual({
       title: "Site Notice",
+      name: "00125498_P001N01L_20240722_1030.pdf",
+      date: "18/07/2024",
       documentId: "1045467",
       documentHash: "SB6XY5JCGJSJTDDMW677",
     });

@@ -72,6 +72,7 @@ const ANCHOR_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const DOC_HREF_RE =
   /\.(pdf|tiff?|jpe?g|png|doc|docx)([?#]|$)|getfile|getdocument|viewdocument|download|openfile|docid=|fileid=/i;
 const GENERIC_LABEL_RE = /^(view|open|download|show|file|document|link)?$/i;
+const DATE_RE = /\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\b/;
 
 const stripTags = (h) => h.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 
@@ -117,7 +118,10 @@ function parseFileListHtml(html, baseUrl) {
     const fullerCell = cells.find(
       (c) => c.length > label.length && c.toLowerCase().includes(label.toLowerCase())
     );
-    push(url, GENERIC_LABEL_RE.test(label) ? title : fullerCell ?? label ?? title, filename);
+    let displayTitle = GENERIC_LABEL_RE.test(label) ? title : fullerCell ?? label ?? title;
+    const dateInRow = cells.map((c) => c.match(DATE_RE)?.[1]).find(Boolean);
+    if (dateInRow && !displayTitle.includes(dateInRow)) displayTitle = `${displayTitle} — ${dateInRow}`;
+    push(url, displayTitle, filename);
   }
 
   let m;
@@ -219,7 +223,13 @@ async function fetchScannedDocument(listUrl, index, maxBytes = 4_000_000, trace)
     if (Number.isFinite(declared) && declared > maxBytes) return "too_large";
     const body = Buffer.from(await docRes.arrayBuffer());
     if (body.byteLength > maxBytes) return "too_large";
-    return { contentType, disposition: docRes.headers.get("content-disposition"), body };
+    return {
+      contentType,
+      filename:
+        filenameFromDisposition(docRes.headers.get("content-disposition")) ??
+        (decodeURIComponent(new URL(currentUrl).pathname.split("/").pop() ?? "") || target.title),
+      body,
+    };
   } catch (err) {
     trace?.push({ step: "error", error: String(err) });
     return null;
@@ -542,7 +552,12 @@ function coerceDocArray(json) {
   return [];
 }
 
-/** Verified /api/application/{id}/document shape → {title, documentId, documentHash}. */
+const formatAgileDate = (raw) => {
+  const m = (typeof raw === "string" ? raw.slice(0, 10) : "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : null;
+};
+
+/** Verified /api/application/{id}/document shape. */
 function parseAgileDocEntries(json) {
   return coerceDocArray(json)
     .map((o) => {
@@ -551,16 +566,43 @@ function parseAgileDocEntries(json) {
       const documentId = agileStr(o.documentId);
       if (!documentHash && !documentId) return null;
       const title = agileStr(o.description) ?? agileStr(o.mediaDescription) ?? agileStr(o.name) ?? "Document";
-      return { title, documentId, documentHash };
+      return { title, name: agileStr(o.name), date: formatAgileDate(o.receivedDate), documentId, documentHash };
     })
     .filter(Boolean);
 }
 
 function parseAgileDocuments(json) {
   return parseAgileDocEntries(json).map((e) => ({
-    title: e.title,
+    title: e.date ? `${e.title} — ${e.date}` : e.title,
     url: `${AGILE_API}/document/${e.documentHash ?? e.documentId}`,
   }));
+}
+
+const EXT_CONTENT_TYPE = {
+  pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+  gif: "image/gif", tif: "image/tiff", tiff: "image/tiff", svg: "image/svg+xml",
+};
+function presentDocument(rawType, filename) {
+  const ext = filename?.toLowerCase().match(/\.([a-z0-9]+)(?:$|[?#])/)?.[1];
+  let contentType = (rawType ?? "").split(";")[0].trim();
+  if (!contentType || /octet-stream/i.test(contentType)) {
+    contentType = (ext && EXT_CONTENT_TYPE[ext]) || contentType || "application/octet-stream";
+  }
+  const inlineable = /^application\/pdf$/i.test(contentType) || /^image\//i.test(contentType);
+  return { contentType, disposition: inlineable ? "inline" : "attachment" };
+}
+function filenameFromDisposition(disposition) {
+  if (!disposition) return null;
+  const star = disposition.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+  if (star) { try { return decodeURIComponent(star[1].replace(/^["']|["']$/g, "").trim()); } catch {} }
+  const plain = disposition.match(/filename="?([^";]+)"?/i);
+  return plain ? plain[1].trim() : null;
+}
+const safeFilename = (name) => name.replace(/[\r\n"\\]/g, "").replace(/[/]/g, "-").trim().slice(0, 150);
+function agileFilename(entry) {
+  const ext = entry.name?.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  const base = safeFilename(entry.title);
+  return ext ? `${base}.${ext}` : entry.name ?? (base || null);
 }
 
 function agileDownloadCandidates(entry, appId) {
@@ -626,7 +668,11 @@ async function fetchAgileDocument(authorityId, sourceUrl, reference, index, maxB
       if (Number.isFinite(declared) && declared > maxBytes) return "too_large";
       const body = Buffer.from(await res.arrayBuffer());
       if (body.byteLength > maxBytes) return "too_large";
-      return { contentType: ct, disposition: res.headers.get("content-disposition"), body };
+      return {
+        contentType: ct,
+        filename: filenameFromDisposition(res.headers.get("content-disposition")) ?? agileFilename(target),
+        body,
+      };
     } catch (err) {
       trace?.push({ step: "agile_download", url, error: String(err) });
     } finally {
@@ -841,9 +887,14 @@ export default async function handler(req, res) {
       );
       return;
     }
+    // Open PDFs/images in the tab; download only what the browser can't render.
+    const pres = presentDocument(doc.contentType, doc.filename);
     res.statusCode = 200;
-    res.setHeader("Content-Type", doc.contentType);
-    if (doc.disposition) res.setHeader("Content-Disposition", doc.disposition);
+    res.setHeader("Content-Type", pres.contentType);
+    res.setHeader(
+      "Content-Disposition",
+      doc.filename ? `${pres.disposition}; filename="${safeFilename(doc.filename)}"` : pres.disposition
+    );
     res.setHeader("Cache-Control", "private, max-age=300");
     res.end(doc.body);
     return;

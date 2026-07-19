@@ -165,7 +165,13 @@ export async function fetchAgileParties(
 /* Portal deep links and document listings                             */
 /* ------------------------------------------------------------------ */
 
-import type { DiagnosticStep, ScannedFile } from "./documents.js";
+import {
+  filenameFromDisposition,
+  safeFilename,
+  type DiagnosticStep,
+  type FetchedDocument,
+  type ScannedFile,
+} from "./documents.js";
 
 const AGILE_PORTAL = "https://planning.agileapplications.ie";
 
@@ -231,8 +237,19 @@ const str = (v: unknown): string | null =>
 
 export interface AgileDocEntry {
   title: string;
+  /** Raw filename from the API (carries the reliable extension). */
+  name: string | null;
+  /** Document's received date, DD/MM/YYYY, if the API provides one. */
+  date: string | null;
   documentId: string | null;
   documentHash: string | null;
+}
+
+/** "2024-07-18T00:00:00" -> "18/07/2024" (Irish convention); null if unparseable. */
+function formatAgileDate(raw: unknown): string | null {
+  const s = typeof raw === "string" ? raw.slice(0, 10) : "";
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : null;
 }
 
 /** Top-level array (or the first array inside a wrapper object) of documents. */
@@ -258,7 +275,13 @@ export function parseAgileDocEntries(json: unknown): AgileDocEntry[] {
       const documentId = str(o.documentId);
       if (!documentHash && !documentId) return null;
       const title = str(o.description) ?? str(o.mediaDescription) ?? str(o.name) ?? "Document";
-      return { title, documentId, documentHash };
+      return {
+        title,
+        name: str(o.name),
+        date: formatAgileDate(o.receivedDate),
+        documentId,
+        documentHash,
+      };
     })
     .filter((x): x is AgileDocEntry => x !== null);
 }
@@ -267,7 +290,7 @@ export function parseAgileDocEntries(json: unknown): AgileDocEntry[] {
  *  itself is streamed by index through our proxy, which adds tenant headers). */
 export function parseAgileDocuments(json: unknown): ScannedFile[] {
   return parseAgileDocEntries(json).map((e) => ({
-    title: e.title,
+    title: e.date ? `${e.title} — ${e.date}` : e.title,
     url: `${AGILE_API}/document/${e.documentHash ?? e.documentId}`,
   }));
 }
@@ -315,10 +338,11 @@ export async function fetchAgileDocumentList(
   return { files, applicationUrl };
 }
 
-export interface FetchedDocument {
-  contentType: string;
-  disposition: string | null;
-  body: Buffer;
+/** A friendly filename: the human title with the raw file's extension. */
+function agileFilename(entry: AgileDocEntry): string | null {
+  const ext = entry.name?.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  const base = safeFilename(entry.title);
+  return ext ? `${base}.${ext}` : entry.name ?? (base || null);
 }
 
 /**
@@ -362,7 +386,11 @@ export async function fetchAgileDocument(
       if (Number.isFinite(declared) && declared > maxBytes) return "too_large";
       const body = Buffer.from(await res.arrayBuffer());
       if (body.byteLength > maxBytes) return "too_large";
-      return { contentType: ct, disposition: res.headers.get("content-disposition"), body };
+      return {
+        contentType: ct,
+        filename: filenameFromDisposition(res.headers.get("content-disposition")) ?? agileFilename(target),
+        body,
+      };
     } catch (err) {
       trace?.push({ step: "agile_download", url, error: String(err) });
     } finally {
