@@ -15,6 +15,13 @@ export interface ZoningInfo {
   objective: string | null;
   plan: string | null;
   plan_level: string | null;
+  plan_url: string | null;
+  about_url: string | null;
+}
+
+function urlOrNull(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  return /^https?:\/\//i.test(s) ? s : null;
 }
 
 export async function fetchZoning(lat: number, lng: number): Promise<ZoningInfo[] | null> {
@@ -23,7 +30,7 @@ export async function fetchZoning(lat: number, lng: number): Promise<ZoningInfo[
     geometryType: "esriGeometryPoint",
     spatialRel: "esriSpatialRelIntersects",
     where: "CURRENT_PLAN=1",
-    outFields: "ZONE_ORIG,ZONE_GZT,GZT_DESC,ZONE_DESC,PLAN_NAME,PLAN_LEVEL",
+    outFields: "ZONE_ORIG,ZONE_GZT,GZT_DESC,ZONE_DESC,PLAN_NAME,PLAN_LEVEL,ZONE_LINK,GZT_LINK",
     returnGeometry: "false",
     f: "json",
   });
@@ -45,6 +52,8 @@ export async function fetchZoning(lat: number, lng: number): Promise<ZoningInfo[
         objective: String(a.ZONE_DESC ?? "").trim() || null,
         plan: String(a.PLAN_NAME ?? "").trim() || null,
         plan_level: String(a.PLAN_LEVEL ?? "").trim() || null,
+        plan_url: urlOrNull(a.ZONE_LINK),
+        about_url: urlOrNull(a.GZT_LINK),
       }))
       .filter((z) => z.zone);
     // Development Plan zoning first, then Local Area Plans.

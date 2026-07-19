@@ -415,7 +415,7 @@ async function fetchZoning(lat, lng) {
     geometryType: "esriGeometryPoint",
     spatialRel: "esriSpatialRelIntersects",
     where: "CURRENT_PLAN=1",
-    outFields: "ZONE_ORIG,ZONE_GZT,GZT_DESC,ZONE_DESC,PLAN_NAME,PLAN_LEVEL",
+    outFields: "ZONE_ORIG,ZONE_GZT,GZT_DESC,ZONE_DESC,PLAN_NAME,PLAN_LEVEL,ZONE_LINK,GZT_LINK",
     returnGeometry: "false",
     f: "json",
   });
@@ -434,6 +434,12 @@ async function fetchZoning(lat, lng) {
         objective: String(a.ZONE_DESC ?? "").trim() || null,
         plan: String(a.PLAN_NAME ?? "").trim() || null,
         plan_level: String(a.PLAN_LEVEL ?? "").trim() || null,
+        plan_url: /^https?:\/\//i.test(String(a.ZONE_LINK ?? "").trim())
+          ? String(a.ZONE_LINK).trim()
+          : null,
+        about_url: /^https?:\/\//i.test(String(a.GZT_LINK ?? "").trim())
+          ? String(a.GZT_LINK).trim()
+          : null,
       }))
       .filter((z) => z.zone);
     zones.sort((a, b) => (a.plan_level === "DP" ? 0 : 1) - (b.plan_level === "DP" ? 0 : 1));

@@ -533,31 +533,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         </dl>
       </section>
 
-      {zones && (
-        <section aria-labelledby="zoning-h">
-          <h3 id="zoning-h">Zoning</h3>
-          {zones.map((z) => (
-            <div key={z.zone} className="zone-card">
-              <p className="zone-name">
-                {z.zone}
-                {z.general && <span className="tag">{z.general}</span>}
-              </p>
-              {z.objective && <p className="zone-objective">{z.objective}</p>}
-              {z.plan && (
-                <p className="hint">
-                  {z.plan}
-                  {z.plan_level === "LAP" && " (Local Area Plan)"}
-                </p>
-              )}
-            </div>
-          ))}
-          <p className="list-note">
-            From the MyPlan generalised zoning layer (DHLGH) at this application's map location —
-            the council's development plan is the authoritative source.
-          </p>
-        </section>
-      )}
-
       <section aria-labelledby="timeline-h">
         <h3 id="timeline-h">Timeline</h3>
         <ol className="timeline">
@@ -657,6 +632,41 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {zones && (
+        <section aria-labelledby="zoning-h" className="zoning-section">
+          <h3 id="zoning-h">Zoning</h3>
+          {zones.map((z) => (
+            <p key={z.zone} className="zone-line">
+              <strong>{z.zone}</strong>
+              {z.general && ` · ${z.general}`}
+              {z.objective && ` — ${z.objective}`}
+              {z.plan && (
+                <span className="hint">
+                  {" "}
+                  ({z.plan}
+                  {z.plan_level === "LAP" ? ", Local Area Plan" : ""})
+                </span>
+              )}{" "}
+              {z.about_url && (
+                <a href={z.about_url} target="_blank" rel="noopener noreferrer">
+                  What this means ↗
+                </a>
+              )}
+              {z.about_url && z.plan_url && " · "}
+              {z.plan_url && (
+                <a href={z.plan_url} target="_blank" rel="noopener noreferrer">
+                  Development plan ↗
+                </a>
+              )}
+            </p>
+          ))}
+          <p className="list-note">
+            From the MyPlan generalised zoning layer (DHLGH) at this application's map location —
+            the council's development plan is the authoritative source.
+          </p>
         </section>
       )}
 
