@@ -1022,6 +1022,13 @@ body {
   line-height: 1.35;
   color: var(--ink);
 }
+.ov-pop-title {
+  line-height: 1.35;
+}
+.ov-pop-gen {
+  font-weight: 450;
+  color: var(--ink-2);
+}
 .ov-pop-tag {
   align-self: flex-start;
   font-size: 0.68rem;

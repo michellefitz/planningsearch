@@ -65,8 +65,12 @@ function transformFeatures(layer: OverlayLayer, features: unknown[]): unknown[] 
       const desc = s(p.GZT_DESC) || s(p.ZONE_DESC) || s(p.ZONE_ORIG);
       f.properties = {
         zone_group: classifyZone(desc),
+        // Council's zone name/objective (e.g. "Sustainable Residential
+        // Neighbourhoods"), its code (e.g. "Z1"), and the national
+        // generalised type (e.g. "Existing Residential").
         zone_label: s(p.ZONE_DESC) || s(p.ZONE_ORIG) || "Zone",
         zone_code: s(p.ZONE_ORIG),
+        zone_general: s(p.GZT_DESC),
         plan: s(p.PLAN_NAME),
       };
     } else {

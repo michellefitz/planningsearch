@@ -761,6 +761,7 @@ function ovTransform(layer, features) {
         zone_group: classifyZone(desc),
         zone_label: ovStr(p.ZONE_DESC) || ovStr(p.ZONE_ORIG) || "Zone",
         zone_code: ovStr(p.ZONE_ORIG),
+        zone_general: ovStr(p.GZT_DESC),
         plan: ovStr(p.PLAN_NAME),
       };
     } else {

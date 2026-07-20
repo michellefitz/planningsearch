@@ -160,14 +160,25 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
           const f = e.features?.[0];
           if (!f) return;
           const pr = f.properties ?? {};
-          const html =
-            layer === "zoning"
-              ? `<div class="ov-popup"><strong>${escapeHtml(pr.zone_label || pr.zone_code || "Zone")}</strong>` +
-                `<span class="ov-pop-tag">${escapeHtml(ZONE_GROUPS[pr.zone_group as string]?.label ?? "Zoning")}</span>` +
-                (pr.plan ? `<span class="ov-pop-sub">${escapeHtml(pr.plan)}</span>` : "") +
-                `</div>`
-              : `<div class="ov-popup"><strong>Flood extent</strong>` +
-                `<span class="ov-pop-sub">${escapeHtml(pr.flood_label || "Mapped flood extent")}</span></div>`;
+          let html: string;
+          if (layer === "zoning") {
+            const code = String(pr.zone_code ?? "").trim();
+            const name = String(pr.zone_label ?? "").trim();
+            const general = String(pr.zone_general ?? "").trim();
+            // "Z1: Sustainable Residential Neighbourhoods"
+            const head = code && name && name.toLowerCase() !== code.toLowerCase() ? `${code}: ${name}` : name || code || "Zone";
+            const showGeneral = general && general.toLowerCase() !== name.toLowerCase();
+            html =
+              `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(head)}</strong>` +
+              (showGeneral ? `<span class="ov-pop-gen"> · ${escapeHtml(general)}</span>` : "") +
+              `</div><span class="ov-pop-tag">${escapeHtml(ZONE_GROUPS[pr.zone_group as string]?.label ?? "Zoning")}</span>` +
+              (pr.plan ? `<span class="ov-pop-sub">${escapeHtml(pr.plan)}</span>` : "") +
+              `</div>`;
+          } else {
+            html =
+              `<div class="ov-popup"><strong>Flood extent</strong>` +
+              `<span class="ov-pop-sub">${escapeHtml(pr.flood_label || "Mapped flood extent")}</span></div>`;
+          }
           new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
             .setLngLat(e.lngLat)
             .setHTML(html)
