@@ -38,7 +38,15 @@ fs.cpSync(path.join(root, "api", "_data"), path.join(funcDir, "_data"), { recurs
 fs.writeFileSync(
   path.join(funcDir, ".vc-config.json"),
   JSON.stringify(
-    { runtime: "nodejs22.x", handler: "index.mjs", launcherType: "Nodejs", shouldAddHelpers: false },
+    {
+      runtime: "nodejs22.x",
+      handler: "index.mjs",
+      launcherType: "Nodejs",
+      shouldAddHelpers: false,
+      // The agent endpoint streams SSE and can run for several tool turns.
+      supportsResponseStreaming: true,
+      maxDuration: 300,
+    },
     null,
     2
   )

@@ -28,6 +28,12 @@ mention at most in passing. Emphasise substantive conditions that changed what c
 the works, ridge-height reductions, obscure glazing or fixed windows, matching materials, setbacks from boundaries, \
 removal of permitted-development rights.
 
+COMMENCEMENT: Applications carry BCMS building-control fields — commencement_date (a commencement notice was \
+filed; works started, or start within ~4 weeks when the date is in the future) and completion_date (certified \
+complete). Use these to say whether a granted permission was actually acted on, and search with commenced_only to \
+find building activity in an area (disruption nearby, supply actually materialising, competitor activity). Absence \
+of a notice is evidence work has not started, not proof — some notices cite unmatchable reference numbers.
+
 ZONING: When zoning is relevant to the question, name the zone and what it is designated for, and relate it to the \
 proposal type (e.g. residential extensions in an established-residential zone are routine matters of amenity and design).
 

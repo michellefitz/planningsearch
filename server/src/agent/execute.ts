@@ -42,6 +42,9 @@ export interface AgentAppSummary {
   lat: number | null;
   lng: number | null;
   appeal_reference?: string | null;
+  /** BCMS: notified start of works / completion certificate, when filed. */
+  commencement_date?: string | null;
+  completion_date?: string | null;
 }
 
 export function toolAppSummary(row: Record<string, unknown>): AgentAppSummary {
@@ -61,6 +64,8 @@ export function toolAppSummary(row: Record<string, unknown>): AgentAppSummary {
     lat: (row.lat as number | null) ?? null,
     lng: (row.lng as number | null) ?? null,
     appeal_reference: (row.appeal_reference as string | null) ?? null,
+    commencement_date: (row.commencement_date as string | null) ?? null,
+    completion_date: (row.completion_date as string | null) ?? null,
   };
 }
 

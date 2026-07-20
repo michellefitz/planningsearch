@@ -1438,6 +1438,493 @@ function send(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
+/* ------------------------------------------------------------------ */
+/* Planning agent (POST /api/agent) — mirror of server/src/agent/*     */
+/* ------------------------------------------------------------------ */
+
+const AGENT_MODEL = "claude-sonnet-5";
+const AGENT_MAX_TURNS = 12;
+const AGENT_MAX_TOKENS = 4000;
+const AGENT_TOOL_RESULT_CAP = 30_000;
+
+const AGENT_SYSTEM_PROMPT = `You are the PlanView planning agent. You help people in Ireland understand what has \
+happened with planning applications so they can form their own picture — typically a homeowner wondering about an \
+extension, rebuild or new dwelling, or a professional researching an area.
+
+COVERAGE: Dublin City, Fingal, Dún Laoghaire-Rathdown, South Dublin and Kildare county councils. Data comes from the \
+statutory planning registers. Appeals are decided nationally by An Coimisiún Pleanála (formerly An Bord Pleanála) and \
+a decided appeal replaces the council's decision.
+
+EVIDENCE, NOT PREDICTIONS: You present what the register shows — grant/refusal outcomes on comparable applications, \
+the conditions imposed, refusal reasons, appeal outcomes, zoning. You never predict whether the user would get \
+permission, never estimate probabilities, and never give legal or professional advice. Let the evidence speak; the \
+user draws the conclusion. If asked "will I get permission", explain you can only show what happened in comparable \
+cases nearby.
+
+CLARIFY VAGUE LOCATIONS: A townland or town name alone ("Maynooth") is usually too broad — zoning and comparables \
+differ street to street. When the location is vague, ask one short clarifying question requesting a more specific \
+address, street or eircode, and stop. When it is specific enough, proceed without nagging.
+
+RESEARCH APPROACH: Typically geocode_location first, then search_applications scoped near those coordinates with \
+keywords matching the user's proposal, filtered to likely-domestic where relevant. Then examine the most comparable \
+results: get_conditions on granted ones, get_conditions on refused ones (reasons), get_appeal on any with an appeal \
+reference, and get_zoning on the closest application to describe the area's designation. Fetch conditions for at most \
+5 applications per reply. Prefer recent applications (last ~5 years) when plenty exist.
+
+CONDITIONS — SUBSTANTIVE VS BOILERPLATE: Most grants carry near-identical boilerplate conditions (construction hours, \
+noise limits, site tidiness, development contributions, water/drainage standards). Do not present these as a pattern — \
+mention at most in passing. Emphasise substantive conditions that changed what could be built: omit or reduce part of \
+the works, ridge-height reductions, obscure glazing or fixed windows, matching materials, setbacks from boundaries, \
+removal of permitted-development rights.
+
+COMMENCEMENT: Applications carry BCMS building-control fields — commencement_date (a commencement notice was \
+filed; works started, or start within ~4 weeks when the date is in the future) and completion_date (certified \
+complete). Use these to say whether a granted permission was actually acted on, and search with commenced_only to \
+find building activity in an area (disruption nearby, supply actually materialising, competitor activity). Absence \
+of a notice is evidence work has not started, not proof — some notices cite unmatchable reference numbers.
+
+ZONING: When zoning is relevant to the question, name the zone and what it is designated for, and relate it to the \
+proposal type (e.g. residential extensions in an established-residential zone are routine matters of amenity and design).
+
+FORMAT: Markdown. Short paragraphs and bullet lists, no long essays. When you reference a specific application, put a \
+token [app:id:<id>] on its own line (or several tokens on one line) where its card should appear — the interface \
+renders these as clickable cards. Always include tokens for the applications you discuss. Do not fabricate ids; only \
+use ids returned by tools. Do not put the token inside a sentence.
+
+If a tool returns an error or nothing, say plainly what could not be checked rather than guessing.`;
+
+const AGENT_STATUSES = [
+  "pending", "further_info", "granted", "refused",
+  "withdrawn", "invalid", "incomplete", "appealed",
+];
+
+const AGENT_TOOLS = [
+  {
+    name: "search_applications",
+    description:
+      "Search planning applications across Dublin City, Fingal, Dún Laoghaire-Rathdown, South Dublin " +
+      "and Kildare. Full-text over address, planning reference, applicant and description, with filters. " +
+      "Returns application summaries including id, status, decision, dates and coordinates. " +
+      "Use near+radius_km to scope to an area (results sorted nearest first).",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Keywords, e.g. 'two storey extension'" },
+        statuses: { type: "array", items: { type: "string", enum: AGENT_STATUSES } },
+        domestic_only: { type: "boolean", description: "Restrict to likely-domestic applications" },
+        appealed_only: { type: "boolean", description: "Only applications that went to appeal" },
+        commenced_only: {
+          type: "boolean",
+          description:
+            "Only permissions where a commencement notice was filed with building control — i.e. work actually started (or is about to)",
+        },
+        near: {
+          type: "object",
+          properties: { lat: { type: "number" }, lng: { type: "number" } },
+          required: ["lat", "lng"],
+        },
+        radius_km: { type: "number", description: "Search radius in km, used with near" },
+        received_from: { type: "string", description: "ISO date lower bound on received date" },
+        received_to: { type: "string", description: "ISO date upper bound on received date" },
+        limit: { type: "number", description: "Max results, default 25, cap 50" },
+      },
+    },
+  },
+  {
+    name: "get_application_detail",
+    description:
+      "Full register detail for one application by id: description, applicant, all dates, decision, " +
+      "appeal fields, units, floor area, commencement, portal link.",
+    input_schema: {
+      type: "object",
+      properties: { application_id: { type: "number" } },
+      required: ["application_id"],
+    },
+  },
+  {
+    name: "get_conditions",
+    description:
+      "Conditions of grant or reasons for refusal for one application. Only available for the four " +
+      "Dublin (agile) councils; for Kildare the register holds the outcome but not the conditions text. " +
+      "Codes: C=condition, R=refusal reason, D=further-info directive, I=informative, N=note.",
+    input_schema: {
+      type: "object",
+      properties: { application_id: { type: "number" } },
+      required: ["application_id"],
+    },
+  },
+  {
+    name: "get_zoning",
+    description:
+      "Land-use zoning at an application's location (zone code, name, generalised type) from the " +
+      "national Generalised Zoning dataset. Use to explain what development the area is designated for.",
+    input_schema: {
+      type: "object",
+      properties: { application_id: { type: "number" } },
+      required: ["application_id"],
+    },
+  },
+  {
+    name: "get_flood_risk",
+    description: "Indicative flood risk at an application's location (OPW flood maps).",
+    input_schema: {
+      type: "object",
+      properties: { application_id: { type: "number" } },
+      required: ["application_id"],
+    },
+  },
+  {
+    name: "get_appeal",
+    description:
+      "Appeal case details from An Coimisiún Pleanála for an application that was appealed: " +
+      "parties, status, decision and case documents. Only call when the application has an appeal reference.",
+    input_schema: {
+      type: "object",
+      properties: { application_id: { type: "number" } },
+      required: ["application_id"],
+    },
+  },
+  {
+    name: "get_documents",
+    description:
+      "List the scanned files / documents the council holds for an application (drawings, reports, " +
+      "decision orders), with titles. Slow: only call when the user asks about documents.",
+    input_schema: {
+      type: "object",
+      properties: { application_id: { type: "number" } },
+      required: ["application_id"],
+    },
+  },
+  {
+    name: "geocode_location",
+    description:
+      "Resolve a placename, street or eircode within the covered counties to approximate coordinates " +
+      "and the local authority, by matching addresses in the planning register. Returns null when no match — " +
+      "then ask the user for a more specific address.",
+    input_schema: {
+      type: "object",
+      properties: { location: { type: "string" } },
+      required: ["location"],
+    },
+  },
+];
+
+function agentBboxAround(lat, lng, km) {
+  const dLat = km / 111.32;
+  const dLng = km / (111.32 * Math.cos((lat * Math.PI) / 180));
+  return [lng - dLng, lat - dLat, lng + dLng, lat + dLat];
+}
+
+/** Map tool input onto the query params runSearch() already understands. */
+function agentSearchParams(input) {
+  const p = new URLSearchParams();
+  if (typeof input.query === "string" && input.query.trim()) p.set("q", input.query.trim());
+  if (Array.isArray(input.statuses) && input.statuses.length) p.set("status", input.statuses.map(String).join(","));
+  if (input.domestic_only === true) p.set("domestic", "1");
+  if (input.appealed_only === true) p.set("appealed", "1");
+  if (input.commenced_only === true) p.set("commenced", "1");
+  if (typeof input.received_from === "string") p.set("receivedFrom", input.received_from);
+  if (typeof input.received_to === "string") p.set("receivedTo", input.received_to);
+  const lat = Number(input.near?.lat);
+  const lng = Number(input.near?.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    p.set("lat", String(lat));
+    p.set("lng", String(lng));
+    p.set("sort", "distance");
+    const radius = Number(input.radius_km);
+    if (Number.isFinite(radius) && radius > 0) p.set("bbox", agentBboxAround(lat, lng, radius).join(","));
+  }
+  return p;
+}
+
+function agentAppSummary(a) {
+  return {
+    id: a.id,
+    authority_id: a.authority_id,
+    planning_reference: a.planning_reference,
+    description: a.description ?? null,
+    status: a.status,
+    status_label: BUNDLE.statuses[a.status] ?? a.status,
+    application_type: a.application_type ?? null,
+    is_domestic_guess: Boolean(a.is_domestic_guess),
+    received_date: a.received_date ?? null,
+    decision: a.decision ?? null,
+    decision_date: a.decision_date ?? null,
+    address_text: a.address_text ?? null,
+    lat: a.lat ?? null,
+    lng: a.lng ?? null,
+    appeal_reference: a.appeal_reference ?? null,
+    commencement_date: a.commencement_date ?? null,
+    completion_date: a.completion_date ?? null,
+    distance_km: a.distance_km,
+  };
+}
+
+async function executeAgentTool(name, input) {
+  const getApp = () => {
+    const id = Number(input.application_id);
+    return Number.isFinite(id) ? BUNDLE.applications.find((a) => a.id === id) ?? null : null;
+  };
+  switch (name) {
+    case "search_applications": {
+      const limit = Math.min(Number(input.limit) || 25, 50);
+      const { rows, fuzzy } = runSearch(agentSearchParams(input));
+      return { total: rows.length, fuzzy, results: rows.slice(0, limit).map(agentAppSummary) };
+    }
+    case "get_application_detail": {
+      const app = getApp();
+      if (!app) return { error: "Application not found" };
+      const { geom_polygon: _g, ai_summary: _s, ...rest } = app;
+      return rest;
+    }
+    case "get_conditions": {
+      const app = getApp();
+      if (!app) return { error: "Application not found" };
+      if (!AGILE_CLIENT_BY_AUTHORITY[app.authority_id]) {
+        return {
+          available: false,
+          note: "Conditions text is not published in a fetchable form by this council; the register holds only the decision outcome.",
+        };
+      }
+      const conditions = await fetchAgileConditions(app.authority_id, app.source_url, app.planning_reference);
+      return conditions ?? { available: false, note: "No conditions returned by the council system." };
+    }
+    case "get_zoning": {
+      const app = getApp();
+      if (!app) return { error: "Application not found" };
+      if (app.lat == null || app.lng == null) return { error: "Application has no coordinates" };
+      return (await fetchZoning(app.lat, app.lng)) ?? { error: "Zoning lookup failed" };
+    }
+    case "get_flood_risk": {
+      const app = getApp();
+      if (!app) return { error: "Application not found" };
+      if (app.lat == null || app.lng == null) return { error: "Application has no coordinates" };
+      return (await fetchFlood(app.lat, app.lng)) ?? { error: "Flood lookup failed" };
+    }
+    case "get_appeal": {
+      const app = getApp();
+      if (!app) return { error: "Application not found" };
+      const url = abpCaseUrl(app.appeal_reference);
+      if (!app.appeal_reference || !url) return { error: "No appeal on this application" };
+      const kase = await fetchAppealCase(url);
+      return kase ?? { error: "Could not load the appeal case page", case_url: url };
+    }
+    case "get_documents": {
+      const app = getApp();
+      if (!app) return { error: "Application not found" };
+      const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
+      if (listUrl) {
+        const files = await fetchScannedFileList(listUrl);
+        if (!files) return { error: "Could not load the document list" };
+        return { count: files.length, files: files.map((f) => ({ title: f.title })) };
+      }
+      if (AGILE_SLUGS[app.authority_id]) {
+        const result = await fetchAgileDocumentList(app.authority_id, app.source_url, app.planning_reference);
+        if (!result) return { error: "Could not load the document list" };
+        return { count: result.files.length, files: result.files.map((f) => ({ title: f.title })) };
+      }
+      return { error: "No document listing available for this council" };
+    }
+    case "geocode_location": {
+      const q = typeof input.location === "string" ? input.location.trim() : "";
+      if (!q) return { error: "location is required" };
+      const params = new URLSearchParams({ q, sort: "relevance" });
+      const { rows, fuzzy } = runSearch(params);
+      const hit = rows.find((r) => r.lat != null);
+      if (!hit) return null;
+      return {
+        matched_address: hit.address_text ?? hit.planning_reference,
+        lat: hit.lat,
+        lng: hit.lng,
+        authority_id: hit.authority_id,
+        confidence: fuzzy ? "approximate" : "exact",
+      };
+    }
+    default:
+      return { error: `Unknown tool: ${name}` };
+  }
+}
+
+async function* parseAgentSse(body) {
+  const decoder = new TextDecoder();
+  let buf = "";
+  for await (const chunk of body) {
+    buf += decoder.decode(chunk, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const frame = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      const data = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (data) {
+        try {
+          yield JSON.parse(data.slice(6));
+        } catch {
+          // skip malformed frames
+        }
+      }
+    }
+  }
+}
+
+async function* runAgent(messages) {
+  const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
+  if (!apiKey) {
+    yield { type: "error", message: "The agent is not configured on this deployment (missing API key)." };
+    yield { type: "done" };
+    return;
+  }
+  const msgs = messages.map((m) => ({ role: m.role, content: m.content }));
+
+  for (let turn = 0; turn < AGENT_MAX_TURNS; turn++) {
+    let res;
+    try {
+      res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: AGENT_MODEL,
+          max_tokens: AGENT_MAX_TOKENS,
+          stream: true,
+          system: AGENT_SYSTEM_PROMPT,
+          tools: AGENT_TOOLS,
+          messages: msgs,
+        }),
+      });
+    } catch {
+      yield { type: "error", message: "Could not reach the AI service." };
+      yield { type: "done" };
+      return;
+    }
+    if (!res.ok || !res.body) {
+      yield { type: "error", message: `AI service error (${res.status}).` };
+      yield { type: "done" };
+      return;
+    }
+
+    const blocks = [];
+    const partialJson = {};
+    let stopReason = null;
+    try {
+      for await (const ev of parseAgentSse(res.body)) {
+        if (ev.type === "error") {
+          yield { type: "error", message: "The AI service reported an error." };
+          yield { type: "done" };
+          return;
+        }
+        if (ev.type === "content_block_start" && ev.content_block && ev.index !== undefined) {
+          if (ev.content_block.type === "text") {
+            blocks[ev.index] = { type: "text", text: ev.content_block.text ?? "" };
+          } else if (ev.content_block.type === "tool_use") {
+            blocks[ev.index] = {
+              type: "tool_use",
+              id: ev.content_block.id ?? "",
+              name: ev.content_block.name ?? "",
+              input: {},
+            };
+            partialJson[ev.index] = "";
+          }
+        } else if (ev.type === "content_block_delta" && ev.delta && ev.index !== undefined) {
+          const block = blocks[ev.index];
+          if (ev.delta.type === "text_delta" && block?.type === "text" && ev.delta.text) {
+            block.text += ev.delta.text;
+            yield { type: "text", text: ev.delta.text };
+          } else if (ev.delta.type === "input_json_delta" && block?.type === "tool_use") {
+            partialJson[ev.index] += ev.delta.partial_json ?? "";
+          }
+        } else if (ev.type === "content_block_stop" && ev.index !== undefined) {
+          const block = blocks[ev.index];
+          if (block?.type === "tool_use" && partialJson[ev.index]) {
+            try {
+              block.input = JSON.parse(partialJson[ev.index]);
+            } catch {
+              block.input = {};
+            }
+          }
+        } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
+          stopReason = ev.delta.stop_reason;
+        }
+      }
+    } catch {
+      yield { type: "error", message: "The AI service connection dropped." };
+      yield { type: "done" };
+      return;
+    }
+
+    const toolUses = blocks.filter((b) => b?.type === "tool_use");
+    if (stopReason === "tool_use" && toolUses.length) {
+      msgs.push({ role: "assistant", content: blocks.filter(Boolean) });
+      const results = [];
+      for (const tu of toolUses) {
+        yield { type: "tool_start", name: tu.name, input: tu.input };
+        let out;
+        try {
+          out = await executeAgentTool(tu.name, tu.input);
+        } catch (e) {
+          out = { error: `Tool failed: ${e instanceof Error ? e.message : String(e)}` };
+        }
+        yield { type: "tool_result", name: tu.name, result: out };
+        results.push({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: JSON.stringify(out ?? null).slice(0, AGENT_TOOL_RESULT_CAP),
+        });
+      }
+      msgs.push({ role: "user", content: results });
+      continue;
+    }
+
+    yield { type: "done" };
+    return;
+  }
+  yield { type: "error", message: "The agent hit its research step limit — try a narrower question." };
+  yield { type: "done" };
+}
+
+async function readJsonBody(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function handleAgentRoute(req, res) {
+  if (req.method !== "POST") return send(res, 405, { error: "POST only" });
+  const body = await readJsonBody(req);
+  const messages = (body?.messages ?? [])
+    .filter(
+      (m) =>
+        (m?.role === "user" || m?.role === "assistant") &&
+        typeof m?.content === "string" &&
+        m.content.trim().length > 0
+    )
+    .map((m) => ({ role: m.role, content: m.content }))
+    .slice(-30);
+  if (!messages.length || messages[messages.length - 1].role !== "user") {
+    return send(res, 400, { error: "messages must end with a user message" });
+  }
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  try {
+    for await (const ev of runAgent(messages)) {
+      res.write(`data: ${JSON.stringify(ev)}\n\n`);
+    }
+  } catch {
+    res.write(`data: ${JSON.stringify({ type: "error", message: "Agent crashed" })}\n\n`);
+  } finally {
+    res.end();
+  }
+}
+
 export default async function handler(req, res) {
   const url = new URL(req.url, "http://localhost");
   const p = url.searchParams;
@@ -1445,6 +1932,10 @@ export default async function handler(req, res) {
   // original path (/api/meta) or a rewritten one (/meta); accept both.
   let route = url.pathname.replace(/\/$/, "");
   if (!route.startsWith("/api")) route = "/api" + route;
+
+  if (route === "/api/agent") {
+    return handleAgentRoute(req, res);
+  }
 
   if (route === "/api/meta") {
     return send(res, 200, {

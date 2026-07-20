@@ -26,6 +26,11 @@ export const AGENT_TOOLS: AnthropicTool[] = [
         statuses: { type: "array", items: { type: "string", enum: STATUSES } },
         domestic_only: { type: "boolean", description: "Restrict to likely-domestic applications" },
         appealed_only: { type: "boolean", description: "Only applications that went to appeal" },
+        commenced_only: {
+          type: "boolean",
+          description:
+            "Only permissions where a commencement notice was filed with building control — i.e. work actually started (or is about to)",
+        },
         near: {
           type: "object",
           properties: { lat: { type: "number" }, lng: { type: "number" } },
@@ -134,6 +139,7 @@ export function searchFiltersFromToolInput(input: Record<string, unknown>): Sear
     statuses: Array.isArray(input.statuses) ? input.statuses.map(String) : undefined,
     domesticOnly: input.domestic_only === true,
     appealedOnly: input.appealed_only === true,
+    commencedOnly: input.commenced_only === true,
     receivedFrom: typeof input.received_from === "string" ? input.received_from : undefined,
     receivedTo: typeof input.received_to === "string" ? input.received_to : undefined,
     near,
