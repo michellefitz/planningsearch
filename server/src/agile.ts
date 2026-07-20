@@ -60,25 +60,71 @@ function joinName(fore: unknown, sur: unknown, whole: unknown): string | null {
  */
 const AGILE_ID_CACHE = new Map<string, string>();
 
+const normRef = (s: unknown): string =>
+  String(s ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+const REF_FIELDS = [
+  "reference",
+  "applicationReference",
+  "caseReference",
+  "formattedReference",
+  "referenceNumber",
+  "planningReference",
+];
+const ID_FIELDS = ["id", "applicationId", "caseId", "applicationID"];
+
+/** The results array, wherever the search wrapper puts it. */
+function coerceResults(json: unknown): Record<string, unknown>[] {
+  if (Array.isArray(json)) return json as Record<string, unknown>[];
+  if (json && typeof json === "object") {
+    const o = json as Record<string, unknown>;
+    for (const k of ["results", "applications", "data", "items"]) {
+      if (Array.isArray(o[k])) return o[k] as Record<string, unknown>[];
+    }
+    for (const v of Object.values(o)) if (Array.isArray(v)) return v as Record<string, unknown>[];
+  }
+  return [];
+}
+
+const fieldOf = (r: Record<string, unknown>, fields: string[]): string | null => {
+  for (const f of fields) {
+    const v = r[f];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return null;
+};
+
 async function resolveAgileId(
   client: string,
   sourceUrl: string | null,
-  reference: string
+  reference: string,
+  trace?: DiagnosticStep[]
 ): Promise<string | null> {
   const fromUrl = sourceUrl?.match(/application-details\/(\d+)/i)?.[1];
   if (fromUrl) return fromUrl;
   const cacheKey = `${client}:${reference}`;
   const cached = AGILE_ID_CACHE.get(cacheKey);
   if (cached) return cached;
-  const found = (await getJson(
-    `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`,
-    client
-  )) as { results?: Array<{ id: number; reference: string }> } | null;
-  const hit = found?.results?.find(
-    (r) => r.reference?.trim().toLowerCase() === reference.trim().toLowerCase()
-  );
-  if (hit) AGILE_ID_CACHE.set(cacheKey, String(hit.id));
-  return hit ? String(hit.id) : null;
+  const url = `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`;
+  const found = await getJson(url, client);
+  const results = coerceResults(found);
+  trace?.push({
+    step: "agile_search",
+    url,
+    fileCount: results.length,
+    bodySnippet: JSON.stringify(found ?? null).slice(0, 500),
+  });
+  const want = normRef(reference);
+  // Match the reference tolerantly (case/punctuation-insensitive, and across
+  // the several field names tenants use); fall back to the sole result when a
+  // reference-keyed search returns exactly one application.
+  let hit = results.find((r) => normRef(fieldOf(r, REF_FIELDS)) === want && fieldOf(r, ID_FIELDS));
+  if (!hit && results.length === 1 && fieldOf(results[0], ID_FIELDS)) hit = results[0];
+  const id = hit ? fieldOf(hit, ID_FIELDS) : null;
+  trace?.push({ step: "agile_resolve", resolvedId: id ? Number(id) : null });
+  if (id) AGILE_ID_CACHE.set(cacheKey, id);
+  return id;
 }
 
 export interface ConditionItem {
@@ -272,8 +318,7 @@ export async function agilePortalUrl(
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   const slug = AGILE_SLUG_BY_AUTHORITY[authorityId];
   if (!client || !slug) return null;
-  const id = await resolveAgileId(client, sourceUrl, reference);
-  trace?.push({ step: "agile_resolve", resolvedId: id === null ? null : Number(id) });
+  const id = await resolveAgileId(client, sourceUrl, reference, trace);
   return id ? `${AGILE_PORTAL}/${slug}/application-details/${id}` : null;
 }
 

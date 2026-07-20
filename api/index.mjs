@@ -494,20 +494,63 @@ const joinName = (fore, sur, whole) => {
 
 const AGILE_ID_CACHE = new Map();
 
-async function resolveAgileId(client, sourceUrl, reference) {
+const normRef = (s) =>
+  String(s ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+const REF_FIELDS = [
+  "reference",
+  "applicationReference",
+  "caseReference",
+  "formattedReference",
+  "referenceNumber",
+  "planningReference",
+];
+const ID_FIELDS = ["id", "applicationId", "caseId", "applicationID"];
+
+function coerceResults(json) {
+  if (Array.isArray(json)) return json;
+  if (json && typeof json === "object") {
+    for (const k of ["results", "applications", "data", "items"]) {
+      if (Array.isArray(json[k])) return json[k];
+    }
+    for (const v of Object.values(json)) if (Array.isArray(v)) return v;
+  }
+  return [];
+}
+
+function fieldOf(r, fields) {
+  for (const f of fields) {
+    const v = r[f];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return null;
+}
+
+async function resolveAgileId(client, sourceUrl, reference, trace) {
   const fromUrl = sourceUrl?.match(/application-details\/(\d+)/i)?.[1];
   if (fromUrl) return fromUrl;
   const cacheKey = `${client}:${reference}`;
   if (AGILE_ID_CACHE.has(cacheKey)) return AGILE_ID_CACHE.get(cacheKey);
-  const found = await agileGetJson(
-    `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`,
-    client
-  );
-  const hit = found?.results?.find(
-    (r) => r.reference?.trim().toLowerCase() === reference.trim().toLowerCase()
-  );
-  if (hit) AGILE_ID_CACHE.set(cacheKey, String(hit.id));
-  return hit ? String(hit.id) : null;
+  const url = `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`;
+  const found = await agileGetJson(url, client);
+  const results = coerceResults(found);
+  trace?.push({
+    step: "agile_search",
+    url,
+    fileCount: results.length,
+    bodySnippet: JSON.stringify(found ?? null).slice(0, 500),
+  });
+  const want = normRef(reference);
+  // Match the reference tolerantly (case/punctuation-insensitive, across the
+  // several field names tenants use); fall back to the sole result when a
+  // reference-keyed search returns exactly one application.
+  let hit = results.find((r) => normRef(fieldOf(r, REF_FIELDS)) === want && fieldOf(r, ID_FIELDS));
+  if (!hit && results.length === 1 && fieldOf(results[0], ID_FIELDS)) hit = results[0];
+  const id = hit ? fieldOf(hit, ID_FIELDS) : null;
+  trace?.push({ step: "agile_resolve", resolvedId: id ? Number(id) : null });
+  if (id) AGILE_ID_CACHE.set(cacheKey, id);
+  return id;
 }
 
 // The proposal-description field name varies across tenants; take the longest
@@ -924,8 +967,7 @@ async function agilePortalUrl(authorityId, sourceUrl, reference, trace) {
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   const slug = AGILE_SLUGS[authorityId];
   if (!client || !slug) return null;
-  const id = await resolveAgileId(client, sourceUrl, reference);
-  trace?.push({ step: "agile_resolve", resolvedId: id === null ? null : Number(id) });
+  const id = await resolveAgileId(client, sourceUrl, reference, trace);
   return id ? `${AGILE_BASE}/${slug}/application-details/${id}` : null;
 }
 
