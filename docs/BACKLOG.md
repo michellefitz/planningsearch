@@ -58,3 +58,12 @@
 - **Scheduled redeploy for data freshness.** The Vercel bundle only refreshes
   on deploy; a weekly cron (Vercel deploy hook) would keep the register data
   current without code changes.
+
+- **Eircode is ~2% populated at source.** Checked 2026-07-20: only 1,839 of
+  96,587 national-dataset applications received since 2024 have
+  DevelopmentPostcode filled — councils don't key it in, though it usually
+  appears on the application form PDF. The Property information row stays
+  (shows "No information available"). Options to backfill: the agile detail
+  response (check whether any tenant carries an eircode field), AI extraction
+  from the application-form document we already fetch, or reverse-geocoding
+  coordinates (needs a licensed Eircode/autoaddress API — no free lookup).
