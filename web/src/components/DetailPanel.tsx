@@ -605,6 +605,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [zones, setZones] = useState<ZoningInfo[] | null>(null);
+  const [flood, setFlood] = useState<{ at_risk: boolean; scenarios: string[] } | null>(null);
   // Enrichment can supply a fuller proposal description than the (sometimes
   // truncated) national one — prefer it for both the display and the summary.
   const description = enrich?.description ?? d.description ?? null;
@@ -621,12 +622,19 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
     setEnrich(null);
     setDescExpanded(false);
     setZones(null);
+    setFlood(null);
     let cancelled = false;
     if (d.lat != null && d.lng != null) {
       api
         .zoning(d.id)
         .then((res) => {
           if (!cancelled && res.zones?.length) setZones(res.zones);
+        })
+        .catch(() => {});
+      api
+        .flood(d.id)
+        .then((res) => {
+          if (!cancelled && res.flood) setFlood(res.flood);
         })
         .catch(() => {});
     }
@@ -929,6 +937,35 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           <p className="list-note">
             From the MyPlan generalised zoning layer (DHLGH) at this application's map location —
             the council's development plan is the authoritative source.
+          </p>
+        </section>
+      )}
+
+      {flood && (
+        <section aria-labelledby="flood-h" className="flood-section">
+          <h3 id="flood-h">Flood risk</h3>
+          {flood.at_risk ? (
+            <div className="flood-flag">
+              <p className="flood-warn">
+                ⚠ This location falls within a mapped flood extent.
+              </p>
+              {flood.scenarios.length > 0 && (
+                <ul className="flood-scenarios">
+                  {flood.scenarios.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <p className="flood-clear">No mapped flood extent at this location.</p>
+          )}
+          <p className="list-note">
+            Indicative OPW flood mapping — not a flood risk assessment. Confirm on{" "}
+            <a href="https://www.floodinfo.ie/" target="_blank" rel="noopener noreferrer">
+              floodinfo.ie ↗
+            </a>
+            .
           </p>
         </section>
       )}

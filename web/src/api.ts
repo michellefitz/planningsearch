@@ -209,6 +209,11 @@ export const api = {
     getJson<{ supported: boolean; zones: ZoningInfo[] | null }>(
       `/api/applications/${id}/zoning`
     ),
+  flood: (id: number) =>
+    getJson<{
+      supported: boolean;
+      flood: { at_risk: boolean; scenarios: string[] } | null;
+    }>(`/api/applications/${id}/flood`),
   conditions: (id: number) =>
     getJson<{ supported: boolean; conditions: DecisionConditions | null }>(
       `/api/applications/${id}/conditions`

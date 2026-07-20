@@ -21,6 +21,7 @@ import {
 } from "./documents.js";
 import { summariseAppeal, summariseDescription, summariseRefusal } from "./summarize.js";
 import { fetchZoning } from "./zoning.js";
+import { fetchFlood } from "./flood.js";
 import {
   AGILE_CLIENT_BY_AUTHORITY,
   agilePortalUrl,
@@ -440,6 +441,22 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     if (row.lat == null || row.lng == null) return { supported: false, zones: null };
     const zones = await fetchZoning(row.lat, row.lng);
     return { supported: true, zones };
+  });
+
+  // Indicative flood-risk at the application's location, from the OPW's
+  // national flood-mapping ArcGIS service — one live point query, on demand.
+  app.get("/api/applications/:id/flood", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare("SELECT lat, lng FROM applications WHERE id = ?")
+      .get(id) as { lat: number | null; lng: number | null } | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    if (row.lat == null || row.lng == null) return { supported: false, flood: null };
+    const debug = (req.query as { debug?: string }).debug === "1";
+    const trace = debug ? [] : undefined;
+    const flood = await fetchFlood(row.lat, row.lng, trace);
+    if (debug) return { flood, trace };
+    return { supported: true, flood };
   });
 
   app.get("/api/applications/:id/conditions", async (req, reply) => {

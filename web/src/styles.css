@@ -1223,6 +1223,34 @@ body {
   color: #166534;
 }
 
+/* Flood risk (indicative OPW mapping) */
+.flood-flag {
+  padding: 0.55rem 0.75rem;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 10px;
+}
+.flood-warn {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #9a3412;
+}
+.flood-scenarios {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: #7c2d12;
+}
+.flood-scenarios li {
+  margin: 0.1rem 0;
+}
+.flood-clear {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #15803d;
+}
+
 /* Refusal summary lives inside the decision section, above the reasons */
 .decision-summary {
   margin: 0 0 0.85rem;

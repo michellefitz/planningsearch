@@ -649,6 +649,76 @@ async function fetchZoning(lat, lng) {
   }
 }
 
+// Indicative flood-risk (OPW national flood mapping). Mirrors server/src/flood.ts.
+const FLOOD_CACHE = new Map();
+const FLOOD_URL =
+  process.env.PLANVIEW_FLOOD_URL ??
+  "https://services7.arcgis.com/aopigSLPh2SnT3cX/ArcGIS/rest/services/Flood_Maps/FeatureServer/0/query";
+const FLOOD_SCENARIO_FIELDS = [
+  "Probability", "PROBABILITY", "Scenario", "SCENARIO", "AEP",
+  "Flood_Zone", "FLOOD_ZONE", "FloodZone", "Flood_Type", "FLOOD_TYPE",
+  "Type", "TYPE", "Likelihood", "Event", "Class", "Descriptor",
+  "DESCRIPT", "Description", "DESCRIPTION",
+];
+const FLOOD_SCENARIO_KEY_RE = /prob|scenario|aep|zone|fluvial|coastal|likelihood|extent|event/i;
+function floodScenarioLabel(attrs) {
+  for (const f of FLOOD_SCENARIO_FIELDS) {
+    const v = attrs[f];
+    if (typeof v === "string" && v.trim() && v.trim().length <= 60) return v.trim();
+  }
+  for (const [k, v] of Object.entries(attrs)) {
+    if (typeof v === "string" && v.trim() && v.trim().length <= 60 && FLOOD_SCENARIO_KEY_RE.test(k)) {
+      return v.trim();
+    }
+  }
+  return null;
+}
+async function fetchFlood(lat, lng, trace) {
+  const cacheKey = `${lat},${lng}`;
+  if (!trace && FLOOD_CACHE.has(cacheKey)) return FLOOD_CACHE.get(cacheKey);
+  const params = new URLSearchParams({
+    geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+    geometryType: "esriGeometryPoint",
+    inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    where: "1=1",
+    outFields: "*",
+    returnGeometry: "false",
+    f: "json",
+  });
+  const url = `${FLOOD_URL}?${params}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      trace?.push({ step: "flood_query", url, status: res.status, error: "non-200" });
+      return null;
+    }
+    const body = await res.json();
+    if (body.error || !Array.isArray(body.features)) {
+      trace?.push({ step: "flood_query", url, bodySnippet: JSON.stringify(body).slice(0, 500), error: "no-features" });
+      return null;
+    }
+    const scenarios = [...new Set(body.features.map((f) => floodScenarioLabel(f.attributes)).filter(Boolean))];
+    const result = { at_risk: body.features.length > 0, scenarios };
+    trace?.push({
+      step: "flood_query",
+      url,
+      status: res.status,
+      featureCount: body.features.length,
+      bodySnippet: JSON.stringify(body.features.slice(0, 3)).slice(0, 800),
+    });
+    FLOOD_CACHE.set(cacheKey, result);
+    return result;
+  } catch (err) {
+    trace?.push({ step: "flood_query", url, error: err instanceof Error ? err.message : String(err) });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const CONDITIONS_CACHE = new Map();
 
 /**
@@ -1338,6 +1408,18 @@ export default async function handler(req, res) {
     if (app.lat == null || app.lng == null) return send(res, 200, { supported: false, zones: null });
     const zones = await fetchZoning(app.lat, app.lng);
     return send(res, 200, { supported: true, zones });
+  }
+
+  const flm = route.match(/^\/api\/applications\/(\d+)\/flood$/);
+  if (flm) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(flm[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    if (app.lat == null || app.lng == null) return send(res, 200, { supported: false, flood: null });
+    const debug = p.get("debug") === "1";
+    const trace = debug ? [] : undefined;
+    const flood = await fetchFlood(app.lat, app.lng, trace);
+    if (debug) return send(res, 200, { flood, trace });
+    return send(res, 200, { supported: true, flood });
   }
 
   const cm = route.match(/^\/api\/applications\/(\d+)\/conditions$/);
