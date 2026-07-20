@@ -37,6 +37,8 @@ import {
   fetchAgileDocument,
   fetchAgileDocumentList,
 } from "./agile.js";
+import { runAgent, type ChatTurn } from "./agent/agent.js";
+import { buildToolExecutor } from "./agent/execute.js";
 
 function csv(v: unknown): string[] | undefined {
   if (typeof v !== "string" || !v.trim()) return undefined;
@@ -712,5 +714,36 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       description,
       eircode,
     };
+  });
+
+  app.post("/api/agent", async (req, reply) => {
+    const body = req.body as { messages?: Array<{ role?: string; content?: string }> } | null;
+    const messages: ChatTurn[] = (body?.messages ?? [])
+      .filter(
+        (m): m is { role: "user" | "assistant"; content: string } =>
+          (m.role === "user" || m.role === "assistant") &&
+          typeof m.content === "string" &&
+          m.content.trim().length > 0
+      )
+      .slice(-30);
+    if (!messages.length || messages[messages.length - 1].role !== "user") {
+      return reply.code(400).send({ error: "messages must end with a user message" });
+    }
+
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    const executeTool = buildToolExecutor(db);
+    try {
+      for await (const ev of runAgent({ messages, executeTool })) {
+        reply.raw.write(`data: ${JSON.stringify(ev)}\n\n`);
+      }
+    } catch {
+      reply.raw.write(`data: ${JSON.stringify({ type: "error", message: "Agent crashed" })}\n\n`);
+    } finally {
+      reply.raw.end();
+    }
   });
 }
