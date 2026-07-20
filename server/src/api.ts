@@ -698,11 +698,18 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
         id
       );
     }
+    // The national dataset's postcode field is ~2% populated, but the agile
+    // register's detail response often carries a real Eircode — backfill it.
+    const eircode = (row.eircode as string | null) ?? detail?.eircode ?? null;
+    if (!row.eircode && detail?.eircode) {
+      db.prepare("UPDATE applications SET eircode = ? WHERE id = ?").run(detail.eircode, id);
+    }
     return {
       ai_summary: aiSummary ?? null,
       applicant_name: applicant,
       agent_name: agent,
       description,
+      eircode,
     };
   });
 }

@@ -204,6 +204,7 @@ export const api = {
       applicant_name: string | null;
       agent_name: string | null;
       description?: string | null;
+      eircode?: string | null;
     }>(`/api/applications/${id}/enrich`),
   zoning: (id: number) =>
     getJson<{ supported: boolean; zones: ZoningInfo[] | null }>(

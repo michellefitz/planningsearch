@@ -718,10 +718,12 @@ function PropertyContext({
   detail: d,
   zones,
   flood,
+  eircode,
 }: {
   detail: AppDetail;
   zones: Fetched<ZoningInfo[]>;
   flood: Fetched<{ at_risk: boolean; scenarios: string[] }>;
+  eircode: string | null;
 }) {
   const sales = d.ppr_sales ?? [];
 
@@ -780,7 +782,7 @@ function PropertyContext({
               ))}
         </dd>
         <dt>Eircode</dt>
-        <dd>{d.eircode ? <span className="ref">{d.eircode}</span> : NO_INFO}</dd>
+        <dd>{eircode ? <span className="ref">{eircode}</span> : NO_INFO}</dd>
       </dl>
     </section>
   );
@@ -798,6 +800,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
     applicant_name: string | null;
     agent_name: string | null;
     description?: string | null;
+    eircode?: string | null;
   } | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
@@ -1079,7 +1082,12 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         <ScannedFiles detail={d} />
       </section>
 
-      <PropertyContext detail={d} zones={zones} flood={flood} />
+      <PropertyContext
+        detail={d}
+        zones={zones}
+        flood={flood}
+        eircode={d.eircode ?? enrich?.eircode ?? null}
+      />
 
       {d.related.length > 0 && (
         <section aria-labelledby="related-h">

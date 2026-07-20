@@ -193,9 +193,21 @@ export interface AgileDetail {
   /** Full proposal description — the national dataset truncates this for big
    *  (e.g. SHD/strategic) applications. */
   description: string | null;
+  /** Validated Eircode from the register's postcode field — kept only when it
+   *  is actually Eircode-shaped (Dublin tenants often put old postal
+   *  districts like "2." in the same field). */
+  eircode: string | null;
   /** Populated only in debug mode: the raw response's field names, to confirm
    *  which field actually carries the description. */
   keys?: string[];
+}
+
+/** Normalise to the canonical "D15 YF1W" form; null unless a real Eircode
+ *  (routing key + 4-char unique identifier, D6W special-cased). */
+export function normaliseEircode(raw: unknown): string | null {
+  const s = String(raw ?? "").trim().toUpperCase().replace(/\s+/g, "");
+  const m = s.match(/^(D6W|[A-Z]\d{2})([A-Z0-9]{4})$/);
+  return m ? `${m[1]} ${m[2]}` : null;
 }
 
 // The proposal-description field name varies across tenants and casings
@@ -237,6 +249,7 @@ export async function fetchAgileDetail(
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
     description: pickDescription(d),
+    eircode: normaliseEircode(d.postcode),
     ...(debug ? { keys: Object.keys(d) } : {}),
   };
 }

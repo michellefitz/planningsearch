@@ -569,6 +569,15 @@ function pickDescription(d) {
   return best;
 }
 
+// Normalise to the canonical "D15 YF1W" form; null unless a real Eircode
+// (routing key + 4-char unique identifier, D6W special-cased) — Dublin
+// tenants often put old postal districts ("2.") in the same field.
+function normaliseEircode(raw) {
+  const s = String(raw ?? "").trim().toUpperCase().replace(/\s+/g, "");
+  const m = s.match(/^(D6W|[A-Z]\d{2})([A-Z0-9]{4})$/);
+  return m ? `${m[1]} ${m[2]}` : null;
+}
+
 async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false) {
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   if (!client) return null;
@@ -582,6 +591,7 @@ async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
     description: pickDescription(d),
+    eircode: normaliseEircode(d.postcode),
     ...(debug ? { keys: Object.keys(d) } : {}),
   };
   PARTIES_CACHE.set(cacheKey, detail);
@@ -1841,6 +1851,9 @@ export default async function handler(req, res) {
       applicant_name: app.applicant_name ?? parties.applicant,
       agent_name: app.agent_name ?? parties.agent,
       description,
+      // The national dataset's postcode is ~2% populated; the agile register
+      // often has the real Eircode.
+      eircode: app.eircode ?? detail?.eircode ?? null,
     });
   }
 

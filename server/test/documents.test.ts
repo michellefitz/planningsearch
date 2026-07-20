@@ -298,3 +298,21 @@ describe("agile document parsing (verified /api/application/{id}/document shape)
     );
   });
 });
+
+import { normaliseEircode } from "../src/agile.js";
+
+describe("normaliseEircode", () => {
+  it("keeps real Eircodes, normalised to 'RRR UUUU'", () => {
+    expect(normaliseEircode("D15 YF1W")).toBe("D15 YF1W");
+    expect(normaliseEircode("k36r654")).toBe("K36 R654");
+    expect(normaliseEircode(" K32  H248 ")).toBe("K32 H248");
+    expect(normaliseEircode("D6W XY45")).toBe("D6W XY45");
+  });
+  it("rejects the postal districts Dublin tenants put in the same field", () => {
+    expect(normaliseEircode("2.")).toBeNull();
+    expect(normaliseEircode("14")).toBeNull();
+    expect(normaliseEircode("Dublin 8")).toBeNull();
+    expect(normaliseEircode("")).toBeNull();
+    expect(normaliseEircode(null)).toBeNull();
+  });
+});
