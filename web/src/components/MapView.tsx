@@ -14,6 +14,7 @@ export const STATUS_STYLE: Record<string, { color: string; letter: string; label
   refused: { color: "#dc2626", letter: "R", label: "Refused" },
   withdrawn: { color: "#6b7280", letter: "W", label: "Withdrawn" },
   invalid: { color: "#a16207", letter: "I", label: "Invalid" },
+  incomplete: { color: "#b45309", letter: "!", label: "Incomplete" },
   appealed: { color: "#ea580c", letter: "A", label: "Under appeal" },
   unknown: { color: "#64748b", letter: "?", label: "Unknown" },
 };

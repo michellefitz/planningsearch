@@ -75,6 +75,18 @@ function buildTimeline(d: AppDetail): TimelineStep[] {
 }
 
 /**
+ * Badge label for the header. When we couldn't map the register's status onto
+ * a canonical one, show the council's own wording (title-cased) rather than a
+ * bare "Unknown", so a status like "FINALISED UNCONDITIONAL" is still visible.
+ */
+function statusDisplayLabel(d: AppDetail): string {
+  if (d.status === "unknown" && d.status_raw) {
+    return d.status_raw.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return d.status_label;
+}
+
+/**
  * The appeal reference, linked to the An Coimisiún Pleanála case file when we
  * could resolve one (appeal_url), otherwise plain text.
  */
@@ -664,7 +676,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   return (
     <aside className="detail-sheet" aria-label={`Application ${d.planning_reference}`} role="dialog">
       <div className="sheet-top">
-        <StatusBadge status={d.status} label={d.status_label} />
+        <StatusBadge status={d.status} label={statusDisplayLabel(d)} />
         <button type="button" className="sheet-close" onClick={onClose} aria-label="Close application details">
           ✕
         </button>

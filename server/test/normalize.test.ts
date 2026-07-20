@@ -21,8 +21,27 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("", "Grant Permission")).toBe("granted");
   });
 
+  it("reads an outcome embedded in a finalised status when the decision field is empty", () => {
+    // e.g. Kildare after An Coimisiún Pleanála removed the conditions on appeal
+    expect(normalizeStatus("Finalised Unconditional")).toBe("granted");
+    expect(normalizeStatus("Finalised - Grant Permission")).toBe("granted");
+    expect(normalizeStatus("Finalised Refused")).toBe("refused");
+    // Decision field still wins when present
+    expect(normalizeStatus("Finalised Unconditional", "Refuse Permission")).toBe("refused");
+  });
+
+  it("recognises Incomplete as its own status (not decided, not invalid)", () => {
+    expect(normalizeStatus("Incomplete Application")).toBe("incomplete");
+    expect(normalizeStatus("INCOMPLETE")).toBe("incomplete");
+    // The 'complete' substring must not route it to the decided-opaque branch
+    expect(normalizeStatus("Incomplete Application", null)).not.toBe("unknown");
+    // A genuinely completed/closed case still defers to its decision
+    expect(normalizeStatus("Application Complete", "Grant Permission")).toBe("granted");
+  });
+
   it("never guesses on unrecognised labels", () => {
     expect(normalizeStatus("Something Novel")).toBe("unknown");
+    expect(normalizeStatus("Application Finalised")).toBe("unknown");
     expect(normalizeStatus(null, null)).toBe("pending");
   });
 });
