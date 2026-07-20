@@ -590,19 +590,13 @@ body {
   line-height: 1.3;
 }
 
-.detail-summary {
-  font-size: 0.95rem;
-  line-height: 1.55;
-  color: #1e3a5f;
+/* Header placement of the shared AI card. */
+.lead-summary {
   margin: 0.7rem 0 0;
-  padding: 0.6rem 0.85rem;
-  background: #eff6ff;
-  border: 1px solid #93c5fd;
-  border-radius: 10px;
 }
 
 /* Graceful "couldn't summarise" state — muted, not the blue AI card. */
-.detail-summary-empty {
+.summary-empty {
   color: var(--ink-3);
   font-size: 0.85rem;
   font-style: italic;
@@ -878,49 +872,47 @@ body {
   text-underline-offset: 2px;
 }
 
-/* ---------- Property price register ---------- */
+/* ---------- This property (zoning · flood · sales) ---------- */
 
-.sale-list {
-  list-style: none;
+.place-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1.1rem;
   margin: 0 0 0.6rem;
-  padding: 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
-.sale-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.9rem;
-  padding: 0.45rem 0;
+.place-list dt {
+  color: var(--ink-3);
+  font-size: 0.78rem;
+  padding-top: 0.05rem;
 }
 
-.sale-row + .sale-row {
-  border-top: 1px solid var(--line);
-}
-
-.sale-price {
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-  min-width: 6.2rem;
-}
-
-.sale-info {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.3rem 0.6rem;
-  font-size: 0.8rem;
+.place-list dd {
+  margin: 0;
   color: var(--ink-2);
 }
 
-.sale-date {
-  font-variant-numeric: tabular-nums;
+.place-list dd strong {
   color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.sale-info .tag {
-  margin-left: 0;
+.place-list dd a {
+  color: var(--action);
+  text-decoration: none;
+}
+
+.place-list dd a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.flood-warn-inline {
+  color: #9a3412;
+  font-weight: 550;
 }
 
 .objection-flag {
@@ -1178,13 +1170,13 @@ body {
 }
 
 .refusal-summary {
-  margin-top: 0.45rem;
+  margin: 0 0 0.85rem;
   color: #9f1239;
   background: #fef2f2;
   border-color: #fca5a5;
 }
 
-/* Bulleted decision reasons / conditions of grant */
+/* Bulleted decision reasons / conditions of grant (decision-order extract) */
 .decision-lead {
   margin: 0 0 0.4rem;
 }
@@ -1203,10 +1195,49 @@ body {
 .cond-text {
   color: var(--ink-2);
 }
+.on-demand .ai-summary {
+  margin: 0 0 0.85rem;
+}
 
-/* Appeal (An Coimisiún Pleanála) section */
-.appeal-summary {
-  margin: 0.3rem 0 0.8rem;
+/* Outcome words read at a glance in the decision headline. */
+.outcome-grant {
+  color: #166534;
+}
+.outcome-refuse {
+  color: #9f1239;
+}
+
+/* Appeal, told inside the decision section. */
+.appeal-block {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--line-strong);
+}
+.appeal-block h4 {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  margin: 0 0 0.5rem;
+}
+.appeal-block h4 .count {
+  font-weight: 500;
+  color: var(--ink-3);
+  margin-left: 0.25rem;
+  letter-spacing: 0;
+}
+.appeal-block h4 .count a {
+  color: var(--action);
+  text-decoration: none;
+}
+.appeal-block h4 .count a:hover {
+  text-decoration: underline;
+}
+
+/* On-demand summaries (decision order, appeal) */
+.on-demand {
+  margin-top: 0.2rem;
 }
 /* Action buttons sit below the facts list with breathing room, wrapping
    onto their own lines on narrow screens rather than colliding. */
@@ -1305,56 +1336,14 @@ body {
   }
 }
 
-/* Zoning (MyPlan GZT lookup at the application's location) */
-
-.zoning-section h3 {
-  font-size: 0.72rem;
-}
-.zone-line {
-  margin: 0 0 0.35rem;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-.zone-line strong {
-  color: var(--ink);
-  font-weight: 600;
-}
-
 .appeal-outcome {
   font-weight: 620;
   color: #166534;
 }
 
-/* Flood risk (indicative OPW mapping) */
-.flood-flag {
-  padding: 0.55rem 0.75rem;
-  background: #fff7ed;
-  border: 1px solid #fdba74;
-  border-radius: 10px;
-}
-.flood-warn {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #9a3412;
-}
-.flood-scenarios {
-  margin: 0.4rem 0 0;
-  padding-left: 1.1rem;
-  font-size: 0.82rem;
-  color: #7c2d12;
-}
-.flood-scenarios li {
-  margin: 0.1rem 0;
-}
-.flood-clear {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #15803d;
-}
-
-/* Refusal summary lives inside the decision section, above the reasons */
-.decision-summary {
-  margin: 0 0 0.85rem;
+/* Council file viewer, tucked under the file list. */
+.viewer-link {
+  display: inline-block;
+  margin-top: 0.45rem;
+  font-size: 0.8rem;
 }

@@ -3,11 +3,15 @@ import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInf
 import { StatusBadge } from "./ResultsList";
 
 /**
- * Application detail (PRD F3) presented as a right-hand overlay sheet:
- * header with AI summary and property links, key-figure tiles, visual
- * timeline, facts grid, documents (deep-link floor, F4.7), related
- * applications, and the persistent official-portal link + freshness
- * caveat (F3.8).
+ * Application detail (PRD F3) presented as a right-hand overlay sheet.
+ *
+ * The panel tells the story of an application in three tiers:
+ *   1. Snapshot  — address, status, plain-English summary, key figures.
+ *   2. The story — the decision (council + any appeal, with summaries and
+ *                  conditions in one place) and the timeline.
+ *   3. Dig deeper — the proposal as submitted, the facts, the documents,
+ *                  and location context (zoning, flood, sales) as compact
+ *                  data rows rather than full sections.
  */
 
 interface Props {
@@ -103,6 +107,13 @@ function appealRef(d: AppDetail) {
       {d.appeal_reference} ↗
     </a>
   );
+}
+
+/** Colour the outcome word so grants and refusals read at a glance. */
+function outcomeClass(text: string): string {
+  if (/refus/i.test(text)) return "outcome-refuse";
+  if (/grant|conditional|approve/i.test(text)) return "outcome-grant";
+  return "";
 }
 
 /** Wrap glossary terms found in the text with a tooltip (PRD F3.3). */
@@ -268,47 +279,20 @@ const CONDITION_GROUPS: Array<{ code: string; label: string }> = [
   { code: "N", label: "Notes" },
 ];
 
-/**
- * The substance of the council's decision — conditions of grant, reasons
- * for refusal, F.I. directives — fetched live from the council's portal API
- * when the sheet opens (South Dublin / Dublin City / Fingal).
- */
-function DecisionSection({
-  conditions,
-  detail: d,
-}: {
-  conditions: DecisionConditions | null;
-  detail: AppDetail;
-}) {
-  if (!conditions) return null;
+// Councils with a structured conditions API — their decision substance comes
+// from the conditions endpoint. Everywhere else (eplanning/iDocs councils)
+// the reasons live only in the scanned decision order.
+const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fingal", "dlr"]);
+
+/** The full conditions / refusal reasons, grouped and collapsible. */
+function ConditionGroups({ conditions }: { conditions: DecisionConditions }) {
   const groups = CONDITION_GROUPS.map((g) => ({
     ...g,
     items: conditions.items.filter((i) => i.code === g.code),
   })).filter((g) => g.items.length > 0);
 
   return (
-    <section aria-labelledby="decision-h">
-      <h3 id="decision-h">What the council decided</h3>
-      {conditions.decision && (
-        <p className="decision-headline">
-          {conditions.decision}
-          {conditions.decision_date && <span className="hint"> · {conditions.decision_date}</span>}
-          {/* A decided appeal supersedes the council decision — say so right
-              where the council outcome is stated. */}
-          {d.appeal_decision && (
-            <>
-              <span className="hint"> → on appeal: </span>
-              <span className="appeal-outcome">{d.appeal_decision}</span>
-              {d.appeal_decision_date && <span className="hint"> · {d.appeal_decision_date}</span>}
-            </>
-          )}
-        </p>
-      )}
-      {conditions.refusal_summary && (
-        <p className="detail-summary refusal-summary decision-summary">
-          ✦ {conditions.refusal_summary}
-        </p>
-      )}
+    <>
       {groups.map((g) => (
         <div key={g.code} className="condition-group">
           <h4>
@@ -331,10 +315,308 @@ function DecisionSection({
           })}
         </div>
       ))}
-      <p className="list-note">
-        Fetched live from the council's planning system — the decision order on the official
-        portal is the authoritative wording.
-      </p>
+    </>
+  );
+}
+
+type SummaryState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "loaded"; summary: string; source: string | null }
+  | { phase: "empty" }
+  | { phase: "failed" };
+
+type DecisionOrderState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "failed" }
+  | { phase: "empty" }
+  | {
+      phase: "loaded";
+      summary: string | null;
+      conditions: Array<{ number: number | null; title: string; text: string }>;
+      reasons: Array<{ number: number | null; text: string }>;
+      source: string | null;
+    };
+
+/**
+ * On-demand read of the council's scanned decision order — for
+ * eplanning/iDocs councils that expose no structured conditions, the
+ * summary, conditions of grant and any reasons for refusal live only in
+ * that PDF. Reading it is slow, so it stays a click.
+ */
+function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
+  const [state, setState] = useState<DecisionOrderState>({ phase: "idle" });
+  useEffect(() => setState({ phase: "idle" }), [d.id]);
+
+  const load = async () => {
+    setState({ phase: "loading" });
+    try {
+      const res = await api.decisionSummary(d.id);
+      const conditions = res.conditions ?? [];
+      const reasons = res.reasons ?? [];
+      if (res.summary || conditions.length || reasons.length)
+        setState({
+          phase: "loaded",
+          summary: res.summary ?? null,
+          conditions,
+          reasons,
+          source: res.source_document ?? null,
+        });
+      else setState({ phase: "empty" });
+    } catch {
+      setState({ phase: "failed" });
+    }
+  };
+
+  return (
+    <div className="on-demand">
+      {state.phase === "idle" && (
+        <button type="button" className="btn ai" onClick={load}>
+          ✦ Read the decision order &amp; conditions
+        </button>
+      )}
+      {state.phase === "loading" && (
+        <span className="hint loading-line">Reading the decision order…</span>
+      )}
+      {state.phase === "failed" && (
+        <p className="list-note">
+          Couldn't read the decision order just now — see the documents below.
+        </p>
+      )}
+      {state.phase === "empty" && (
+        <p className="list-note">
+          Couldn't find a readable decision order — see the documents below.
+        </p>
+      )}
+      {state.phase === "loaded" && (
+        <>
+          {state.reasons.length > 0 ? (
+            <div className="ai-summary refusal-summary">
+              {state.summary && <p className="decision-lead">✦ {state.summary}</p>}
+              <ul className="decision-list">
+                {state.reasons.map((r, i) => (
+                  <li key={i}>{r.text}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            state.summary && <p className="ai-summary">✦ {state.summary}</p>
+          )}
+          {state.conditions.length > 0 && (
+            <div className="condition-group">
+              <h4>
+                Conditions of grant <span className="count">{state.conditions.length}</span>
+              </h4>
+              <ul className="decision-list">
+                {state.conditions.map((c, i) => (
+                  <li key={i}>
+                    <strong>{c.title || `Condition ${c.number ?? i + 1}`}</strong>
+                    {c.text && <span className="cond-text"> — {c.text}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="list-note">
+            AI-extracted from "{state.source ?? "the decision order"}" — verify against the
+            official decision order before relying on it.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+type AppealState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | {
+      phase: "loaded";
+      fields: Array<{ label: string; value: string }>;
+      documents: Array<{ title: string; url: string }>;
+    }
+  | { phase: "empty" }
+  | { phase: "failed" };
+
+/**
+ * The appeal, told inside the decision section: a one-click AI summary of the
+ * case, the deep link to the file, and the fuller national record on demand.
+ * Status/dates live in the timeline and facts, so they aren't repeated here.
+ */
+function AppealBlock({ detail: d }: { detail: AppDetail }) {
+  const [state, setState] = useState<AppealState>({ phase: "idle" });
+  const [summary, setSummary] = useState<SummaryState>({ phase: "idle" });
+  useEffect(() => {
+    setState({ phase: "idle" });
+    setSummary({ phase: "idle" });
+  }, [d.id]);
+  if (!d.appeal_reference) return null;
+
+  const load = async () => {
+    setState({ phase: "loading" });
+    try {
+      const res = await api.appeal(d.id);
+      if (res.fields?.length || res.documents?.length)
+        setState({ phase: "loaded", fields: res.fields ?? [], documents: res.documents ?? [] });
+      else setState({ phase: "empty" });
+    } catch {
+      setState({ phase: "failed" });
+    }
+  };
+
+  const loadSummary = async () => {
+    setSummary({ phase: "loading" });
+    try {
+      const res = await api.appealSummary(d.id);
+      if (res.summary)
+        setSummary({ phase: "loaded", summary: res.summary, source: res.based_on_document ?? null });
+      else setSummary({ phase: "empty" });
+    } catch {
+      setSummary({ phase: "failed" });
+    }
+  };
+
+  return (
+    <div className="appeal-block">
+      <h4>
+        Appeal <span className="count">{appealRef(d)}</span>
+      </h4>
+
+      {summary.phase === "idle" && (
+        <button type="button" className="btn ai" onClick={loadSummary}>
+          ✦ Summarise the appeal
+        </button>
+      )}
+      {summary.phase === "loading" && (
+        <span className="hint loading-line">Reading the case file…</span>
+      )}
+      {summary.phase === "failed" && (
+        <p className="list-note">Couldn't generate a summary just now — try again shortly.</p>
+      )}
+      {summary.phase === "empty" && (
+        <p className="list-note">Not enough on the case file yet to summarise.</p>
+      )}
+      {summary.phase === "loaded" && (
+        <blockquote className="ai-summary">
+          {summary.summary}
+          <footer className="hint">AI summary — verify against the case file.</footer>
+        </blockquote>
+      )}
+
+      <div className="appeal-actions">
+        {d.appeal_url && (
+          <a className="btn portal" href={d.appeal_url} target="_blank" rel="noopener noreferrer">
+            Case file on An Coimisiún Pleanála ↗
+          </a>
+        )}
+        {state.phase === "idle" && (
+          <button type="button" className="btn" onClick={load}>
+            Load case details
+          </button>
+        )}
+        {state.phase === "loading" && (
+          <span className="hint loading-line">Fetching the national case record…</span>
+        )}
+      </div>
+      {state.phase === "failed" && (
+        <p className="list-note">
+          Couldn't reach An Coimisiún Pleanála just now — use the case-file link above.
+        </p>
+      )}
+      {state.phase === "empty" && (
+        <p className="list-note">
+          Nothing extra to show — the case file above has the full national record.
+        </p>
+      )}
+      {state.phase === "loaded" && (
+        <div className="appeal-details">
+          {state.fields.length > 0 && (
+            <dl className="facts">
+              {state.fields.map((f) => (
+                <Fragment key={f.label}>
+                  <dt>{f.label}</dt>
+                  <dd>{f.value}</dd>
+                </Fragment>
+              ))}
+            </dl>
+          )}
+          {state.documents.length > 0 && (
+            <>
+              <p className="doc-list-label">Case documents</p>
+              <ul className="doc-list">
+                {state.documents.map((doc) => (
+                  <li key={doc.url}>
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                      {doc.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The story of the decision, in one place: the council's outcome (and the
+ * appeal outcome where one supersedes it), the plain-English summaries, the
+ * full conditions or refusal reasons, and the appeal.
+ */
+function DecisionSection({
+  detail: d,
+  conditions,
+  conditionsLoading,
+}: {
+  detail: AppDetail;
+  conditions: DecisionConditions | null;
+  conditionsLoading: boolean;
+}) {
+  const decision = conditions?.decision ?? d.decision;
+  const decisionDate = conditions?.decision_date ?? d.decision_date;
+  const hasAppeal = Boolean(d.appeal_reference || d.appeal_decision);
+  if (!decision && !hasAppeal) return null;
+  // eplanning/iDocs councils record their reasons only in the scanned
+  // decision order — offer the on-demand PDF summary instead of conditions.
+  const scannedOrderOnly =
+    Boolean(d.decision && d.scanned_files_url) && !AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
+
+  return (
+    <section aria-labelledby="decision-h" aria-busy={conditionsLoading || undefined}>
+      <h3 id="decision-h">Decision</h3>
+      {decision && (
+        <p className="decision-headline">
+          <span className={outcomeClass(decision)}>{decision}</span>
+          {decisionDate && <span className="hint"> · {decisionDate}</span>}
+          {/* A decided appeal supersedes the council decision — say so right
+              where the council outcome is stated. */}
+          {d.appeal_decision && (
+            <>
+              <span className="hint"> → on appeal: </span>
+              <span className={outcomeClass(d.appeal_decision) || "appeal-outcome"}>
+                {d.appeal_decision}
+              </span>
+              {d.appeal_decision_date && <span className="hint"> · {d.appeal_decision_date}</span>}
+            </>
+          )}
+        </p>
+      )}
+      {conditions?.refusal_summary && (
+        <p className="ai-summary refusal-summary">✦ {conditions.refusal_summary}</p>
+      )}
+      {conditionsLoading && (
+        <div className="skeleton-block" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
+      {conditions && <ConditionGroups conditions={conditions} />}
+      {scannedOrderOnly && <DecisionOrderSummary detail={d} />}
+      <AppealBlock detail={d} />
     </section>
   );
 }
@@ -374,22 +656,17 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
 
   return (
     <div className="scanned-files">
-      {d.scanned_files_url && (
-        <>
-          <a className="btn portal" href={d.scanned_files_url} target="_blank" rel="noopener noreferrer">
-            View scanned files on council viewer ↗
-          </a>{" "}
-        </>
-      )}
       {state.phase === "idle" && (
         <button type="button" className="btn" onClick={load}>
-          Click to load scanned files
+          Load the file list
         </button>
       )}
-      {state.phase === "loading" && <span className="hint">Fetching file list from the council…</span>}
+      {state.phase === "loading" && (
+        <span className="hint loading-line">Fetching the file list from the council…</span>
+      )}
       {state.phase === "failed" && (
         <p className="list-note">
-          Couldn't read the council's file list just now — use the official portal link above.
+          Couldn't load the file list from the council just now — try the official portal above.
         </p>
       )}
       {state.phase === "loaded" && state.objections > 0 && (
@@ -416,289 +693,105 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
           ))}
         </ul>
       )}
+      {d.scanned_files_url && (
+        <a
+          className="link-btn viewer-link"
+          href={d.scanned_files_url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open the council's file viewer ↗
+        </a>
+      )}
     </div>
   );
 }
 
-type AppealState =
-  | { phase: "idle" }
-  | { phase: "loading" }
-  | {
-      phase: "loaded";
-      fields: Array<{ label: string; value: string }>;
-      documents: Array<{ title: string; url: string }>;
-    }
-  | { phase: "empty" }
-  | { phase: "failed" };
-
 /**
- * Appeal detail for applications appealed to An Coimisiún Pleanála (formerly
- * An Bord Pleanála). Shows the summary we already hold, deep-links the case
- * file, and loads the fuller national record (parties, board direction,
- * documentation) on demand — degrading to just the summary + link when the
- * case site can't be reached.
+ * Location context — zoning, flood risk and recorded sales as one compact
+ * list of data points, not full sections. Helpful colour when reading an
+ * application, with one shared provenance note.
  */
-type AppealSummaryState =
-  | { phase: "idle" }
-  | { phase: "loading" }
-  | { phase: "loaded"; summary: string; source: string | null }
-  | { phase: "empty" }
-  | { phase: "failed" };
-
-function AppealCard({ detail: d }: { detail: AppDetail }) {
-  const [state, setState] = useState<AppealState>({ phase: "idle" });
-  const [summary, setSummary] = useState<AppealSummaryState>({ phase: "idle" });
-  useEffect(() => {
-    setState({ phase: "idle" });
-    setSummary({ phase: "idle" });
-  }, [d.id]);
-  if (!d.appeal_reference) return null;
-
-  const load = async () => {
-    setState({ phase: "loading" });
-    try {
-      const res = await api.appeal(d.id);
-      if (res.fields?.length || res.documents?.length)
-        setState({ phase: "loaded", fields: res.fields ?? [], documents: res.documents ?? [] });
-      else setState({ phase: "empty" });
-    } catch {
-      setState({ phase: "failed" });
-    }
-  };
-
-  const loadSummary = async () => {
-    setSummary({ phase: "loading" });
-    try {
-      const res = await api.appealSummary(d.id);
-      if (res.summary)
-        setSummary({ phase: "loaded", summary: res.summary, source: res.based_on_document ?? null });
-      else setSummary({ phase: "empty" });
-    } catch {
-      setSummary({ phase: "failed" });
-    }
-  };
+function PropertyContext({
+  detail: d,
+  zones,
+  flood,
+}: {
+  detail: AppDetail;
+  zones: ZoningInfo[] | null;
+  flood: { at_risk: boolean; scenarios: string[] } | null;
+}) {
+  const sales = d.ppr_sales ?? [];
+  if (!zones?.length && !flood && sales.length === 0) return null;
 
   return (
-    <section aria-labelledby="appeal-h">
-      <h3 id="appeal-h">Appeal — An Coimisiún Pleanála</h3>
-
-      <div className="appeal-summary">
-        {summary.phase === "idle" && (
-          <button type="button" className="btn ai" onClick={loadSummary}>
-            ✨ Summarise the appeal &amp; decision
-          </button>
-        )}
-        {summary.phase === "loading" && (
-          <span className="hint">Reading the case file and writing a summary…</span>
-        )}
-        {summary.phase === "failed" && (
-          <p className="list-note">Couldn't generate a summary just now — try again shortly.</p>
-        )}
-        {summary.phase === "empty" && (
-          <p className="list-note">Not enough on the case file yet to summarise.</p>
-        )}
-        {summary.phase === "loaded" && (
-          <blockquote className="ai-summary">
-            {summary.summary}
-            <footer className="hint">
-              AI summary{summary.source ? ` · from "${summary.source}"` : ""} — verify against the
-              case file.
-            </footer>
-          </blockquote>
-        )}
-      </div>
-
-      <dl className="facts">
-        {d.appeal_status && (
-          <>
-            <dt>Status</dt>
-            <dd>{d.appeal_status}</dd>
-          </>
-        )}
-        {d.appeal_lodged_date && (
-          <>
-            <dt>Lodged</dt>
-            <dd>{d.appeal_lodged_date}</dd>
-          </>
-        )}
-        {d.appeal_decision && (
-          <>
-            <dt>Decision</dt>
+    <section aria-labelledby="place-h">
+      <h3 id="place-h">This property</h3>
+      <dl className="place-list">
+        {zones?.map((z) => (
+          <Fragment key={z.zone}>
+            <dt>Zoning</dt>
             <dd>
-              {d.appeal_decision}
-              {d.appeal_decision_date && <span className="hint"> — {d.appeal_decision_date}</span>}
+              <strong>{z.zone}</strong>
+              {z.general && ` · ${z.general}`}
+              {z.objective && ` — ${z.objective}`}
+              {z.plan && (
+                <span className="hint">
+                  {" "}
+                  ({z.plan}
+                  {z.plan_level === "LAP" ? ", Local Area Plan" : ""})
+                </span>
+              )}
+              {z.plan_url && (
+                <>
+                  {" "}
+                  <a href={z.plan_url} target="_blank" rel="noopener noreferrer">
+                    Development plan ↗
+                  </a>
+                </>
+              )}
+            </dd>
+          </Fragment>
+        ))}
+        {flood && (
+          <>
+            <dt>Flood risk</dt>
+            <dd>
+              {flood.at_risk ? (
+                <span className="flood-warn-inline">
+                  Within a mapped flood extent
+                  {flood.scenarios.length > 0 && ` — ${flood.scenarios.join("; ")}`}
+                </span>
+              ) : (
+                "None mapped at this location"
+              )}{" "}
+              <a href="https://www.floodinfo.ie/" target="_blank" rel="noopener noreferrer">
+                floodinfo.ie ↗
+              </a>
             </dd>
           </>
         )}
-        <dt>Case</dt>
-        <dd>{appealRef(d)}</dd>
+        {sales.map((s) => (
+          <Fragment key={`${s.date}-${s.price}`}>
+            <dt>Sold</dt>
+            <dd>
+              <strong>€{s.price.toLocaleString()}</strong>
+              <span className="hint"> · {s.date}</span>
+              {s.description && <span className="hint"> — {s.description}</span>}
+              {s.vat_exclusive && <span className="tag">price excludes VAT</span>}
+              {s.not_full_market && <span className="tag">not full market price</span>}
+            </dd>
+          </Fragment>
+        ))}
       </dl>
-      <div className="appeal-actions">
-        {d.appeal_url && (
-          <a className="btn portal" href={d.appeal_url} target="_blank" rel="noopener noreferrer">
-            View full case file ↗
-          </a>
-        )}
-        {state.phase === "idle" && (
-          <button type="button" className="btn" onClick={load}>
-            Click to load appeal details
-          </button>
-        )}
-        {state.phase === "loading" && (
-          <span className="hint">Fetching case details from An Coimisiún Pleanála…</span>
-        )}
-      </div>
-      {state.phase === "failed" && (
-        <p className="list-note">
-          Couldn't reach An Coimisiún Pleanála just now — use the case-file link above.
-        </p>
-      )}
-      {state.phase === "empty" && (
-        <p className="list-note">
-          No extra detail to show here — open the case file above for the full national record.
-        </p>
-      )}
-      {state.phase === "loaded" && (
-        <div className="appeal-details">
-          {state.fields.length > 0 && (
-            <dl className="facts">
-              {state.fields.map((f) => (
-                <Fragment key={f.label}>
-                  <dt>{f.label}</dt>
-                  <dd>{f.value}</dd>
-                </Fragment>
-              ))}
-            </dl>
-          )}
-          {state.documents.length > 0 && (
-            <>
-              <p className="doc-list-label">Case documents</p>
-              <ul className="doc-list">
-                {state.documents.map((doc) => (
-                  <li key={doc.url}>
-                    <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                      {doc.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-// Councils with a structured conditions API — their decision reasons come from
-// the conditions endpoint, not the scanned PDF.
-const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fingal", "dlr"]);
-
-type DecisionState =
-  | { phase: "idle" }
-  | { phase: "loading" }
-  | { phase: "failed" }
-  | { phase: "empty" }
-  | {
-      phase: "loaded";
-      summary: string | null;
-      conditions: Array<{ number: number | null; title: string; text: string }>;
-      reasons: Array<{ number: number | null; text: string }>;
-      source: string | null;
-    };
-
-/**
- * "What the council decided" for eplanning/iDocs councils (Kildare) that expose
- * no structured conditions — the summary, the conditions of grant, and any
- * reasons for refusal live only in the scanned decision order, which we read
- * and extract on demand.
- */
-function DecisionSummaryCard({ detail: d }: { detail: AppDetail }) {
-  const [state, setState] = useState<DecisionState>({ phase: "idle" });
-  useEffect(() => setState({ phase: "idle" }), [d.id]);
-  if (!d.decision || !d.scanned_files_url || AGILE_CONDITION_AUTHORITIES.has(d.authority_id)) return null;
-
-  const load = async () => {
-    setState({ phase: "loading" });
-    try {
-      const res = await api.decisionSummary(d.id);
-      const conditions = res.conditions ?? [];
-      const reasons = res.reasons ?? [];
-      if (res.summary || conditions.length || reasons.length)
-        setState({
-          phase: "loaded",
-          summary: res.summary ?? null,
-          conditions,
-          reasons,
-          source: res.source_document ?? null,
-        });
-      else setState({ phase: "empty" });
-    } catch {
-      setState({ phase: "failed" });
-    }
-  };
-
-  return (
-    <section aria-labelledby="council-decision-h">
-      <h3 id="council-decision-h">What the council decided</h3>
-      <p className="decision-headline">
-        {d.decision}
-        {d.decision_date && <span className="hint"> · {d.decision_date}</span>}
+      <p className="list-note">
+        Zoning from MyPlan (DHLGH), flood extents from indicative OPW mapping, sales matched on
+        the PSRA{" "}
+        <a href="https://www.propertypriceregister.ie/" target="_blank" rel="noopener noreferrer">
+          Property Price Register ↗
+        </a>
+        {" "}— confirm at source before relying on any of them.
       </p>
-      {state.phase === "idle" && (
-        <button type="button" className="btn ai" onClick={load}>
-          ✨ Read the decision order &amp; conditions
-        </button>
-      )}
-      {state.phase === "loading" && (
-        <span className="hint">Reading the decision order and extracting the conditions…</span>
-      )}
-      {state.phase === "failed" && (
-        <p className="list-note">
-          Couldn't read the decision order just now — it may be a scanned image or not published.
-          See the scanned files below.
-        </p>
-      )}
-      {state.phase === "empty" && (
-        <p className="list-note">
-          Couldn't find a readable decision order to extract — see the scanned files below.
-        </p>
-      )}
-      {state.phase === "loaded" && (
-        <>
-          {state.reasons.length > 0 ? (
-            <div className="detail-summary refusal-summary decision-summary">
-              {state.summary && <p className="decision-lead">✦ {state.summary}</p>}
-              <ul className="decision-list">
-                {state.reasons.map((r, i) => (
-                  <li key={i}>{r.text}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            state.summary && <p className="detail-summary decision-summary">✦ {state.summary}</p>
-          )}
-          {state.conditions.length > 0 && (
-            <div className="condition-group">
-              <h4>
-                Conditions of grant <span className="count">{state.conditions.length}</span>
-              </h4>
-              <ul className="decision-list">
-                {state.conditions.map((c, i) => (
-                  <li key={i}>
-                    <strong>{c.title || `Condition ${c.number ?? i + 1}`}</strong>
-                    {c.text && <span className="cond-text"> — {c.text}</span>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <p className="list-note">
-            AI-extracted from "{state.source ?? "the decision order"}" — verify against the official
-            decision order before relying on it.
-          </p>
-        </>
-      )}
     </section>
   );
 }
@@ -724,11 +817,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   const description = enrich?.description ?? d.description ?? null;
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
   const isLongDesc = (description ?? "").length > 400;
-  // Councils whose decision substance the conditions endpoint can serve —
-  // skipping the round-trip (and the placeholder) everywhere else.
-  const hasConditionsSource = ["south-dublin", "dublin-city", "fingal", "dlr"].includes(
-    d.authority_id
-  );
+  const hasConditionsSource = AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
 
   useEffect(() => {
     setConditions(null);
@@ -815,16 +904,16 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           )}
         </p>
         {aiSummary ? (
-          <p className="detail-summary">✦ {aiSummary}</p>
+          <p className="ai-summary lead-summary">✦ {aiSummary}</p>
         ) : enrichLoading ? (
-          <p className="detail-summary loading-line">✦ Writing a plain-English summary…</p>
+          <p className="ai-summary lead-summary loading-line">✦ Writing a plain-English summary…</p>
         ) : (
           // Enrichment ran (enrich resolved) but produced no usable summary —
           // usually a description too thin/truncated to summarise. Say so
           // plainly rather than showing a stale or leaked model reply.
           enrich !== null &&
           description && (
-            <p className="detail-summary detail-summary-empty">
+            <p className="ai-summary lead-summary summary-empty">
               Not enough information to generate a summary.
             </p>
           )
@@ -858,8 +947,29 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         </div>
       )}
 
+      <DecisionSection detail={d} conditions={conditions} conditionsLoading={conditionsLoading} />
+
+      <section aria-labelledby="timeline-h">
+        <h3 id="timeline-h">Timeline</h3>
+        <ol className="timeline">
+          {timeline.map((step, i) => (
+            <li key={i} className={`tl-${step.state} ${step.statutory ? "tl-statutory" : ""}`}>
+              <span className="tl-dot" aria-hidden="true" />
+              <span className="tl-label">{withGlossary(step.label, glossary)}</span>
+              <span className="tl-date">{step.date ?? "—"}</span>
+            </li>
+          ))}
+        </ol>
+        {!d.decision_date && d.decision_due_date && (
+          <p className="caveat">
+            Statutory dates shown are from the register as of the last sync. For anything
+            time-critical (e.g. observation deadlines), confirm on the official portal.
+          </p>
+        )}
+      </section>
+
       <section aria-labelledby="desc-h">
-        <h3 id="desc-h">Planning description</h3>
+        <h3 id="desc-h">Proposal as submitted</h3>
         <p className={`detail-desc ${isLongDesc && !descExpanded ? "clamped" : ""}`}>
           {withGlossary(description ?? "No description available.", glossary)}
         </p>
@@ -870,7 +980,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
             aria-expanded={descExpanded}
             onClick={() => setDescExpanded((v) => !v)}
           >
-            {descExpanded ? "Collapse" : "Expand"}
+            {descExpanded ? "Show less" : "Show all"}
           </button>
         )}
       </section>
@@ -878,10 +988,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
       <section aria-labelledby="facts-h">
         <h3 id="facts-h">Details</h3>
         <dl className="facts">
-          <dt>Reference</dt>
-          <dd className="ref">{d.planning_reference}</dd>
-          <dt>Authority</dt>
-          <dd>{d.authority_name}</dd>
           <dt>Type</dt>
           <dd>{withGlossary(d.application_type_label, glossary)}</dd>
           <dt>Applicant</dt>
@@ -921,46 +1027,9 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         </dl>
       </section>
 
-      <section aria-labelledby="timeline-h">
-        <h3 id="timeline-h">Timeline</h3>
-        <ol className="timeline">
-          {timeline.map((step, i) => (
-            <li key={i} className={`tl-${step.state} ${step.statutory ? "tl-statutory" : ""}`}>
-              <span className="tl-dot" aria-hidden="true" />
-              <span className="tl-label">{withGlossary(step.label, glossary)}</span>
-              <span className="tl-date">{step.date ?? "—"}</span>
-            </li>
-          ))}
-        </ol>
-        {!d.decision_date && d.decision_due_date && (
-          <p className="caveat">
-            Statutory dates shown are from the register as of the last sync. For anything
-            time-critical (e.g. observation deadlines), confirm on the official portal.
-          </p>
-        )}
-      </section>
-
-      <AppealCard detail={d} />
-
-      {conditionsLoading && d.decision ? (
-        <section aria-labelledby="decision-h" aria-busy="true">
-          <h3 id="decision-h">What the council decided</h3>
-          <p className="loading-line">Fetching the decision record from the council…</p>
-          <div className="skeleton-block" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
-        </section>
-      ) : (
-        <DecisionSection conditions={conditions} detail={d} />
-      )}
-
-      <DecisionSummaryCard detail={d} />
-
       <section aria-labelledby="docs-h">
         <h3 id="docs-h">Documents</h3>
-        {d.documents.length > 0 ? (
+        {d.documents.length > 0 && (
           <ul className="doc-list">
             {d.documents.map((doc) =>
               doc.is_withheld ? (
@@ -977,39 +1046,17 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
               )
             )}
           </ul>
-        ) : (
+        )}
+        {d.documents.length === 0 && !d.scanned_files_url && !d.files_supported && (
           <p className="list-note">
-            Scanned files (drawings, forms, reports, decision orders) are held on the council's own
-            portal — they are not in the open dataset.
+            The drawings, forms, reports and decision orders are held on the council's own portal
+            — use the portal link above.
           </p>
         )}
         <ScannedFiles detail={d} />
       </section>
 
-      {d.ppr_sales && d.ppr_sales.length > 0 && (
-        <section aria-labelledby="ppr-h">
-          <h3 id="ppr-h">Property price register</h3>
-          <ul className="sale-list">
-            {d.ppr_sales.map((s) => (
-              <li key={`${s.date}-${s.price}`} className="sale-row">
-                <span className="sale-price">€{s.price.toLocaleString()}</span>
-                <span className="sale-info">
-                  <span className="sale-date">{s.date}</span>
-                  {s.description && <span className="sale-desc">{s.description}</span>}
-                  {s.vat_exclusive && <span className="tag">price excludes VAT</span>}
-                  {s.not_full_market && <span className="tag">not full market price</span>}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="list-note">
-            Matched to this address on the PSRA register — confirm there before relying on it.{" "}
-            <a href="https://www.propertypriceregister.ie/" target="_blank" rel="noopener noreferrer">
-              Search the Property Price Register ↗
-            </a>
-          </p>
-        </section>
-      )}
+      <PropertyContext detail={d} zones={zones} flood={flood} />
 
       {d.related.length > 0 && (
         <section aria-labelledby="related-h">
@@ -1027,68 +1074,11 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         </section>
       )}
 
-      {zones && (
-        <section aria-labelledby="zoning-h" className="zoning-section">
-          <h3 id="zoning-h">Zoning</h3>
-          {zones.map((z) => (
-            <p key={z.zone} className="zone-line">
-              <strong>{z.zone}</strong>
-              {z.general && ` · ${z.general}`}
-              {z.objective && ` — ${z.objective}`}
-              {z.plan && (
-                <span className="hint">
-                  {" "}
-                  ({z.plan}
-                  {z.plan_level === "LAP" ? ", Local Area Plan" : ""})
-                </span>
-              )}{" "}
-              {z.plan_url && (
-                <a href={z.plan_url} target="_blank" rel="noopener noreferrer">
-                  Development plan ↗
-                </a>
-              )}
-            </p>
-          ))}
-          <p className="list-note">
-            From the MyPlan generalised zoning layer (DHLGH) at this application's map location —
-            the council's development plan is the authoritative source.
-          </p>
-        </section>
-      )}
-
-      {flood && (
-        <section aria-labelledby="flood-h" className="flood-section">
-          <h3 id="flood-h">Flood risk</h3>
-          {flood.at_risk ? (
-            <div className="flood-flag">
-              <p className="flood-warn">
-                ⚠ This location falls within a mapped flood extent.
-              </p>
-              {flood.scenarios.length > 0 && (
-                <ul className="flood-scenarios">
-                  {flood.scenarios.map((s) => (
-                    <li key={s}>{s}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ) : (
-            <p className="flood-clear">No mapped flood extent at this location.</p>
-          )}
-          <p className="list-note">
-            Indicative OPW flood mapping — not a flood risk assessment. Confirm on{" "}
-            <a href="https://www.floodinfo.ie/" target="_blank" rel="noopener noreferrer">
-              floodinfo.ie ↗
-            </a>
-            .
-          </p>
-        </section>
-      )}
-
       <footer className="detail-footer">
         <p className="caveat">
           Data as of {d.last_synced?.slice(0, 10) ?? "unknown"}. This is a viewer over public
-          register data — the {d.authority_name} register is the authoritative source.
+          register data — the {d.authority_name} register (and An Coimisiún Pleanála for appeals)
+          is the authoritative source.
         </p>
       </footer>
     </aside>
