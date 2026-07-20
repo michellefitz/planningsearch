@@ -5,7 +5,7 @@
  * in more than one current plan (Development Plan + Local Area Plan).
  */
 
-const GZT_URL =
+export const GZT_URL =
   "https://services.arcgis.com/NzlPQPKn5QF9v2US/ArcGIS/rest/services/GZT_Current_Plan/FeatureServer/0/query";
 const TIMEOUT_MS = 10_000;
 

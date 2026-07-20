@@ -238,4 +238,6 @@ export const api = {
     }>(`/api/applications/${id}/appeal-summary`),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
+  overlay: (layer: "zoning" | "flood", bbox: [number, number, number, number]) =>
+    getJson<GeoJSON.FeatureCollection>(`/api/overlays/${layer}?bbox=${bbox.join(",")}`),
 };

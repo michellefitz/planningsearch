@@ -960,6 +960,44 @@ body {
 
 /* ---------- Map legend ---------- */
 
+/* Overlay toggles, top-left of the map */
+.map-overlays {
+  position: absolute;
+  left: 0.6rem;
+  top: 0.6rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(26, 29, 33, 0.06);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  box-shadow: 0 1px 3px rgba(26, 29, 33, 0.08);
+}
+.overlay-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.overlay-swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 3px;
+  opacity: 0.7;
+}
+.overlay-hint {
+  margin: 0.1rem 0 0;
+  font-size: 0.68rem;
+  color: var(--ink-3);
+}
+
 .legend {
   position: absolute;
   left: 0.6rem;

@@ -9,7 +9,7 @@
  * coastal) and the canonical endpoint may change.
  */
 
-const FLOOD_URL =
+export const FLOOD_URL =
   process.env.PLANVIEW_FLOOD_URL ??
   "https://services7.arcgis.com/aopigSLPh2SnT3cX/ArcGIS/rest/services/Flood_Maps/FeatureServer/0/query";
 const TIMEOUT_MS = 10_000;

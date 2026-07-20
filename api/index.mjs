@@ -719,6 +719,46 @@ async function fetchFlood(lat, lng, trace) {
   }
 }
 
+// Map overlays (zoning, flood) as GeoJSON for a viewport. Mirrors server/src/overlays.ts.
+const OVERLAY_CONFIG = {
+  zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,PLAN_NAME" },
+  flood: { url: FLOOD_URL, where: "1=1", outFields: "*" },
+};
+const EMPTY_FC = { type: "FeatureCollection", features: [] };
+async function fetchOverlay(layer, bbox) {
+  const cfg = OVERLAY_CONFIG[layer];
+  if (!cfg) return EMPTY_FC;
+  const [w, s, e, n] = bbox;
+  const offset = Math.max((e - w) / 1000, 0);
+  const params = new URLSearchParams({
+    geometry: `${w},${s},${e},${n}`,
+    geometryType: "esriGeometryEnvelope",
+    inSR: "4326",
+    outSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    where: cfg.where,
+    outFields: cfg.outFields,
+    returnGeometry: "true",
+    geometryPrecision: "5",
+    maxAllowableOffset: String(offset),
+    resultRecordCount: "2000",
+    f: "geojson",
+  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(`${cfg.url}?${params}`, { signal: controller.signal });
+    if (!res.ok) return EMPTY_FC;
+    const body = await res.json();
+    if (body.error || body.type !== "FeatureCollection" || !Array.isArray(body.features)) return EMPTY_FC;
+    return { type: "FeatureCollection", features: body.features };
+  } catch {
+    return EMPTY_FC;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const CONDITIONS_CACHE = new Map();
 
 /**
@@ -1420,6 +1460,13 @@ export default async function handler(req, res) {
     const flood = await fetchFlood(app.lat, app.lng, trace);
     if (debug) return send(res, 200, { flood, trace });
     return send(res, 200, { supported: true, flood });
+  }
+
+  const om = route.match(/^\/api\/overlays\/(zoning|flood)$/);
+  if (om) {
+    const bbox = parseBbox(p.get("bbox"));
+    if (!bbox) return send(res, 200, { type: "FeatureCollection", features: [] });
+    return send(res, 200, await fetchOverlay(om[1], bbox));
   }
 
   const cm = route.match(/^\/api\/applications\/(\d+)\/conditions$/);

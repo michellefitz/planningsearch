@@ -1,7 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { PointFeatureCollection } from "../api";
+import { api, type PointFeatureCollection } from "../api";
+
+/** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport. */
+type OverlayKey = "flood" | "zoning";
+const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; line: string; label: string }> = {
+  flood: { fill: "#3b82f6", fillOpacity: 0.35, line: "#1d4ed8", label: "Flood extents" },
+  zoning: { fill: "#14b8a6", fillOpacity: 0.22, line: "#0f766e", label: "Zoning" },
+};
+// Overlays are only meaningful (and light enough to fetch) when zoomed in.
+const MIN_OVERLAY_ZOOM = 12;
+const EMPTY_FC = { type: "FeatureCollection", features: [] } as const;
 
 /**
  * Status colours pair with a letter glyph on each pin so state is never
@@ -35,6 +45,43 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
   const mapRef = useRef<maplibregl.Map | null>(null);
   const loadedRef = useRef(false);
 
+  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ flood: false, zoning: false });
+  const [mapZoom, setMapZoom] = useState(7);
+  const overlaysRef = useRef(overlays);
+  overlaysRef.current = overlays;
+  const bboxRef = useRef<[number, number, number, number] | null>(null);
+  const zoomRef = useRef(7);
+  const seqRef = useRef<Record<OverlayKey, number>>({ flood: 0, zoning: 0 });
+  // Latest overlay-refresh closure, so the map's one-off event handlers can
+  // always call the current version (which reads live state via refs).
+  const applyRef = useRef<(layer: OverlayKey) => void>(() => {});
+
+  const applyOverlay = async (layer: OverlayKey) => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const enabled = overlaysRef.current[layer];
+    const vis = enabled ? "visible" : "none";
+    for (const id of [`ov-${layer}-fill`, `ov-${layer}-line`]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+    }
+    const src = map.getSource(`ov-${layer}`) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    if (!enabled || !bboxRef.current || zoomRef.current < MIN_OVERLAY_ZOOM) {
+      src.setData(EMPTY_FC as never);
+      return;
+    }
+    const seq = ++seqRef.current[layer];
+    try {
+      const fc = await api.overlay(layer, bboxRef.current);
+      if (seq === seqRef.current[layer] && mapRef.current) {
+        (mapRef.current.getSource(`ov-${layer}`) as maplibregl.GeoJSONSource | undefined)?.setData(fc as never);
+      }
+    } catch {
+      /* leave the layer as-is on a failed fetch */
+    }
+  };
+  applyRef.current = applyOverlay;
+
   useEffect(() => {
     if (!containerRef.current) return;
     const map = new maplibregl.Map({
@@ -64,6 +111,26 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
     );
 
     map.on("load", () => {
+      // Constraint overlays first, so application pins always draw on top.
+      for (const layer of Object.keys(OVERLAY_STYLE) as OverlayKey[]) {
+        const s = OVERLAY_STYLE[layer];
+        map.addSource(`ov-${layer}`, { type: "geojson", data: EMPTY_FC as never });
+        map.addLayer({
+          id: `ov-${layer}-fill`,
+          type: "fill",
+          source: `ov-${layer}`,
+          layout: { visibility: "none" },
+          paint: { "fill-color": s.fill, "fill-opacity": s.fillOpacity },
+        });
+        map.addLayer({
+          id: `ov-${layer}-line`,
+          type: "line",
+          source: `ov-${layer}`,
+          layout: { visibility: "none" },
+          paint: { "line-color": s.line, "line-width": 0.8, "line-opacity": 0.7 },
+        });
+      }
+
       map.addSource("apps", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -173,9 +240,22 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
 
     const emitBounds = () => {
       const b = map.getBounds();
-      onBoundsChange([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+      bboxRef.current = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+      zoomRef.current = map.getZoom();
+      setMapZoom(map.getZoom());
+      onBoundsChange(bboxRef.current);
     };
     map.on("moveend", emitBounds);
+    // Re-fetch any enabled overlay for the new viewport, debounced.
+    let overlayTimer: ReturnType<typeof setTimeout> | undefined;
+    map.on("moveend", () => {
+      clearTimeout(overlayTimer);
+      overlayTimer = setTimeout(() => {
+        for (const layer of Object.keys(OVERLAY_STYLE) as OverlayKey[]) {
+          if (overlaysRef.current[layer]) applyRef.current(layer);
+        }
+      }, 350);
+    });
 
     return () => {
       loadedRef.current = false;
@@ -215,5 +295,32 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
     }
   }, [flyTo]);
 
-  return <div ref={containerRef} className="map-container" role="region" aria-label="Map of planning applications" />;
+  // Toggling an overlay on/off applies visibility and (re)loads its data.
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    (Object.keys(OVERLAY_STYLE) as OverlayKey[]).forEach((layer) => applyRef.current(layer));
+  }, [overlays]);
+
+  const anyOverlayOn = overlays.flood || overlays.zoning;
+  return (
+    <>
+      <div ref={containerRef} className="map-container" role="region" aria-label="Map of planning applications" />
+      <div className="map-overlays" role="group" aria-label="Map overlays">
+        {(Object.keys(OVERLAY_STYLE) as OverlayKey[]).map((layer) => (
+          <label key={layer} className="overlay-toggle">
+            <input
+              type="checkbox"
+              checked={overlays[layer]}
+              onChange={(e) => setOverlays((o) => ({ ...o, [layer]: e.target.checked }))}
+            />
+            <span className="overlay-swatch" style={{ background: OVERLAY_STYLE[layer].fill }} aria-hidden="true" />
+            {OVERLAY_STYLE[layer].label}
+          </label>
+        ))}
+        {anyOverlayOn && mapZoom < MIN_OVERLAY_ZOOM && (
+          <p className="overlay-hint">Zoom in to load overlays</p>
+        )}
+      </div>
+    </>
+  );
 }

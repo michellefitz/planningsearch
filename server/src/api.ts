@@ -22,6 +22,7 @@ import {
 import { summariseAppeal, summariseDescription, summariseRefusal } from "./summarize.js";
 import { fetchZoning } from "./zoning.js";
 import { fetchFlood } from "./flood.js";
+import { fetchOverlay, isOverlayLayer } from "./overlays.js";
 import {
   AGILE_CLIENT_BY_AUTHORITY,
   agilePortalUrl,
@@ -457,6 +458,15 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const flood = await fetchFlood(row.lat, row.lng, trace);
     if (debug) return { flood, trace };
     return { supported: true, flood };
+  });
+
+  // Polygon overlays (zoning, flood) as GeoJSON for the current map viewport.
+  app.get("/api/overlays/:layer", async (req, reply) => {
+    const layer = (req.params as { layer: string }).layer;
+    if (!isOverlayLayer(layer)) return reply.code(404).send({ error: "Unknown overlay" });
+    const bbox = parseBbox((req.query as { bbox?: string }).bbox);
+    if (!bbox) return { type: "FeatureCollection", features: [] };
+    return fetchOverlay(layer, bbox);
   });
 
   app.get("/api/applications/:id/conditions", async (req, reply) => {
