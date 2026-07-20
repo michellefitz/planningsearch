@@ -14,6 +14,8 @@ import FiltersBar from "./components/FiltersBar";
 import ResultsList from "./components/ResultsList";
 import DetailPanel from "./components/DetailPanel";
 import MapView, { STATUS_STYLE } from "./components/MapView";
+import ChatPanel from "./components/ChatPanel";
+import type { AgentAppRef } from "./agentApi";
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -28,6 +30,7 @@ export default function App() {
   const [detail, setDetail] = useState<AppDetail | null>(null);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"search" | "ask">("search");
 
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const nearRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -95,6 +98,27 @@ export default function App() {
     );
   };
 
+  const showAgentApps = useCallback((apps: AgentAppRef[]) => {
+    const located = apps.filter((a) => a.lat != null && a.lng != null);
+    if (!located.length) return;
+    setMapData({
+      type: "FeatureCollection",
+      features: located.map((a) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [a.lng as number, a.lat as number] },
+        properties: {
+          id: a.id,
+          reference: a.planning_reference,
+          status: a.status,
+          authority_id: a.authority_id,
+          address: a.address_text,
+          is_domestic_guess: false,
+        },
+      })),
+    });
+    setFlyTo({ lat: located[0].lat as number, lng: located[0].lng as number });
+  }, []);
+
   const oldestSync = meta?.authorities.reduce<string | null>(
     (acc, a) => (a.last_synced && (!acc || a.last_synced < acc) ? a.last_synced : acc),
     null
@@ -114,27 +138,54 @@ export default function App() {
 
       <div className="layout">
         <div className="side-panel">
-          <SearchBar
-            value={state.q}
-            onChange={(q) => setState((s) => ({ ...s, q }))}
-            onSubmit={(q) => applyState({ ...state, q })}
-            onNearMe={nearMe}
-          />
-          <FiltersBar meta={meta} state={state} onChange={applyState} />
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
-          <ResultsList
-            results={results}
-            total={total}
-            fuzzy={fuzzy}
-            loading={loading}
-            selectedId={selectedId}
-            onSelect={select}
-            onHover={setHoveredId}
-          />
+          <div className="mode-tabs" role="tablist" aria-label="Panel mode">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "search"}
+              className={mode === "search" ? "tab-active" : ""}
+              onClick={() => setMode("search")}
+            >
+              Search
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "ask"}
+              className={mode === "ask" ? "tab-active" : ""}
+              onClick={() => setMode("ask")}
+            >
+              Ask
+            </button>
+          </div>
+
+          <div hidden={mode !== "search"}>
+            <SearchBar
+              value={state.q}
+              onChange={(q) => setState((s) => ({ ...s, q }))}
+              onSubmit={(q) => applyState({ ...state, q })}
+              onNearMe={nearMe}
+            />
+            <FiltersBar meta={meta} state={state} onChange={applyState} />
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+            <ResultsList
+              results={results}
+              total={total}
+              fuzzy={fuzzy}
+              loading={loading}
+              selectedId={selectedId}
+              onSelect={select}
+              onHover={setHoveredId}
+            />
+          </div>
+
+          <div hidden={mode !== "ask"} className="chat-wrap">
+            <ChatPanel onSelectApp={select} onAppsReferenced={showAgentApps} />
+          </div>
         </div>
 
         <div className="map-wrap">

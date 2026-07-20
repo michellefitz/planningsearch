@@ -1345,3 +1345,114 @@ body {
   margin-top: 0.45rem;
   font-size: 0.8rem;
 }
+
+/* ---- Agent chat ---- */
+.mode-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.mode-tabs button {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font: inherit;
+  cursor: pointer;
+}
+.mode-tabs .tab-active {
+  background: var(--action);
+  border-color: var(--action);
+  color: #fff;
+}
+.chat-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+/* Author display:flex above would defeat the hidden attribute otherwise. */
+.chat-wrap[hidden] {
+  display: none;
+}
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  flex: 1;
+}
+.chat-thread {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+.chat-msg {
+  border-radius: 10px;
+  padding: 8px 12px;
+  max-width: 95%;
+}
+.chat-msg p {
+  margin: 6px 0;
+}
+.chat-user {
+  align-self: flex-end;
+  background: var(--action);
+  color: #fff;
+}
+.chat-assistant {
+  align-self: flex-start;
+  background: var(--surface-2);
+}
+.chat-error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.chat-status {
+  font-style: italic;
+  color: var(--ink-2);
+  margin: 0 4px;
+}
+.chat-app-card {
+  margin: 6px 0;
+  width: 100%;
+  text-align: left;
+}
+.chat-empty {
+  color: var(--ink-2);
+  font-size: 0.95em;
+}
+.chat-input-row {
+  display: flex;
+  gap: 6px;
+}
+.chat-input-row input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  font: inherit;
+}
+.chat-input-row button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--action);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.chat-input-row button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chat-disclaimer {
+  font-size: 0.8em;
+  color: var(--ink-3);
+  margin: 0;
+}
