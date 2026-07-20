@@ -189,12 +189,23 @@ const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
  * metadata endpoint gates the Street View pane so places with no coverage
  * don't show Google's grey placeholder.
  */
+/** Street View metadata dates arrive as "YYYY-MM" (sometimes "YYYY"); show
+ *  them as "Jun 2021" so users can judge how current the imagery is. */
+function formatPanoDate(raw: string): string {
+  const m = raw.match(/^(\d{4})(?:-(\d{2}))?/);
+  if (!m) return raw;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = m[2] ? months[Number(m[2]) - 1] : null;
+  return month ? `${month} ${m[1]}` : m[1];
+}
+
 function PropertyMedia({ detail: d }: { detail: AppDetail }) {
-  const [hasPano, setHasPano] = useState<boolean | null>(null);
+  // null = no panorama / not loaded; object (with optional date) = coverage.
+  const [pano, setPano] = useState<{ date: string | null } | null>(null);
   const hasCoords = d.lat != null && d.lng != null;
 
   useEffect(() => {
-    setHasPano(null);
+    setPano(null);
     if (!GMAPS_KEY || !hasCoords) return;
     const ctrl = new AbortController();
     fetch(
@@ -202,8 +213,10 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
       { signal: ctrl.signal }
     )
       .then((r) => r.json())
-      .then((m: { status: string }) => setHasPano(m.status === "OK"))
-      .catch(() => setHasPano(false));
+      .then((m: { status: string; date?: string }) =>
+        setPano(m.status === "OK" ? { date: m.date ?? null } : null)
+      )
+      .catch(() => setPano(null));
     return () => ctrl.abort();
   }, [d.id, d.lat, d.lng, hasCoords]);
 
@@ -211,7 +224,7 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
   const loc = `${d.lat},${d.lng}`;
   return (
     <div className="media-row">
-      {hasPano && (
+      {pano && (
         <a
           href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${loc}`}
           target="_blank"
@@ -223,7 +236,9 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
             alt={`Street View of ${d.address_text ?? "the property"}`}
             loading="lazy"
           />
-          <span className="media-label">Street View</span>
+          <span className="media-label">
+            Street View{pano.date ? ` · ${formatPanoDate(pano.date)}` : ""}
+          </span>
         </a>
       )}
       <a
