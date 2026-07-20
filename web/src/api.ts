@@ -236,6 +236,12 @@ export const api = {
       summary?: string | null;
       based_on_document?: string | null;
     }>(`/api/applications/${id}/appeal-summary`),
+  decisionSummary: (id: number) =>
+    getJson<{
+      supported: boolean;
+      summary?: string | null;
+      source_document?: string | null;
+    }>(`/api/applications/${id}/decision-summary`),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
   overlay: (layer: "zoning" | "flood", bbox: [number, number, number, number]) =>

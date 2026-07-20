@@ -590,6 +590,71 @@ function AppealCard({ detail: d }: { detail: AppDetail }) {
   );
 }
 
+// Councils with a structured conditions API — their decision reasons come from
+// the conditions endpoint, not the scanned PDF.
+const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fingal", "dlr"]);
+
+/**
+ * "What the council decided" for eplanning/iDocs councils (Kildare) that expose
+ * no structured conditions — the reasons live only in the scanned decision
+ * order, so we read that PDF on demand and summarise it.
+ */
+function DecisionSummaryCard({ detail: d }: { detail: AppDetail }) {
+  const [state, setState] = useState<AppealSummaryState>({ phase: "idle" });
+  useEffect(() => setState({ phase: "idle" }), [d.id]);
+  if (!d.decision || !d.scanned_files_url || AGILE_CONDITION_AUTHORITIES.has(d.authority_id)) return null;
+
+  const load = async () => {
+    setState({ phase: "loading" });
+    try {
+      const res = await api.decisionSummary(d.id);
+      if (res.summary)
+        setState({ phase: "loaded", summary: res.summary, source: res.source_document ?? null });
+      else setState({ phase: "empty" });
+    } catch {
+      setState({ phase: "failed" });
+    }
+  };
+
+  return (
+    <section aria-labelledby="council-decision-h">
+      <h3 id="council-decision-h">What the council decided</h3>
+      <p className="decision-headline">
+        {d.decision}
+        {d.decision_date && <span className="hint"> · {d.decision_date}</span>}
+      </p>
+      {state.phase === "idle" && (
+        <button type="button" className="btn ai" onClick={load}>
+          ✨ Summarise the council's decision
+        </button>
+      )}
+      {state.phase === "loading" && (
+        <span className="hint">Reading the decision order and writing a summary…</span>
+      )}
+      {state.phase === "failed" && (
+        <p className="list-note">
+          Couldn't read the decision order just now — it may be a scanned image or not published.
+          See the scanned files below.
+        </p>
+      )}
+      {state.phase === "empty" && (
+        <p className="list-note">
+          Couldn't find a readable decision order to summarise — see the scanned files below.
+        </p>
+      )}
+      {state.phase === "loaded" && (
+        <blockquote className="ai-summary">
+          {state.summary}
+          <footer className="hint">
+            AI summary{state.source ? ` · from "${state.source}"` : ""} — verify against the decision
+            order.
+          </footer>
+        </blockquote>
+      )}
+    </section>
+  );
+}
+
 export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated }: Props) {
   const glossary = meta?.glossary ?? {};
   const timeline = buildTimeline(d);
@@ -842,6 +907,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
       ) : (
         <DecisionSection conditions={conditions} detail={d} />
       )}
+
+      <DecisionSummaryCard detail={d} />
 
       <section aria-labelledby="docs-h">
         <h3 id="docs-h">Documents</h3>

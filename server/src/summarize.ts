@@ -155,3 +155,34 @@ export async function summariseAppeal(
   const usable = isUsableSummary(text);
   return usable ? sanitiseSummary(usable) : null;
 }
+
+const DECISION_DOC_PROMPT =
+  `You read an Irish council's planning decision order and explain it to a regular person in plain ` +
+  `English. If permission was REFUSED, begin "Refused because" and give the main real reasons ` +
+  `(too close to a sewer, would overlook neighbours, traffic, out of character with the area, no ` +
+  `drainage details…), never the policy or plan citations. If GRANTED, say it was granted and note ` +
+  `any significant conditions (financial contributions, construction hours, design or material ` +
+  `changes, landscaping). Two or three short sentences. ` +
+  `FORMAT: plain prose only — no Markdown, asterisks, headings, bullet points or a title. ` +
+  `Use only what the order states — never invent details. ` +
+  NO_LEAK_RULE;
+
+/**
+ * Summarise a council's scanned decision order (the "Notification of Decision"
+ * PDF) — the only place eplanning/iDocs councils like Kildare record their
+ * reasons. The PDF is read directly by the model (works on scanned images too).
+ */
+export async function summariseDecisionDocument(
+  pdfBase64: string,
+  decision: string | null
+): Promise<string | null> {
+  if (!pdfBase64) return null;
+  const context = decision ? `The recorded decision is: ${decision}.` : "";
+  const content: ContentBlock[] = [
+    { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+    { type: "text", text: `${context}\nSummarise what the council decided and why, for a general reader.` },
+  ];
+  const text = await callClaude(DECISION_DOC_PROMPT, content, 320, 25_000);
+  const usable = isUsableSummary(text);
+  return usable ? sanitiseSummary(usable) : null;
+}

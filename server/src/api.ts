@@ -19,7 +19,12 @@ import {
   safeFilename,
   type DiagnosticStep,
 } from "./documents.js";
-import { summariseAppeal, summariseDescription, summariseRefusal } from "./summarize.js";
+import {
+  summariseAppeal,
+  summariseDecisionDocument,
+  summariseDescription,
+  summariseRefusal,
+} from "./summarize.js";
 import { fetchZoning } from "./zoning.js";
 import { fetchFlood } from "./flood.js";
 import { fetchOverlay, isOverlayLayer } from "./overlays.js";
@@ -111,6 +116,16 @@ function publicApplication(row: Record<string, unknown>) {
 
 const REFUSAL_SUMMARY_CACHE = new Map<number, string>();
 const APPEAL_SUMMARY_CACHE = new Map<number, { summary: string; based_on_document: string | null }>();
+const DECISION_SUMMARY_CACHE = new Map<number, { summary: string; source_document: string | null }>();
+
+/** Pick the decision-order document from a scanned-file listing. */
+function findDecisionDocIndex(files: Array<{ title: string }>): number {
+  const specific = files.findIndex((f) =>
+    /notification of decision|decision order|manager.?s order|board order|order to (grant|refuse)/i.test(f.title)
+  );
+  if (specific >= 0) return specific;
+  return files.findIndex((f) => /\bdecision\b|refus|grant of permission|\border\b/i.test(f.title));
+}
 
 export function registerRoutes(app: FastifyInstance, db: Database.Database) {
   app.get("/api/meta", () => {
@@ -326,6 +341,55 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const result = { summary, based_on_document: pdf ? (doc?.title ?? null) : null };
     APPEAL_SUMMARY_CACHE.set(id, result);
     return { supported: true, ...result };
+  });
+
+  // AI summary of a council decision from its scanned decision-order PDF, for
+  // eplanning/iDocs councils (Kildare) that expose no structured conditions —
+  // the reasons for refusal only exist in that document.
+  app.get("/api/applications/:id/decision-summary", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare(
+        "SELECT authority_id, source_url, planning_reference, decision FROM applications WHERE id = ?"
+      )
+      .get(id) as
+      | { authority_id: string; source_url: string | null; planning_reference: string; decision: string | null }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    const listUrl = deriveScannedFilesUrl(row.authority_id, row.source_url, row.planning_reference);
+    // Only councils without a structured conditions API need this, and only
+    // once a decision is on record.
+    if (!listUrl || AGILE_CLIENT_BY_AUTHORITY[row.authority_id] || !row.decision) {
+      return { supported: false };
+    }
+    const cached = DECISION_SUMMARY_CACHE.get(id);
+    if (cached) return { supported: true, ...cached };
+
+    const debug = (req.query as { debug?: string }).debug === "1";
+    const trace: DiagnosticStep[] | undefined = debug ? [] : undefined;
+    const files = await fetchScannedFileList(listUrl, trace);
+    const index = files ? findDecisionDocIndex(files) : -1;
+    if (debug) {
+      const doc = index >= 0 ? await fetchScannedDocument(listUrl, index, 10_000_000, trace) : null;
+      return {
+        files,
+        chosen: index,
+        chosen_title: index >= 0 ? files![index].title : null,
+        doc: doc === "too_large" ? "too_large" : doc ? doc.contentType : "null",
+        trace,
+      };
+    }
+    if (!files || index < 0) return { supported: true, summary: null, source_document: null };
+
+    const doc = await fetchScannedDocument(listUrl, index, 10_000_000, trace);
+    if (!doc || doc === "too_large") return { supported: true, summary: null, source_document: files[index].title };
+    const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
+    const summary = isPdf
+      ? await summariseDecisionDocument(doc.body.toString("base64"), row.decision)
+      : null;
+    const source_document = files[index].title;
+    if (summary) DECISION_SUMMARY_CACHE.set(id, { summary, source_document });
+    return { supported: true, summary, source_document };
   });
 
   // Resolve the official portal deep link at click time. Agile councils need

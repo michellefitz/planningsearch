@@ -974,6 +974,38 @@ async function summariseAppeal(context, pdfBase64) {
   return usable ? sanitiseSummary(usable) : null;
 }
 
+const DECISION_DOC_PROMPT =
+  'You read an Irish council\'s planning decision order and explain it to a regular person in plain ' +
+  'English. If permission was REFUSED, begin "Refused because" and give the main real reasons ' +
+  "(too close to a sewer, would overlook neighbours, traffic, out of character with the area, no " +
+  "drainage details…), never the policy or plan citations. If GRANTED, say it was granted and note " +
+  "any significant conditions (financial contributions, construction hours, design or material " +
+  "changes, landscaping). Two or three short sentences. " +
+  "FORMAT: plain prose only — no Markdown, asterisks, headings, bullet points or a title. " +
+  "Use only what the order states — never invent details. " +
+  NO_LEAK_RULE;
+
+async function summariseDecisionDocument(pdfBase64, decision) {
+  if (!pdfBase64) return null;
+  const context = decision ? `The recorded decision is: ${decision}.` : "";
+  const content = [
+    { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+    { type: "text", text: `${context}\nSummarise what the council decided and why, for a general reader.` },
+  ];
+  const text = await callClaude(DECISION_DOC_PROMPT, content, 320, 25000);
+  const usable = isUsableSummary(text);
+  return usable ? sanitiseSummary(usable) : null;
+}
+
+const DECISION_SUMMARY_CACHE = new Map();
+function findDecisionDocIndex(files) {
+  const specific = files.findIndex((f) =>
+    /notification of decision|decision order|manager.?s order|board order|order to (grant|refuse)/i.test(f.title)
+  );
+  if (specific >= 0) return specific;
+  return files.findIndex((f) => /\bdecision\b|refus|grant of permission|\border\b/i.test(f.title));
+}
+
 const DECISION_DOC_RE = /board\s*(order|direction)|inspector|decision|determination/i;
 const PDF_URL_RE = /\.pdf($|[?#])/i;
 
@@ -1588,6 +1620,40 @@ export default async function handler(req, res) {
     const result = { summary, based_on_document: pdf ? doc?.title ?? null : null };
     APPEAL_SUMMARY_CACHE.set(app.id, result);
     return send(res, 200, { supported: true, ...result });
+  }
+
+  const dsm = route.match(/^\/api\/applications\/(\d+)\/decision-summary$/);
+  if (dsm) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(dsm[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
+    if (!listUrl || app.authority_id in AGILE_CLIENT_BY_AUTHORITY || !app.decision) {
+      return send(res, 200, { supported: false });
+    }
+    const cached = DECISION_SUMMARY_CACHE.get(app.id);
+    if (cached) return send(res, 200, { supported: true, ...cached });
+    const debug = p.get("debug") === "1";
+    const trace = debug ? [] : undefined;
+    const files = await fetchScannedFileList(listUrl, trace);
+    const index = files ? findDecisionDocIndex(files) : -1;
+    if (debug) {
+      const d = index >= 0 ? await fetchScannedDocument(listUrl, index, 10_000_000, trace) : null;
+      return send(res, 200, {
+        files,
+        chosen: index,
+        chosen_title: index >= 0 ? files[index].title : null,
+        doc: d === "too_large" ? "too_large" : d ? d.contentType : "null",
+        trace,
+      });
+    }
+    if (!files || index < 0) return send(res, 200, { supported: true, summary: null, source_document: null });
+    const doc = await fetchScannedDocument(listUrl, index, 10_000_000, trace);
+    if (!doc || doc === "too_large") return send(res, 200, { supported: true, summary: null, source_document: files[index].title });
+    const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
+    const summary = isPdf ? await summariseDecisionDocument(doc.body.toString("base64"), app.decision) : null;
+    const source_document = files[index].title;
+    if (summary) DECISION_SUMMARY_CACHE.set(app.id, { summary, source_document });
+    return send(res, 200, { supported: true, summary, source_document });
   }
 
   const fm = route.match(/^\/api\/applications\/(\d+)\/files$/);
