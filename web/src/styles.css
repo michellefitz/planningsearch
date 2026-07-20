@@ -1410,6 +1410,11 @@ body {
 .chat-msg p {
   margin: 6px 0;
 }
+.chat-msg .chat-heading {
+  margin: 10px 0 2px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
 .chat-user {
   align-self: flex-end;
   background: var(--action);
