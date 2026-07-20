@@ -63,4 +63,67 @@ describe("runAgent", () => {
     }
     expect(events[0].type).toBe("error");
   });
+
+  it("yields error then done when the body stream errors mid-read", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n'));
+        c.error(new Error("ECONNRESET"));
+      },
+    });
+    const fetchImpl = (async () => new Response(stream, { status: 200 })) as typeof fetch;
+
+    const events: AgentEvent[] = [];
+    for await (const ev of runAgent({
+      messages: [{ role: "user", content: "hi" }],
+      executeTool: async () => ({}),
+      fetchImpl,
+      apiKey: "test-key",
+    })) {
+      events.push(ev);
+    }
+
+    expect(events.some((e) => e.type === "error")).toBe(true);
+    expect(events[events.length - 1]).toEqual({ type: "done" });
+  });
+
+  it("skips malformed SSE frames and processes valid ones", async () => {
+    const body =
+      "data: {not json\n\n" +
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n' +
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}\n\n' +
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n' +
+      'data: {"type":"message_stop"}\n\n';
+    const fetchImpl = (async () => new Response(body, { status: 200 })) as typeof fetch;
+
+    const events: AgentEvent[] = [];
+    for await (const ev of runAgent({
+      messages: [{ role: "user", content: "hi" }],
+      executeTool: async () => ({}),
+      fetchImpl,
+      apiKey: "test-key",
+    })) {
+      events.push(ev);
+    }
+
+    expect(events.map((e) => e.type)).toEqual(["text", "done"]);
+    expect((events[0] as { text: string }).text).toBe("hello");
+  });
+
+  it("yields error then done on an Anthropic error frame", async () => {
+    const body = 'event: error\ndata: {"type":"error","error":{"type":"overloaded_error"}}\n\n';
+    const fetchImpl = (async () => new Response(body, { status: 200 })) as typeof fetch;
+
+    const events: AgentEvent[] = [];
+    for await (const ev of runAgent({
+      messages: [{ role: "user", content: "hi" }],
+      executeTool: async () => ({}),
+      fetchImpl,
+      apiKey: "test-key",
+    })) {
+      events.push(ev);
+    }
+
+    expect(events.map((e) => e.type)).toEqual(["error", "done"]);
+  });
 });

@@ -36,7 +36,13 @@ async function* parseSse(body: ReadableStream<Uint8Array>): AsyncGenerator<Strea
       const frame = buf.slice(0, i);
       buf = buf.slice(i + 2);
       const data = frame.split("\n").find((l) => l.startsWith("data: "));
-      if (data) yield JSON.parse(data.slice(6)) as StreamEvent;
+      if (data) {
+        try {
+          yield JSON.parse(data.slice(6)) as StreamEvent;
+        } catch {
+          // skip malformed frames
+        }
+      }
     }
   }
 }
@@ -98,39 +104,50 @@ export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEven
     const partialJson: Record<number, string> = {};
     let stopReason: string | null = null;
 
-    for await (const ev of parseSse(res.body)) {
-      if (ev.type === "content_block_start" && ev.content_block && ev.index !== undefined) {
-        if (ev.content_block.type === "text") {
-          blocks[ev.index] = { type: "text", text: ev.content_block.text ?? "" };
-        } else if (ev.content_block.type === "tool_use") {
-          blocks[ev.index] = {
-            type: "tool_use",
-            id: ev.content_block.id ?? "",
-            name: ev.content_block.name ?? "",
-            input: {},
-          };
-          partialJson[ev.index] = "";
+    try {
+      for await (const ev of parseSse(res.body)) {
+        if (ev.type === "error") {
+          yield { type: "error", message: "The AI service reported an error." };
+          yield { type: "done" };
+          return;
         }
-      } else if (ev.type === "content_block_delta" && ev.delta && ev.index !== undefined) {
-        const block = blocks[ev.index];
-        if (ev.delta.type === "text_delta" && block?.type === "text" && ev.delta.text) {
-          block.text += ev.delta.text;
-          yield { type: "text", text: ev.delta.text };
-        } else if (ev.delta.type === "input_json_delta" && block?.type === "tool_use") {
-          partialJson[ev.index] += ev.delta.partial_json ?? "";
-        }
-      } else if (ev.type === "content_block_stop" && ev.index !== undefined) {
-        const block = blocks[ev.index];
-        if (block?.type === "tool_use" && partialJson[ev.index]) {
-          try {
-            block.input = JSON.parse(partialJson[ev.index]);
-          } catch {
-            block.input = {};
+        if (ev.type === "content_block_start" && ev.content_block && ev.index !== undefined) {
+          if (ev.content_block.type === "text") {
+            blocks[ev.index] = { type: "text", text: ev.content_block.text ?? "" };
+          } else if (ev.content_block.type === "tool_use") {
+            blocks[ev.index] = {
+              type: "tool_use",
+              id: ev.content_block.id ?? "",
+              name: ev.content_block.name ?? "",
+              input: {},
+            };
+            partialJson[ev.index] = "";
           }
+        } else if (ev.type === "content_block_delta" && ev.delta && ev.index !== undefined) {
+          const block = blocks[ev.index];
+          if (ev.delta.type === "text_delta" && block?.type === "text" && ev.delta.text) {
+            block.text += ev.delta.text;
+            yield { type: "text", text: ev.delta.text };
+          } else if (ev.delta.type === "input_json_delta" && block?.type === "tool_use") {
+            partialJson[ev.index] += ev.delta.partial_json ?? "";
+          }
+        } else if (ev.type === "content_block_stop" && ev.index !== undefined) {
+          const block = blocks[ev.index];
+          if (block?.type === "tool_use" && partialJson[ev.index]) {
+            try {
+              block.input = JSON.parse(partialJson[ev.index]);
+            } catch {
+              block.input = {};
+            }
+          }
+        } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
+          stopReason = ev.delta.stop_reason;
         }
-      } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
-        stopReason = ev.delta.stop_reason;
       }
+    } catch {
+      yield { type: "error", message: "The AI service connection dropped." };
+      yield { type: "done" };
+      return;
     }
 
     const toolUses = blocks.filter((b): b is Extract<ContentBlock, { type: "tool_use" }> => b?.type === "tool_use");
