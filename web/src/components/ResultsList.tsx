@@ -69,6 +69,14 @@ export default function ResultsList({
                     likely domestic
                   </span>
                 )}
+                {r.commencement_date && (
+                  <span
+                    className="tag tag-commenced"
+                    title="A commencement notice was filed with building control for this permission"
+                  >
+                    {r.completion_date ? "built" : "work commenced"}
+                  </span>
+                )}
               </p>
             </button>
           </li>

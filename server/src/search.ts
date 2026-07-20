@@ -7,6 +7,7 @@ export interface SearchFilters {
   types?: string[];
   domesticOnly?: boolean;
   appealedOnly?: boolean;
+  commencedOnly?: boolean;
   receivedFrom?: string;
   receivedTo?: string;
   decisionFrom?: string;
@@ -119,6 +120,7 @@ function buildWhere(f: SearchFilters, alias = "a"): WhereClause {
   }
   if (f.domesticOnly) clauses.push(`${alias}.is_domestic_guess = 1`);
   if (f.appealedOnly) clauses.push(`${alias}.appeal_reference IS NOT NULL`);
+  if (f.commencedOnly) clauses.push(`${alias}.commencement_date IS NOT NULL`);
   if (f.receivedFrom) {
     params.rf = f.receivedFrom;
     clauses.push(`${alias}.received_date >= @rf`);
@@ -146,7 +148,8 @@ function buildWhere(f: SearchFilters, alias = "a"): WhereClause {
 const RESULT_COLUMNS = `
   a.id, a.authority_id, a.planning_reference, a.description, a.status,
   a.application_type, a.is_domestic_guess, a.received_date, a.decision,
-  a.decision_date, a.address_text, a.lat, a.lng
+  a.decision_date, a.address_text, a.lat, a.lng,
+  a.commencement_date, a.completion_date
 `;
 
 export function search(

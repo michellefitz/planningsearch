@@ -10,6 +10,7 @@
 import { openDb, setAuthoritySynced, upsertApplication } from "../db.js";
 import { AUTHORITIES } from "../config/authorities.js";
 import { buildWhereClause, featureToRecord, fetchPage, SERVICE_URL } from "./arcgis.js";
+import { buildCommencementIndex, lookupCommencement } from "./bcms.js";
 
 const PAGE_SIZE = 1000;
 const PAGE_DELAY_MS = 500; // be polite to the public service
@@ -49,6 +50,33 @@ export async function runIngest() {
 
   for (const a of AUTHORITIES) setAuthoritySynced(db, a.id, startedAt);
   console.log(`Done: ${totalUpserted} applications upserted, ${totalSkipped} outside scope/unmappable.`);
+
+  // Join BCMS commencement notices onto the freshly-upserted applications.
+  // Best-effort: the portal can be flaky and the register data stands alone.
+  try {
+    console.log("Fetching BCMS commencement notices (data.nbco.gov.ie) …");
+    const bcms = await buildCommencementIndex(undefined, console.log);
+    const rows = db
+      .prepare("SELECT id, authority_id, planning_reference, appeal_reference FROM applications")
+      .all() as Array<{ id: number; authority_id: string; planning_reference: string; appeal_reference: string | null }>;
+    const update = db.prepare(
+      `UPDATE applications SET commencement_notice = ?, commencement_date = ?, completion_date = ?,
+       commencement_units = ?, commencement_count = ? WHERE id = ?`
+    );
+    let commenced = 0;
+    const tx = db.transaction(() => {
+      for (const r of rows) {
+        const hit = lookupCommencement(bcms, r.authority_id, r.planning_reference, r.appeal_reference);
+        if (!hit) continue;
+        update.run(hit.notice, hit.commencement_date, hit.completion_date, hit.units, hit.count, r.id);
+        commenced++;
+      }
+    });
+    tx();
+    console.log(`Matched commencement notices for ${commenced} of ${rows.length} applications.`);
+  } catch (err) {
+    console.error("BCMS join failed (register data unaffected):", err);
+  }
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {

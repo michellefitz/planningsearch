@@ -1185,6 +1185,26 @@ body {
   color: #9f1239;
 }
 
+/* BCMS commencement: did the permission actually get built on? */
+.commencement-line {
+  margin: 0 0 0.85rem;
+  font-size: 0.86rem;
+  font-weight: 550;
+  color: #166534;
+}
+.commencement-done {
+  color: #166534;
+  font-weight: 550;
+}
+.commencement-none {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+.tag-commenced {
+  color: #166534;
+  background: #f0fdf4;
+}
+
 /* Appeal, told inside the decision section. */
 .appeal-block {
   margin-top: 1rem;

@@ -40,6 +40,8 @@ export interface AppSummary {
   distance_km?: number;
   match_quality?: "exact" | "fuzzy";
   portal_url: string | null;
+  commencement_date?: string | null;
+  completion_date?: string | null;
 }
 
 export interface AppDetail extends AppSummary {
@@ -74,6 +76,10 @@ export interface AppDetail extends AppSummary {
   scanned_files_url: string | null;
   /** Deep link to the An Coimisiún Pleanála case file when an appeal exists. */
   appeal_url: string | null;
+  /** BCMS commencement notice joined by permission number (data.nbco.gov.ie). */
+  commencement_notice?: string | null;
+  commencement_units?: number | null;
+  commencement_count?: number | null;
   /** Agile portals: route the portal button through /api/applications/:id/portal. */
   portal_resolver: boolean;
   files_supported: boolean;
@@ -127,6 +133,7 @@ export interface SearchState {
   statuses: string[];
   domesticOnly: boolean;
   appealedOnly: boolean;
+  commencedOnly: boolean;
   receivedFrom: string;
   receivedTo: string;
   useMapArea: boolean;
@@ -139,6 +146,7 @@ export const EMPTY_SEARCH: SearchState = {
   statuses: [],
   domesticOnly: false,
   appealedOnly: false,
+  commencedOnly: false,
   receivedFrom: "",
   receivedTo: "",
   useMapArea: false,
@@ -156,6 +164,7 @@ export function searchParams(
   if (s.statuses.length) p.set("status", s.statuses.join(","));
   if (s.domesticOnly) p.set("domestic", "1");
   if (s.appealedOnly) p.set("appealed", "1");
+  if (s.commencedOnly) p.set("commenced", "1");
   if (s.receivedFrom) p.set("receivedFrom", s.receivedFrom);
   if (s.receivedTo) p.set("receivedTo", s.receivedTo);
   if (s.useMapArea && bbox) p.set("bbox", bbox.join(","));

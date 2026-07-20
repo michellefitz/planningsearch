@@ -90,6 +90,14 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
         <label className="toggle-row">
           <input
             type="checkbox"
+            checked={state.commencedOnly}
+            onChange={(e) => onChange({ ...state, commencedOnly: e.target.checked })}
+          />
+          Work commenced <em className="hint">(commencement notice filed with building control)</em>
+        </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
             checked={state.useMapArea}
             onChange={(e) => onChange({ ...state, useMapArea: e.target.checked })}
           />
@@ -119,6 +127,7 @@ function countActive(s: SearchState): number {
     s.statuses.length +
     (s.domesticOnly ? 1 : 0) +
     (s.appealedOnly ? 1 : 0) +
+    (s.commencedOnly ? 1 : 0) +
     (s.receivedFrom ? 1 : 0) +
     (s.receivedTo ? 1 : 0) +
     (s.useMapArea ? 1 : 0)

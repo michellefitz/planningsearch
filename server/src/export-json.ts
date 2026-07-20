@@ -12,6 +12,7 @@ import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js
 import { generateSeedRecords } from "./seed.js";
 import { featureToRecord, fetchAllSince, SERVICE_URL } from "./ingest/arcgis.js";
 import { buildPprIndex, isSpecificAddress, normalizeAddress } from "./ingest/ppr.js";
+import { buildCommencementIndex, lookupCommencement } from "./ingest/bcms.js";
 import type { ApplicationRecord } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -85,6 +86,11 @@ async function main() {
       vat_exclusive: boolean;
       not_full_market: boolean;
     }>;
+    commencement_notice?: string | null;
+    commencement_date?: string | null;
+    completion_date?: string | null;
+    commencement_units?: number | null;
+    commencement_count?: number | null;
   };
   const apps: BundledApp[] = records.map((r, i) => ({ id: i + 1, ...r }));
   const now = new Date().toISOString();
@@ -116,6 +122,33 @@ async function main() {
       matched++;
     }
     console.log(`Matched PPR sales for ${matched} of ${apps.length} applications.`);
+
+    // Join BCMS commencement notices by the permission number cited on the
+    // notice — tells users whether granted permissions were actually built.
+    // The portal can be flaky; a failed pull must not sink the deploy.
+    try {
+      console.log("Fetching BCMS commencement notices (data.nbco.gov.ie) …");
+      const bcms = await buildCommencementIndex(undefined, console.log);
+      let commenced = 0;
+      for (const app of apps) {
+        const hit = lookupCommencement(
+          bcms,
+          app.authority_id,
+          app.planning_reference,
+          app.appeal_reference
+        );
+        if (!hit) continue;
+        app.commencement_notice = hit.notice;
+        app.commencement_date = hit.commencement_date;
+        app.completion_date = hit.completion_date;
+        app.commencement_units = hit.units;
+        app.commencement_count = hit.count;
+        commenced++;
+      }
+      console.log(`Matched commencement notices for ${commenced} of ${apps.length} applications.`);
+    } catch (err) {
+      console.error("BCMS fetch failed — bundle ships without commencement data:", err);
+    }
   }
 
   const counts = new Map<string, number>();

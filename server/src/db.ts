@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS applications (
   floor_area_sqm REAL,
   site_area_ha REAL,
   expiry_date TEXT,
+  commencement_notice TEXT,
+  commencement_date TEXT,
+  completion_date TEXT,
+  commencement_units INTEGER,
+  commencement_count INTEGER,
   lat REAL,
   lng REAL,
   geom_polygon TEXT,
@@ -130,6 +135,13 @@ export function openDb(dbPath: string = DB_PATH, opts: OpenDbOptions = {}): Data
   try { db.exec("ALTER TABLE applications ADD COLUMN appeal_lodged_date TEXT"); } catch {}
   try { db.exec("ALTER TABLE applications ADD COLUMN appeal_decision TEXT"); } catch {}
   try { db.exec("ALTER TABLE applications ADD COLUMN appeal_decision_date TEXT"); } catch {}
+  // BCMS commencement/completion join (ingest/bcms.ts) — enrichment columns
+  // applied after the register upsert, like ai_summary.
+  try { db.exec("ALTER TABLE applications ADD COLUMN commencement_notice TEXT"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN commencement_date TEXT"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN completion_date TEXT"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN commencement_units INTEGER"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN commencement_count INTEGER"); } catch {}
   seedAuthorities(db);
   return db;
 }

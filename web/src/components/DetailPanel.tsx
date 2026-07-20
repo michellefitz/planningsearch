@@ -75,6 +75,19 @@ function buildTimeline(d: AppDetail): TimelineStep[] {
   if (d.final_grant_date) {
     steps.push({ label: "Final grant issued", date: d.final_grant_date, state: "done" });
   }
+  // BCMS: the builder's commencement notice (filed 14–28 days before starting)
+  // and, where works finished, the completion certificate.
+  if (d.commencement_date) {
+    const future = d.commencement_date > new Date().toISOString().slice(0, 10);
+    steps.push({
+      label: future ? "Work due to commence" : "Work commenced on site",
+      date: d.commencement_date,
+      state: future ? "current" : "done",
+    });
+    if (d.completion_date) {
+      steps.push({ label: "Completion certified", date: d.completion_date, state: "done" });
+    }
+  }
   return steps;
 }
 
@@ -596,6 +609,28 @@ function DecisionSection({
             </>
           )}
         </p>
+      )}
+      {d.commencement_date ? (
+        <p className="commencement-line">
+          {d.commencement_date > new Date().toISOString().slice(0, 10)
+            ? "Work due to commence on site"
+            : "Work has commenced on site"}
+          <span className="hint"> · {d.commencement_date}</span>
+          {d.commencement_notice && <span className="hint"> · notice {d.commencement_notice}</span>}
+          {d.commencement_units != null && d.commencement_units > 0 && (
+            <span className="hint"> · {d.commencement_units} units</span>
+          )}
+          {d.completion_date && (
+            <span className="commencement-done"> · completion certified {d.completion_date}</span>
+          )}
+        </p>
+      ) : (
+        d.status === "granted" &&
+        d.decision_date && (
+          <p className="commencement-line commencement-none">
+            No commencement notice on file — work does not appear to have started.
+          </p>
+        )
       )}
       {summary ? (
         <p className="ai-summary refusal-summary">✦ {summary}</p>
