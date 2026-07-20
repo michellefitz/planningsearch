@@ -721,10 +721,54 @@ async function fetchFlood(lat, lng, trace) {
 
 // Map overlays (zoning, flood) as GeoJSON for a viewport. Mirrors server/src/overlays.ts.
 const OVERLAY_CONFIG = {
-  zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,PLAN_NAME" },
+  zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,GZT_DESC,PLAN_NAME" },
   flood: { url: FLOOD_URL, where: "1=1", outFields: "*" },
 };
 const EMPTY_FC = { type: "FeatureCollection", features: [] };
+
+function classifyZone(text) {
+  const t = String(text).toLowerCase();
+  if (/mixed/.test(t)) return "mixed";
+  if (/resid|\bhousing\b|dwelling/.test(t)) return "residential";
+  if (/commerc|retail|town centre|village centre|city centre|tourism/.test(t)) return "commercial";
+  if (/industr|enterprise|employ|business|logistic|warehous|extract/.test(t)) return "industrial";
+  if (/communit|educat|institution|civic|health|social|amenity building/.test(t)) return "community";
+  if (/open space|amenity|recreat|green|park|\bsport\b|passive|active|woodland/.test(t)) return "open_space";
+  if (/agricul|rural|farm/.test(t)) return "agriculture";
+  if (/transport|utilit|infrastructure|\bport\b|airport|\broad\b|energy/.test(t)) return "infrastructure";
+  if (/water|marine|coastal|\briver\b|lake|estuar/.test(t)) return "water";
+  return "other";
+}
+const ovStr = (v) => (typeof v === "string" ? v.trim() : v == null ? "" : String(v));
+const OV_FLOOD_FIELDS = [
+  "Probability", "PROBABILITY", "Scenario", "SCENARIO", "AEP", "Flood_Zone", "FLOOD_ZONE",
+  "FloodZone", "Flood_Type", "FLOOD_TYPE", "Type", "TYPE", "Likelihood", "Event", "Class",
+  "Descriptor", "DESCRIPT", "Description", "DESCRIPTION",
+];
+function ovFloodLabel(props) {
+  for (const f of OV_FLOOD_FIELDS) {
+    const v = ovStr(props[f]);
+    if (v && v.length <= 60) return v;
+  }
+  return "Mapped flood extent";
+}
+function ovTransform(layer, features) {
+  return features.map((f) => {
+    const p = f.properties ?? {};
+    if (layer === "zoning") {
+      const desc = ovStr(p.GZT_DESC) || ovStr(p.ZONE_DESC) || ovStr(p.ZONE_ORIG);
+      f.properties = {
+        zone_group: classifyZone(desc),
+        zone_label: ovStr(p.ZONE_DESC) || ovStr(p.ZONE_ORIG) || "Zone",
+        zone_code: ovStr(p.ZONE_ORIG),
+        plan: ovStr(p.PLAN_NAME),
+      };
+    } else {
+      f.properties = { flood_label: ovFloodLabel(p) };
+    }
+    return f;
+  });
+}
 async function fetchOverlay(layer, bbox) {
   const cfg = OVERLAY_CONFIG[layer];
   if (!cfg) return EMPTY_FC;
@@ -751,7 +795,7 @@ async function fetchOverlay(layer, bbox) {
     if (!res.ok) return EMPTY_FC;
     const body = await res.json();
     if (body.error || body.type !== "FeatureCollection" || !Array.isArray(body.features)) return EMPTY_FC;
-    return { type: "FeatureCollection", features: body.features };
+    return { type: "FeatureCollection", features: ovTransform(layer, body.features) };
   } catch {
     return EMPTY_FC;
   } finally {

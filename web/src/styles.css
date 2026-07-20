@@ -997,6 +997,44 @@ body {
   font-size: 0.68rem;
   color: var(--ink-3);
 }
+.zone-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(26, 29, 33, 0.08);
+  font-size: 0.68rem;
+  color: var(--ink-2);
+}
+.zone-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Overlay click popups */
+.ov-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--ink);
+}
+.ov-pop-tag {
+  align-self: flex-start;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.ov-pop-sub {
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
 
 .legend {
   position: absolute;

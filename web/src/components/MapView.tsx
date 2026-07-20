@@ -13,6 +13,22 @@ const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; lin
 const MIN_OVERLAY_ZOOM = 12;
 const EMPTY_FC = { type: "FeatureCollection", features: [] } as const;
 
+/** Generalised zoning groups (server-classified) → colour + label. */
+const ZONE_GROUPS: Record<string, { color: string; label: string }> = {
+  residential: { color: "#f59e0b", label: "Residential" },
+  commercial: { color: "#ef4444", label: "Commercial / retail" },
+  mixed: { color: "#f97316", label: "Mixed use" },
+  industrial: { color: "#a855f7", label: "Industrial / employment" },
+  community: { color: "#38bdf8", label: "Community / institutional" },
+  open_space: { color: "#22c55e", label: "Open space / amenity" },
+  agriculture: { color: "#84cc16", label: "Agricultural / rural" },
+  infrastructure: { color: "#94a3b8", label: "Transport / utilities" },
+  water: { color: "#06b6d4", label: "Water / marine" },
+  other: { color: "#cbd5e1", label: "Other / unzoned" },
+};
+const escapeHtml = (v: unknown): string =>
+  String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+
 /**
  * Status colours pair with a letter glyph on each pin so state is never
  * conveyed by colour alone (PRD F2.2 / F8.3).
@@ -112,6 +128,12 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
 
     map.on("load", () => {
       // Constraint overlays first, so application pins always draw on top.
+      const zoneColorExpr = [
+        "match",
+        ["get", "zone_group"],
+        ...Object.entries(ZONE_GROUPS).flatMap(([k, v]) => [k, v.color]),
+        ZONE_GROUPS.other.color,
+      ] as unknown as maplibregl.ExpressionSpecification;
       for (const layer of Object.keys(OVERLAY_STYLE) as OverlayKey[]) {
         const s = OVERLAY_STYLE[layer];
         map.addSource(`ov-${layer}`, { type: "geojson", data: EMPTY_FC as never });
@@ -120,7 +142,10 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
           type: "fill",
           source: `ov-${layer}`,
           layout: { visibility: "none" },
-          paint: { "fill-color": s.fill, "fill-opacity": s.fillOpacity },
+          paint: {
+            "fill-color": layer === "zoning" ? zoneColorExpr : s.fill,
+            "fill-opacity": s.fillOpacity,
+          },
         });
         map.addLayer({
           id: `ov-${layer}-line`,
@@ -129,6 +154,27 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
           layout: { visibility: "none" },
           paint: { "line-color": s.line, "line-width": 0.8, "line-opacity": 0.7 },
         });
+
+        // Click a polygon → info popup.
+        map.on("click", `ov-${layer}-fill`, (e) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          const pr = f.properties ?? {};
+          const html =
+            layer === "zoning"
+              ? `<div class="ov-popup"><strong>${escapeHtml(pr.zone_label || pr.zone_code || "Zone")}</strong>` +
+                `<span class="ov-pop-tag">${escapeHtml(ZONE_GROUPS[pr.zone_group as string]?.label ?? "Zoning")}</span>` +
+                (pr.plan ? `<span class="ov-pop-sub">${escapeHtml(pr.plan)}</span>` : "") +
+                `</div>`
+              : `<div class="ov-popup"><strong>Flood extent</strong>` +
+                `<span class="ov-pop-sub">${escapeHtml(pr.flood_label || "Mapped flood extent")}</span></div>`;
+          new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
+            .setLngLat(e.lngLat)
+            .setHTML(html)
+            .addTo(map);
+        });
+        map.on("mouseenter", `ov-${layer}-fill`, () => (map.getCanvas().style.cursor = "pointer"));
+        map.on("mouseleave", `ov-${layer}-fill`, () => (map.getCanvas().style.cursor = ""));
       }
 
       map.addSource("apps", {
@@ -319,6 +365,16 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
         ))}
         {anyOverlayOn && mapZoom < MIN_OVERLAY_ZOOM && (
           <p className="overlay-hint">Zoom in to load overlays</p>
+        )}
+        {overlays.zoning && mapZoom >= MIN_OVERLAY_ZOOM && (
+          <div className="zone-legend">
+            {Object.entries(ZONE_GROUPS).map(([k, v]) => (
+              <span key={k} className="zone-legend-item">
+                <span className="overlay-swatch" style={{ background: v.color }} aria-hidden="true" />
+                {v.label}
+              </span>
+            ))}
+          </div>
         )}
       </div>
     </>
