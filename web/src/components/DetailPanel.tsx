@@ -594,13 +594,27 @@ function AppealCard({ detail: d }: { detail: AppDetail }) {
 // the conditions endpoint, not the scanned PDF.
 const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fingal", "dlr"]);
 
+type DecisionState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "failed" }
+  | { phase: "empty" }
+  | {
+      phase: "loaded";
+      summary: string | null;
+      conditions: Array<{ number: number | null; title: string; text: string }>;
+      reasons: Array<{ number: number | null; text: string }>;
+      source: string | null;
+    };
+
 /**
  * "What the council decided" for eplanning/iDocs councils (Kildare) that expose
- * no structured conditions — the reasons live only in the scanned decision
- * order, so we read that PDF on demand and summarise it.
+ * no structured conditions — the summary, the conditions of grant, and any
+ * reasons for refusal live only in the scanned decision order, which we read
+ * and extract on demand.
  */
 function DecisionSummaryCard({ detail: d }: { detail: AppDetail }) {
-  const [state, setState] = useState<AppealSummaryState>({ phase: "idle" });
+  const [state, setState] = useState<DecisionState>({ phase: "idle" });
   useEffect(() => setState({ phase: "idle" }), [d.id]);
   if (!d.decision || !d.scanned_files_url || AGILE_CONDITION_AUTHORITIES.has(d.authority_id)) return null;
 
@@ -608,8 +622,16 @@ function DecisionSummaryCard({ detail: d }: { detail: AppDetail }) {
     setState({ phase: "loading" });
     try {
       const res = await api.decisionSummary(d.id);
-      if (res.summary)
-        setState({ phase: "loaded", summary: res.summary, source: res.source_document ?? null });
+      const conditions = res.conditions ?? [];
+      const reasons = res.reasons ?? [];
+      if (res.summary || conditions.length || reasons.length)
+        setState({
+          phase: "loaded",
+          summary: res.summary ?? null,
+          conditions,
+          reasons,
+          source: res.source_document ?? null,
+        });
       else setState({ phase: "empty" });
     } catch {
       setState({ phase: "failed" });
@@ -625,11 +647,11 @@ function DecisionSummaryCard({ detail: d }: { detail: AppDetail }) {
       </p>
       {state.phase === "idle" && (
         <button type="button" className="btn ai" onClick={load}>
-          ✨ Summarise the council's decision
+          ✨ Read the decision order &amp; conditions
         </button>
       )}
       {state.phase === "loading" && (
-        <span className="hint">Reading the decision order and writing a summary…</span>
+        <span className="hint">Reading the decision order and extracting the conditions…</span>
       )}
       {state.phase === "failed" && (
         <p className="list-note">
@@ -639,17 +661,51 @@ function DecisionSummaryCard({ detail: d }: { detail: AppDetail }) {
       )}
       {state.phase === "empty" && (
         <p className="list-note">
-          Couldn't find a readable decision order to summarise — see the scanned files below.
+          Couldn't find a readable decision order to extract — see the scanned files below.
         </p>
       )}
       {state.phase === "loaded" && (
-        <blockquote className="ai-summary">
-          {state.summary}
-          <footer className="hint">
-            AI summary{state.source ? ` · from "${state.source}"` : ""} — verify against the decision
-            order.
-          </footer>
-        </blockquote>
+        <>
+          {state.summary && (
+            <p className="detail-summary decision-summary">✦ {state.summary}</p>
+          )}
+          {state.reasons.length > 0 && (
+            <div className="condition-group">
+              <h4>
+                Reasons for refusal <span className="count">{state.reasons.length}</span>
+              </h4>
+              {state.reasons.map((r, i) => (
+                <details key={i} className="condition">
+                  <summary>
+                    <span className="condition-num">{r.number ?? i + 1}</span>
+                    Reason {r.number ?? i + 1}
+                  </summary>
+                  <p className="condition-text">{r.text}</p>
+                </details>
+              ))}
+            </div>
+          )}
+          {state.conditions.length > 0 && (
+            <div className="condition-group">
+              <h4>
+                Conditions of grant <span className="count">{state.conditions.length}</span>
+              </h4>
+              {state.conditions.map((c, i) => (
+                <details key={i} className="condition">
+                  <summary>
+                    <span className="condition-num">{c.number ?? i + 1}</span>
+                    {c.title || `Condition ${c.number ?? i + 1}`}
+                  </summary>
+                  {c.text && <p className="condition-text">{c.text}</p>}
+                </details>
+              ))}
+            </div>
+          )}
+          <p className="list-note">
+            AI-extracted from "{state.source ?? "the decision order"}" — verify against the official
+            decision order before relying on it.
+          </p>
+        </>
       )}
     </section>
   );

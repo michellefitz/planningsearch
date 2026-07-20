@@ -20,10 +20,11 @@ import {
   type DiagnosticStep,
 } from "./documents.js";
 import {
+  extractDecisionDocument,
   summariseAppeal,
-  summariseDecisionDocument,
   summariseDescription,
   summariseRefusal,
+  type DecisionExtract,
 } from "./summarize.js";
 import { fetchZoning } from "./zoning.js";
 import { fetchFlood } from "./flood.js";
@@ -116,7 +117,7 @@ function publicApplication(row: Record<string, unknown>) {
 
 const REFUSAL_SUMMARY_CACHE = new Map<number, string>();
 const APPEAL_SUMMARY_CACHE = new Map<number, { summary: string; based_on_document: string | null }>();
-const DECISION_SUMMARY_CACHE = new Map<number, { summary: string; source_document: string | null }>();
+const DECISION_SUMMARY_CACHE = new Map<number, DecisionExtract & { source_document: string | null }>();
 
 /** Pick the decision-order document from a scanned-file listing. */
 function findDecisionDocIndex(files: Array<{ title: string }>): number {
@@ -379,17 +380,18 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
         trace,
       };
     }
-    if (!files || index < 0) return { supported: true, summary: null, source_document: null };
+    const empty = { supported: true, summary: null, conditions: [], reasons: [], source_document: null };
+    if (!files || index < 0) return empty;
 
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000, trace);
-    if (!doc || doc === "too_large") return { supported: true, summary: null, source_document: files[index].title };
+    if (!doc || doc === "too_large") return { ...empty, source_document: files[index].title };
     const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
-    const summary = isPdf
-      ? await summariseDecisionDocument(doc.body.toString("base64"), row.decision)
-      : null;
+    const extract = isPdf ? await extractDecisionDocument(doc.body.toString("base64"), row.decision) : null;
     const source_document = files[index].title;
-    if (summary) DECISION_SUMMARY_CACHE.set(id, { summary, source_document });
-    return { supported: true, summary, source_document };
+    if (!extract) return { ...empty, source_document };
+    const result = { ...extract, source_document };
+    DECISION_SUMMARY_CACHE.set(id, result);
+    return { supported: true, ...result };
   });
 
   // Resolve the official portal deep link at click time. Agile councils need

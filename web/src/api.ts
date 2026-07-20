@@ -241,6 +241,8 @@ export const api = {
       supported: boolean;
       summary?: string | null;
       source_document?: string | null;
+      conditions?: Array<{ number: number | null; title: string; text: string }>;
+      reasons?: Array<{ number: number | null; text: string }>;
     }>(`/api/applications/${id}/decision-summary`),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),

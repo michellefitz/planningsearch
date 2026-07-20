@@ -974,27 +974,59 @@ async function summariseAppeal(context, pdfBase64) {
   return usable ? sanitiseSummary(usable) : null;
 }
 
-const DECISION_DOC_PROMPT =
-  'You read an Irish council\'s planning decision order and explain it to a regular person in plain ' +
-  'English. If permission was REFUSED, begin "Refused because" and give the main real reasons ' +
-  "(too close to a sewer, would overlook neighbours, traffic, out of character with the area, no " +
-  "drainage details…), never the policy or plan citations. If GRANTED, say it was granted and note " +
-  "any significant conditions (financial contributions, construction hours, design or material " +
-  "changes, landscaping). Two or three short sentences. " +
-  "FORMAT: plain prose only — no Markdown, asterisks, headings, bullet points or a title. " +
-  "Use only what the order states — never invent details. " +
-  NO_LEAK_RULE;
+const DECISION_EXTRACT_PROMPT =
+  "You read an Irish council planning decision order and extract it as JSON for a public planning " +
+  "viewer. Return ONLY a JSON object — no prose, no Markdown fences — with exactly this shape:\n" +
+  '{"summary": string, "conditions": [{"number": number|null, "title": string, "text": string}], ' +
+  '"reasons": [{"number": number|null, "text": string}]}\n' +
+  '- summary: one or two plain-English sentences a regular person understands. If REFUSED, begin ' +
+  '"Refused because" and give the real problems (overlooking, traffic, drainage, out of character…), ' +
+  "not policy citations. If GRANTED, say so and flag whether the conditions are routine or onerous.\n" +
+  "- conditions: every CONDITION OF GRANT. number = its number; title = a short (max 8 words) " +
+  'plain-English label of what it controls (e.g. "Construction hours", "Development contribution", ' +
+  '"Materials and finishes", "Landscaping"); text = the condition wording, lightly trimmed.\n' +
+  "- reasons: every REASON FOR REFUSAL (number + wording).\n" +
+  "If granted, reasons is []. If refused, conditions is []. Use only what the order states — never invent items.";
 
-async function summariseDecisionDocument(pdfBase64, decision) {
+function parseJsonLoose(raw) {
+  const cleaned = raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+const ovClip = (v, max) => String(v ?? "").trim().slice(0, max);
+const ovNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+
+async function extractDecisionDocument(pdfBase64, decision) {
   if (!pdfBase64) return null;
-  const context = decision ? `The recorded decision is: ${decision}.` : "";
   const content = [
     { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
-    { type: "text", text: `${context}\nSummarise what the council decided and why, for a general reader.` },
+    { type: "text", text: `Recorded decision: ${decision ?? "unknown"}. Extract the decision order as JSON.` },
   ];
-  const text = await callClaude(DECISION_DOC_PROMPT, content, 320, 25000);
-  const usable = isUsableSummary(text);
-  return usable ? sanitiseSummary(usable) : null;
+  const raw = await callClaude(DECISION_EXTRACT_PROMPT, content, 2000, 30000);
+  const parsed = raw ? parseJsonLoose(raw) : null;
+  if (!parsed || typeof parsed !== "object") return null;
+  const summaryRaw = typeof parsed.summary === "string" ? parsed.summary : null;
+  const summary = summaryRaw ? isUsableSummary(sanitiseSummary(summaryRaw)) : null;
+  const conditions = Array.isArray(parsed.conditions)
+    ? parsed.conditions
+        .map((c) => ({ number: ovNum((c ?? {}).number), title: ovClip((c ?? {}).title, 80), text: ovClip((c ?? {}).text, 1200) }))
+        .filter((c) => c.title || c.text)
+        .slice(0, 40)
+    : [];
+  const reasons = Array.isArray(parsed.reasons)
+    ? parsed.reasons
+        .map((r) => ({ number: ovNum((r ?? {}).number), text: ovClip((r ?? {}).text, 1200) }))
+        .filter((r) => r.text)
+        .slice(0, 40)
+    : [];
+  if (!summary && conditions.length === 0 && reasons.length === 0) return null;
+  return { summary, conditions, reasons };
 }
 
 const DECISION_SUMMARY_CACHE = new Map();
@@ -1646,14 +1678,17 @@ export default async function handler(req, res) {
         trace,
       });
     }
-    if (!files || index < 0) return send(res, 200, { supported: true, summary: null, source_document: null });
+    const empty = { supported: true, summary: null, conditions: [], reasons: [], source_document: null };
+    if (!files || index < 0) return send(res, 200, empty);
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000, trace);
-    if (!doc || doc === "too_large") return send(res, 200, { supported: true, summary: null, source_document: files[index].title });
+    if (!doc || doc === "too_large") return send(res, 200, { ...empty, source_document: files[index].title });
     const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
-    const summary = isPdf ? await summariseDecisionDocument(doc.body.toString("base64"), app.decision) : null;
+    const extract = isPdf ? await extractDecisionDocument(doc.body.toString("base64"), app.decision) : null;
     const source_document = files[index].title;
-    if (summary) DECISION_SUMMARY_CACHE.set(app.id, { summary, source_document });
-    return send(res, 200, { supported: true, summary, source_document });
+    if (!extract) return send(res, 200, { ...empty, source_document });
+    const result = { ...extract, source_document };
+    DECISION_SUMMARY_CACHE.set(app.id, result);
+    return send(res, 200, { supported: true, ...result });
   }
 
   const fm = route.match(/^\/api\/applications\/(\d+)\/files$/);

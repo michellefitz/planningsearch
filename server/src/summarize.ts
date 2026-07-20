@@ -156,33 +156,87 @@ export async function summariseAppeal(
   return usable ? sanitiseSummary(usable) : null;
 }
 
-const DECISION_DOC_PROMPT =
-  `You read an Irish council's planning decision order and explain it to a regular person in plain ` +
-  `English. If permission was REFUSED, begin "Refused because" and give the main real reasons ` +
-  `(too close to a sewer, would overlook neighbours, traffic, out of character with the area, no ` +
-  `drainage details…), never the policy or plan citations. If GRANTED, say it was granted and note ` +
-  `any significant conditions (financial contributions, construction hours, design or material ` +
-  `changes, landscaping). Two or three short sentences. ` +
-  `FORMAT: plain prose only — no Markdown, asterisks, headings, bullet points or a title. ` +
-  `Use only what the order states — never invent details. ` +
-  NO_LEAK_RULE;
+export interface DecisionExtract {
+  /** One or two plain-English sentences on the outcome. */
+  summary: string | null;
+  /** Conditions of grant — the limitations attached to a permission. */
+  conditions: Array<{ number: number | null; title: string; text: string }>;
+  /** Reasons for refusal. */
+  reasons: Array<{ number: number | null; text: string }>;
+}
+
+const DECISION_EXTRACT_PROMPT =
+  `You read an Irish council planning decision order and extract it as JSON for a public planning ` +
+  `viewer. Return ONLY a JSON object — no prose, no Markdown fences — with exactly this shape:\n` +
+  `{"summary": string, "conditions": [{"number": number|null, "title": string, "text": string}], ` +
+  `"reasons": [{"number": number|null, "text": string}]}\n` +
+  `- summary: one or two plain-English sentences a regular person understands. If REFUSED, begin ` +
+  `"Refused because" and give the real problems (overlooking, traffic, drainage, out of character…), ` +
+  `not policy citations. If GRANTED, say so and flag whether the conditions are routine or onerous.\n` +
+  `- conditions: every CONDITION OF GRANT. number = its number; title = a short (max 8 words) ` +
+  `plain-English label of what it controls (e.g. "Construction hours", "Development contribution", ` +
+  `"Materials and finishes", "Landscaping"); text = the condition wording, lightly trimmed.\n` +
+  `- reasons: every REASON FOR REFUSAL (number + wording).\n` +
+  `If granted, reasons is []. If refused, conditions is []. Use only what the order states — never ` +
+  `invent items.`;
+
+export function parseJsonLoose(raw: string): unknown {
+  const cleaned = raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+const clip = (v: unknown, max: number): string => String(v ?? "").trim().slice(0, max);
+const numOrNull = (v: unknown): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 /**
- * Summarise a council's scanned decision order (the "Notification of Decision"
- * PDF) — the only place eplanning/iDocs councils like Kildare record their
- * reasons. The PDF is read directly by the model (works on scanned images too).
+ * Extract a council's scanned decision order (the "Notification of Decision"
+ * PDF) into a structured decision — the summary, the conditions of grant, and
+ * any reasons for refusal. This is the only place eplanning/iDocs councils like
+ * Kildare record their conditions. The PDF is read directly by the model (it
+ * OCRs scanned images too). Returns null if nothing usable comes back.
  */
-export async function summariseDecisionDocument(
+export async function extractDecisionDocument(
   pdfBase64: string,
   decision: string | null
-): Promise<string | null> {
+): Promise<DecisionExtract | null> {
   if (!pdfBase64) return null;
-  const context = decision ? `The recorded decision is: ${decision}.` : "";
   const content: ContentBlock[] = [
     { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
-    { type: "text", text: `${context}\nSummarise what the council decided and why, for a general reader.` },
+    { type: "text", text: `Recorded decision: ${decision ?? "unknown"}. Extract the decision order as JSON.` },
   ];
-  const text = await callClaude(DECISION_DOC_PROMPT, content, 320, 25_000);
-  const usable = isUsableSummary(text);
-  return usable ? sanitiseSummary(usable) : null;
+  const raw = await callClaude(DECISION_EXTRACT_PROMPT, content, 2000, 30_000);
+  const parsed = raw ? (parseJsonLoose(raw) as Record<string, unknown> | null) : null;
+  if (!parsed || typeof parsed !== "object") return null;
+  const summaryRaw = typeof parsed.summary === "string" ? parsed.summary : null;
+  const summary = summaryRaw ? isUsableSummary(sanitiseSummary(summaryRaw)) : null;
+  const conditions = Array.isArray(parsed.conditions)
+    ? parsed.conditions
+        .map((c) => {
+          const o = (c ?? {}) as Record<string, unknown>;
+          return { number: numOrNull(o.number), title: clip(o.title, 80), text: clip(o.text, 1200) };
+        })
+        .filter((c) => c.title || c.text)
+        .slice(0, 40)
+    : [];
+  const reasons = Array.isArray(parsed.reasons)
+    ? parsed.reasons
+        .map((r) => {
+          const o = (r ?? {}) as Record<string, unknown>;
+          return { number: numOrNull(o.number), text: clip(o.text, 1200) };
+        })
+        .filter((r) => r.text)
+        .slice(0, 40)
+    : [];
+  if (!summary && conditions.length === 0 && reasons.length === 0) return null;
+  return { summary, conditions, reasons };
 }

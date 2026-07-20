@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUsableSummary } from "../src/summarize.js";
+import { isUsableSummary, parseJsonLoose } from "../src/summarize.js";
 
 describe("isUsableSummary", () => {
   it("keeps a genuine plain-English summary", () => {
@@ -30,5 +30,23 @@ describe("isUsableSummary", () => {
   it("treats empty / null input as unusable", () => {
     expect(isUsableSummary(null)).toBeNull();
     expect(isUsableSummary("   ")).toBeNull();
+  });
+});
+
+describe("parseJsonLoose", () => {
+  it("parses plain JSON", () => {
+    expect(parseJsonLoose('{"a":1,"b":"x"}')).toEqual({ a: 1, b: "x" });
+  });
+  it("strips Markdown code fences", () => {
+    expect(parseJsonLoose('```json\n{"conditions":[]}\n```')).toEqual({ conditions: [] });
+  });
+  it("recovers JSON embedded in surrounding prose", () => {
+    expect(parseJsonLoose('Here is the result: {"summary":"Granted"} — hope that helps')).toEqual({
+      summary: "Granted",
+    });
+  });
+  it("returns null when there is no JSON object", () => {
+    expect(parseJsonLoose("no json here")).toBeNull();
+    expect(parseJsonLoose("{ not valid }")).toBeNull();
   });
 });
