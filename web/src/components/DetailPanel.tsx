@@ -878,39 +878,12 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
       setZones("none");
       setFlood("none");
     }
-    if (hasConditionsSource) {
-      setConditionsLoading(true);
-      api
-        .conditions(d.id)
-        .then((res) => {
-          if (cancelled || !res.conditions?.items.length) return;
-          setConditions(res.conditions);
-          // The plain-English refusal line is generated on its own endpoint
-          // so the conditions render immediately — fetch it once we know
-          // there are refusal reasons to summarise.
-          if (!res.conditions.refusal_summary && res.conditions.items.some((i) => i.code === "R")) {
-            setRefusalLoading(true);
-            api
-              .refusalSummary(d.id)
-              .then((r) => {
-                if (!cancelled) setRefusalSummary(r.summary ?? null);
-              })
-              .catch(() => {})
-              .finally(() => {
-                if (!cancelled) setRefusalLoading(false);
-              });
-          }
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (!cancelled) setConditionsLoading(false);
-        });
-    }
     // AI summary + party backfill need upstream calls, so the detail
     // endpoint returns without them and they stream in here.
+    let enrichDone: Promise<unknown> = Promise.resolve();
     if (!d.ai_summary || !d.applicant_name || !d.agent_name) {
       setEnrichLoading(true);
-      api
+      enrichDone = api
         .enrich(d.id)
         .then((res) => {
           if (!cancelled) setEnrich(res);
@@ -918,6 +891,38 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         .catch(() => {})
         .finally(() => {
           if (!cancelled) setEnrichLoading(false);
+        });
+    }
+    if (hasConditionsSource) {
+      setConditionsLoading(true);
+      // Conditions and enrich hit the same council portal, and conditions can
+      // take 10s+ — hold it back until the summary has painted.
+      enrichDone
+        .then(() => {
+          if (cancelled) return;
+          return api.conditions(d.id).then((res) => {
+            if (cancelled || !res.conditions?.items.length) return;
+            setConditions(res.conditions);
+            // The plain-English refusal line is generated on its own endpoint
+            // so the conditions render immediately — fetch it once we know
+            // there are refusal reasons to summarise.
+            if (!res.conditions.refusal_summary && res.conditions.items.some((i) => i.code === "R")) {
+              setRefusalLoading(true);
+              api
+                .refusalSummary(d.id)
+                .then((r) => {
+                  if (!cancelled) setRefusalSummary(r.summary ?? null);
+                })
+                .catch(() => {})
+                .finally(() => {
+                  if (!cancelled) setRefusalLoading(false);
+                });
+            }
+          });
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setConditionsLoading(false);
         });
     }
     return () => {
