@@ -675,40 +675,6 @@ body {
   cursor: help;
 }
 
-/* ---------- Key figures ---------- */
-
-.stat-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0 0 1rem;
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 0.12rem;
-  background: var(--surface-2);
-  border-radius: 10px;
-  padding: 0.55rem 0.85rem;
-  min-width: 6.5rem;
-}
-
-.stat-value {
-  font-size: 0.98rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-label {
-  font-size: 0.66rem;
-  font-weight: 550;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-3);
-}
-
 /* ---------- Timeline ---------- */
 
 .timeline {
@@ -817,7 +783,7 @@ body {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.84rem;
+  font-size: 0.86rem;
 }
 
 .doc-list li,
@@ -849,6 +815,10 @@ body {
 
 .scanned-files {
   margin-top: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
 }
 
 .scanned-files .portal {
@@ -878,9 +848,17 @@ body {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 0.5rem 1.1rem;
-  margin: 0 0 0.6rem;
-  font-size: 0.84rem;
+  margin: 0;
+  font-size: 0.86rem;
   line-height: 1.5;
+}
+
+.place-list dd > div + div {
+  margin-top: 0.25rem;
+}
+
+.no-info {
+  color: var(--ink-3);
 }
 
 .place-list dt {
@@ -1088,7 +1066,7 @@ body {
 /* ── Decision substance (conditions / refusal reasons) ─────────────── */
 
 .decision-headline {
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 620;
   letter-spacing: 0.01em;
   margin: 0 0 0.75rem;
@@ -1163,13 +1141,13 @@ body {
 .condition-text {
   margin: 0;
   padding: 0.6rem 0.75rem 0.7rem;
-  font-size: 0.83rem;
+  font-size: 0.86rem;
   line-height: 1.55;
   color: var(--ink-2);
   white-space: pre-line;
 }
 
-.refusal-summary {
+.ai-summary.refusal-summary {
   margin: 0 0 0.85rem;
   color: #9f1239;
   background: #fef2f2;
@@ -1183,7 +1161,7 @@ body {
 .decision-list {
   margin: 0.3rem 0 0;
   padding-left: 1.15rem;
-  font-size: 0.84rem;
+  font-size: 0.86rem;
   line-height: 1.5;
 }
 .decision-list li {
@@ -1276,7 +1254,7 @@ body {
 .ai-summary {
   margin: 0.5rem 0 0;
   padding: 0.6rem 0.85rem;
-  font-size: 0.95rem;
+  font-size: 0.86rem;
   line-height: 1.55;
   color: #1e3a5f;
   background: #eff6ff;

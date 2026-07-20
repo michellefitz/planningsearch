@@ -218,6 +218,10 @@ export const api = {
     getJson<{ supported: boolean; conditions: DecisionConditions | null }>(
       `/api/applications/${id}/conditions`
     ),
+  refusalSummary: (id: number) =>
+    getJson<{ supported: boolean; summary: string | null }>(
+      `/api/applications/${id}/refusal-summary`
+    ),
   appeal: (id: number) =>
     getJson<{
       supported: boolean;

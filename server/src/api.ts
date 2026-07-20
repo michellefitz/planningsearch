@@ -551,19 +551,42 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       row.source_url,
       row.planning_reference
     );
-    // Refusal reasons are dense planning prose — add a plain-English line
-    // for the sheet header. Cached: the reasons never change once decided.
-    const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
-    let refusalSummary: string | null = null;
-    if (reasons.length) {
-      refusalSummary =
-        REFUSAL_SUMMARY_CACHE.get(id) ?? (await summariseRefusal(reasons));
-      if (refusalSummary) REFUSAL_SUMMARY_CACHE.set(id, refusalSummary);
-    }
+    // The plain-English refusal line is its own (cached) endpoint so the
+    // conditions themselves never wait on a model call.
     return {
       supported: true,
-      conditions: conditions ? { ...conditions, refusal_summary: refusalSummary } : null,
+      conditions: conditions
+        ? { ...conditions, refusal_summary: REFUSAL_SUMMARY_CACHE.get(id) ?? null }
+        : null,
     };
+  });
+
+  // Plain-English summary of the refusal reasons — dense planning prose in
+  // the register. Split from /conditions so those render without waiting on
+  // the model; cached because the reasons never change once decided.
+  app.get("/api/applications/:id/refusal-summary", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare("SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?")
+      .get(id) as
+      | { authority_id: string; source_url: string | null; planning_reference: string }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    if (!(row.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
+      return { supported: false, summary: null };
+    }
+    const conditions = await fetchAgileConditions(
+      row.authority_id,
+      row.source_url,
+      row.planning_reference
+    );
+    const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
+    let summary: string | null = null;
+    if (reasons.length) {
+      summary = REFUSAL_SUMMARY_CACHE.get(id) ?? (await summariseRefusal(reasons));
+      if (summary) REFUSAL_SUMMARY_CACHE.set(id, summary);
+    }
+    return { supported: true, summary };
   });
 
   app.get("/api/applications/:id", async (req, reply) => {
@@ -610,17 +633,30 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     let description = dbDescription;
     let parties = { applicant: null, agent: null } as { applicant: string | null; agent: string | null };
 
-    // Agile councils (incl. DLR): one detail call yields both the parties and
-    // the full proposal description — the national feed truncates the latter
-    // for big applications, which is what starves the summary.
+    // The summary runs on the description we already hold, in parallel with
+    // the party/description backfill — waiting on the portal before starting
+    // the model call is what made the sheet feel slow. Only when the quick
+    // pass can't produce a summary (usually a truncated national description)
+    // and the portal supplied a fuller one do we summarise again.
     const debug = (req.query as { debug?: string }).debug === "1";
-    if (authorityId in AGILE_CLIENT_BY_AUTHORITY) {
-      const detail = await fetchAgileDetail(
-        authorityId,
-        row.source_url as string | null,
-        row.planning_reference as string,
-        debug
-      );
+    const isAgile = authorityId in AGILE_CLIENT_BY_AUTHORITY;
+    const [detail, eplanningParties, quickSummary] = await Promise.all([
+      isAgile
+        ? fetchAgileDetail(
+            authorityId,
+            row.source_url as string | null,
+            row.planning_reference as string,
+            debug
+          )
+        : null,
+      !isAgile && (!row.applicant_name || !row.agent_name) && row.source_url
+        ? fetchEplanningParties(row.source_url as string)
+        : null,
+      row.ai_summary
+        ? (row.ai_summary as string)
+        : summariseDescription(dbDescription ?? "", row.application_type as string | null),
+    ]);
+    if (isAgile) {
       if (detail) {
         parties = { applicant: detail.applicant, agent: detail.agent };
         if (detail.description && detail.description.length > (description?.length ?? 0)) {
@@ -636,17 +672,16 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       } else if (debug) {
         return { agile_detail_keys: null, picked_description_len: 0, description };
       }
-    } else if ((!row.applicant_name || !row.agent_name) && row.source_url) {
-      parties = await fetchEplanningParties(row.source_url as string);
+    } else if (eplanningParties) {
+      parties = eplanningParties;
     }
 
-    // Regenerate the summary when we found a fuller description than the one a
-    // stored summary may have been written from.
     const descriptionImproved = !!description && description !== dbDescription;
     const aiSummary =
-      row.ai_summary && !descriptionImproved
-        ? (row.ai_summary as string)
-        : await summariseDescription(description ?? "", row.application_type as string | null);
+      quickSummary ??
+      (descriptionImproved
+        ? await summariseDescription(description ?? "", row.application_type as string | null)
+        : null);
 
     if (aiSummary && aiSummary !== row.ai_summary) {
       db.prepare("UPDATE applications SET ai_summary = ? WHERE id = ?").run(aiSummary, id);

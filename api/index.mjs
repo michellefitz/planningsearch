@@ -1590,12 +1590,31 @@ export default async function handler(req, res) {
       app.source_url,
       app.planning_reference
     );
-    const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
-    const refusalSummary = reasons.length ? await summariseRefusal(app.id, reasons) : null;
+    // The plain-English refusal line is its own (cached) endpoint so the
+    // conditions themselves never wait on a model call.
     return send(res, 200, {
       supported: true,
-      conditions: conditions ? { ...conditions, refusal_summary: refusalSummary } : null,
+      conditions: conditions
+        ? { ...conditions, refusal_summary: REFUSAL_SUMMARY_CACHE.get(app.id) ?? null }
+        : null,
     });
+  }
+
+  const rsm = route.match(/^\/api\/applications\/(\d+)\/refusal-summary$/);
+  if (rsm) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(rsm[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    if (!(app.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
+      return send(res, 200, { supported: false, summary: null });
+    }
+    const conditions = await fetchAgileConditions(
+      app.authority_id,
+      app.source_url,
+      app.planning_reference
+    );
+    const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
+    const summary = reasons.length ? await summariseRefusal(app.id, reasons) : null;
+    return send(res, 200, { supported: true, summary });
   }
 
   const am = route.match(/^\/api\/applications\/(\d+)\/appeal$/);
@@ -1778,11 +1797,22 @@ export default async function handler(req, res) {
     let description = app.description ?? null;
     let parties = { applicant: null, agent: null };
     const debug = p.get("debug") === "1";
-    // Agile councils (incl. DLR): one detail call yields the parties and the
-    // full proposal description — the national feed truncates the latter for
-    // big applications, which is what starves the summary.
-    if (app.authority_id in AGILE_CLIENT_BY_AUTHORITY) {
-      const detail = await fetchAgileDetail(app.authority_id, app.source_url, app.planning_reference, debug);
+    // The summary runs on the description we already hold, in parallel with
+    // the party/description backfill — waiting on the portal before starting
+    // the model call is what made the sheet feel slow. Only when the quick
+    // pass can't produce a summary (usually a truncated national description)
+    // and the portal supplied a fuller one do we summarise again.
+    const isAgile = app.authority_id in AGILE_CLIENT_BY_AUTHORITY;
+    const [detail, eplanningParties, quickSummary] = await Promise.all([
+      isAgile
+        ? fetchAgileDetail(app.authority_id, app.source_url, app.planning_reference, debug)
+        : null,
+      !isAgile && !(app.applicant_name && app.agent_name) && app.source_url
+        ? fetchEplanningParties(app.source_url)
+        : null,
+      summariseDescription(description, app.application_type),
+    ]);
+    if (isAgile) {
       if (detail) {
         parties = { applicant: detail.applicant, agent: detail.agent };
         if (detail.description && detail.description.length > (description?.length ?? 0)) {
@@ -1797,11 +1827,15 @@ export default async function handler(req, res) {
       } else if (debug) {
         return send(res, 200, { agile_detail_keys: null, picked_description_len: 0, description });
       }
-    } else if (!(app.applicant_name && app.agent_name) && app.source_url) {
-      parties = await fetchEplanningParties(app.source_url);
+    } else if (eplanningParties) {
+      parties = eplanningParties;
     }
 
-    const aiSummary = await summariseDescription(description, app.application_type);
+    const aiSummary =
+      quickSummary ??
+      (description !== (app.description ?? null)
+        ? await summariseDescription(description, app.application_type)
+        : null);
     return send(res, 200, {
       ai_summary: aiSummary,
       applicant_name: app.applicant_name ?? parties.applicant,

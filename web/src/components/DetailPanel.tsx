@@ -243,33 +243,6 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
   );
 }
 
-const DAY_MS = 86_400_000;
-
-/** Key figures worth surfacing as tiles; only render what the record has. */
-function buildStats(d: AppDetail): Array<{ label: string; value: string }> {
-  const stats: Array<{ label: string; value: string }> = [];
-  if (d.num_residential_units) {
-    stats.push({
-      label: "Residential units",
-      value: String(d.num_residential_units),
-    });
-  }
-  if (d.floor_area_sqm) {
-    stats.push({ label: "Floor area", value: `${d.floor_area_sqm.toLocaleString()} m²` });
-  }
-  if (d.decision_date && d.received_date) {
-    const days = Math.round((Date.parse(d.decision_date) - Date.parse(d.received_date)) / DAY_MS);
-    if (days > 0) stats.push({ label: "Decided in", value: `${days} days` });
-  } else if (d.decision_due_date) {
-    const days = Math.ceil((Date.parse(d.decision_due_date) - Date.now()) / DAY_MS);
-    if (days >= 0) stats.push({ label: "Decision due in", value: `${days} day${days === 1 ? "" : "s"}` });
-  }
-  if (d.expiry_date) {
-    stats.push({ label: "Permission expires", value: d.expiry_date });
-  }
-  return stats;
-}
-
 /** Prescription codes on the council's decision, in display order. */
 const CONDITION_GROUPS: Array<{ code: string; label: string }> = [
   { code: "R", label: "Reasons for refusal" },
@@ -570,10 +543,14 @@ function DecisionSection({
   detail: d,
   conditions,
   conditionsLoading,
+  refusalSummary,
+  refusalLoading,
 }: {
   detail: AppDetail;
   conditions: DecisionConditions | null;
   conditionsLoading: boolean;
+  refusalSummary: string | null;
+  refusalLoading: boolean;
 }) {
   const decision = conditions?.decision ?? d.decision;
   const decisionDate = conditions?.decision_date ?? d.decision_date;
@@ -583,6 +560,7 @@ function DecisionSection({
   // decision order — offer the on-demand PDF summary instead of conditions.
   const scannedOrderOnly =
     Boolean(d.decision && d.scanned_files_url) && !AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
+  const summary = conditions?.refusal_summary ?? refusalSummary;
 
   return (
     <section aria-labelledby="decision-h" aria-busy={conditionsLoading || undefined}>
@@ -604,8 +582,12 @@ function DecisionSection({
           )}
         </p>
       )}
-      {conditions?.refusal_summary && (
-        <p className="ai-summary refusal-summary">✦ {conditions.refusal_summary}</p>
+      {summary ? (
+        <p className="ai-summary refusal-summary">✦ {summary}</p>
+      ) : (
+        refusalLoading && (
+          <p className="ai-summary refusal-summary loading-line">✦ Summarising the reasons…</p>
+        )
       )}
       {conditionsLoading && (
         <div className="skeleton-block" aria-hidden="true">
@@ -707,10 +689,15 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
   );
 }
 
+type Fetched<T> = T | "pending" | "none";
+
+const NO_INFO = <span className="no-info">No information available</span>;
+const CHECKING = <span className="hint loading-line">Checking…</span>;
+
 /**
  * Location context — zoning, flood risk and recorded sales as one compact
- * list of data points, not full sections. Helpful colour when reading an
- * application, with one shared provenance note.
+ * list of data points, not full sections. Always the same three rows, so
+ * every application reads the same way.
  */
 function PropertyContext({
   detail: d,
@@ -718,80 +705,66 @@ function PropertyContext({
   flood,
 }: {
   detail: AppDetail;
-  zones: ZoningInfo[] | null;
-  flood: { at_risk: boolean; scenarios: string[] } | null;
+  zones: Fetched<ZoningInfo[]>;
+  flood: Fetched<{ at_risk: boolean; scenarios: string[] }>;
 }) {
   const sales = d.ppr_sales ?? [];
-  if (!zones?.length && !flood && sales.length === 0) return null;
 
   return (
     <section aria-labelledby="place-h">
-      <h3 id="place-h">This property</h3>
+      <h3 id="place-h">Property information</h3>
       <dl className="place-list">
-        {zones?.map((z) => (
-          <Fragment key={z.zone}>
-            <dt>Zoning</dt>
-            <dd>
-              <strong>{z.zone}</strong>
-              {z.general && ` · ${z.general}`}
-              {z.objective && ` — ${z.objective}`}
-              {z.plan && (
-                <span className="hint">
-                  {" "}
-                  ({z.plan}
-                  {z.plan_level === "LAP" ? ", Local Area Plan" : ""})
-                </span>
-              )}
-              {z.plan_url && (
-                <>
-                  {" "}
-                  <a href={z.plan_url} target="_blank" rel="noopener noreferrer">
-                    Development plan ↗
-                  </a>
-                </>
-              )}
-            </dd>
-          </Fragment>
-        ))}
-        {flood && (
-          <>
-            <dt>Flood risk</dt>
-            <dd>
-              {flood.at_risk ? (
-                <span className="flood-warn-inline">
-                  Within a mapped flood extent
-                  {flood.scenarios.length > 0 && ` — ${flood.scenarios.join("; ")}`}
-                </span>
-              ) : (
-                "None mapped at this location"
-              )}{" "}
-              <a href="https://www.floodinfo.ie/" target="_blank" rel="noopener noreferrer">
-                floodinfo.ie ↗
-              </a>
-            </dd>
-          </>
-        )}
-        {sales.map((s) => (
-          <Fragment key={`${s.date}-${s.price}`}>
-            <dt>Sold</dt>
-            <dd>
-              <strong>€{s.price.toLocaleString()}</strong>
-              <span className="hint"> · {s.date}</span>
-              {s.description && <span className="hint"> — {s.description}</span>}
-              {s.vat_exclusive && <span className="tag">price excludes VAT</span>}
-              {s.not_full_market && <span className="tag">not full market price</span>}
-            </dd>
-          </Fragment>
-        ))}
+        <dt>Zoning</dt>
+        <dd>
+          {zones === "pending"
+            ? CHECKING
+            : zones === "none"
+              ? NO_INFO
+              : zones.map((z) => (
+                  <div key={z.zone}>
+                    <strong>{z.zone}</strong>
+                    {z.general && ` · ${z.general}`}
+                    {z.objective && ` — ${z.objective}`}
+                    {z.plan_url && (
+                      <>
+                        {" "}
+                        <a href={z.plan_url} target="_blank" rel="noopener noreferrer">
+                          Development plan ↗
+                        </a>
+                      </>
+                    )}
+                  </div>
+                ))}
+        </dd>
+        <dt>Flood risk</dt>
+        <dd>
+          {flood === "pending" ? (
+            CHECKING
+          ) : flood === "none" ? (
+            NO_INFO
+          ) : flood.at_risk ? (
+            <span className="flood-warn-inline">
+              Within a mapped flood extent
+              {flood.scenarios.length > 0 && ` — ${flood.scenarios.join("; ")}`}
+            </span>
+          ) : (
+            "None mapped at this location"
+          )}
+        </dd>
+        <dt>Price register</dt>
+        <dd>
+          {sales.length === 0
+            ? NO_INFO
+            : sales.map((s) => (
+                <div key={`${s.date}-${s.price}`}>
+                  <strong>€{s.price.toLocaleString()}</strong>
+                  <span className="hint"> · {s.date}</span>
+                  {s.vat_exclusive && <span className="tag">price excludes VAT</span>}
+                  {s.not_full_market && <span className="tag">not full market price</span>}
+                </div>
+              ))}
+        </dd>
       </dl>
-      <p className="list-note">
-        Zoning from MyPlan (DHLGH), flood extents from indicative OPW mapping, sales matched on
-        the PSRA{" "}
-        <a href="https://www.propertypriceregister.ie/" target="_blank" rel="noopener noreferrer">
-          Property Price Register ↗
-        </a>
-        {" "}— confirm at source before relying on any of them.
-      </p>
     </section>
   );
 }
@@ -799,9 +772,10 @@ function PropertyContext({
 export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated }: Props) {
   const glossary = meta?.glossary ?? {};
   const timeline = buildTimeline(d);
-  const stats = buildStats(d);
   const [conditions, setConditions] = useState<DecisionConditions | null>(null);
   const [conditionsLoading, setConditionsLoading] = useState(false);
+  const [refusalSummary, setRefusalSummary] = useState<string | null>(null);
+  const [refusalLoading, setRefusalLoading] = useState(false);
   const [enrich, setEnrich] = useState<{
     ai_summary: string | null;
     applicant_name: string | null;
@@ -810,8 +784,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   } | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
-  const [zones, setZones] = useState<ZoningInfo[] | null>(null);
-  const [flood, setFlood] = useState<{ at_risk: boolean; scenarios: string[] } | null>(null);
+  const [zones, setZones] = useState<Fetched<ZoningInfo[]>>("pending");
+  const [flood, setFlood] = useState<Fetched<{ at_risk: boolean; scenarios: string[] }>>("pending");
   // Enrichment can supply a fuller proposal description than the (sometimes
   // truncated) national one — prefer it for both the display and the summary.
   const description = enrich?.description ?? d.description ?? null;
@@ -821,31 +795,56 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
 
   useEffect(() => {
     setConditions(null);
+    setRefusalSummary(null);
+    setRefusalLoading(false);
     setEnrich(null);
     setDescExpanded(false);
-    setZones(null);
-    setFlood(null);
     let cancelled = false;
     if (d.lat != null && d.lng != null) {
+      setZones("pending");
+      setFlood("pending");
       api
         .zoning(d.id)
         .then((res) => {
-          if (!cancelled && res.zones?.length) setZones(res.zones);
+          if (!cancelled) setZones(res.zones?.length ? res.zones : "none");
         })
-        .catch(() => {});
+        .catch(() => {
+          if (!cancelled) setZones("none");
+        });
       api
         .flood(d.id)
         .then((res) => {
-          if (!cancelled && res.flood) setFlood(res.flood);
+          if (!cancelled) setFlood(res.flood ?? "none");
         })
-        .catch(() => {});
+        .catch(() => {
+          if (!cancelled) setFlood("none");
+        });
+    } else {
+      setZones("none");
+      setFlood("none");
     }
     if (hasConditionsSource) {
       setConditionsLoading(true);
       api
         .conditions(d.id)
         .then((res) => {
-          if (!cancelled && res.conditions?.items.length) setConditions(res.conditions);
+          if (cancelled || !res.conditions?.items.length) return;
+          setConditions(res.conditions);
+          // The plain-English refusal line is generated on its own endpoint
+          // so the conditions render immediately — fetch it once we know
+          // there are refusal reasons to summarise.
+          if (!res.conditions.refusal_summary && res.conditions.items.some((i) => i.code === "R")) {
+            setRefusalLoading(true);
+            api
+              .refusalSummary(d.id)
+              .then((r) => {
+                if (!cancelled) setRefusalSummary(r.summary ?? null);
+              })
+              .catch(() => {})
+              .finally(() => {
+                if (!cancelled) setRefusalLoading(false);
+              });
+          }
         })
         .catch(() => {})
         .finally(() => {
@@ -936,18 +935,13 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         </div>
       </header>
 
-      {stats.length > 0 && (
-        <div className="stat-row">
-          {stats.map((s) => (
-            <div key={s.label} className="stat">
-              <span className="stat-value">{s.value}</span>
-              <span className="stat-label">{s.label}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <DecisionSection detail={d} conditions={conditions} conditionsLoading={conditionsLoading} />
+      <DecisionSection
+        detail={d}
+        conditions={conditions}
+        conditionsLoading={conditionsLoading}
+        refusalSummary={refusalSummary}
+        refusalLoading={refusalLoading}
+      />
 
       <section aria-labelledby="timeline-h">
         <h3 id="timeline-h">Timeline</h3>
@@ -1017,6 +1011,24 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
                 </dd>
               </>
             )
+          )}
+          {d.num_residential_units != null && d.num_residential_units > 0 && (
+            <>
+              <dt>Residential units</dt>
+              <dd>{d.num_residential_units}</dd>
+            </>
+          )}
+          {d.floor_area_sqm != null && d.floor_area_sqm > 0 && (
+            <>
+              <dt>Floor area</dt>
+              <dd>{d.floor_area_sqm.toLocaleString()} m²</dd>
+            </>
+          )}
+          {d.expiry_date && (
+            <>
+              <dt>Permission expires</dt>
+              <dd>{d.expiry_date}</dd>
+            </>
           )}
           {d.eircode && (
             <>
