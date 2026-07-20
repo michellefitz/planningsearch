@@ -779,6 +779,8 @@ function PropertyContext({
                 </div>
               ))}
         </dd>
+        <dt>Eircode</dt>
+        <dd>{d.eircode ? <span className="ref">{d.eircode}</span> : NO_INFO}</dd>
       </dl>
     </section>
   );
@@ -1043,12 +1045,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
             <>
               <dt>Permission expires</dt>
               <dd>{d.expiry_date}</dd>
-            </>
-          )}
-          {d.eircode && (
-            <>
-              <dt>Eircode</dt>
-              <dd>{d.eircode}</dd>
             </>
           )}
         </dl>
