@@ -87,6 +87,29 @@ describe("featureToRecord", () => {
     expect(rec.appeal_decision_date).toBe("2024-05-22");
   });
 
+  it("keeps the council grant when the appeal only MODIFIED conditions (24134 values)", () => {
+    const feature: ArcgisFeature = {
+      attributes: {
+        ...CARLOW_SAMPLE.attributes,
+        PlanningAuthority: "Kildare County Council",
+        ApplicationNumber: "24134",
+        ApplicationStatus: "APPLICATION FINALISED",
+        Decision: "CONDITIONAL",
+        AppealRefNumber: "ABP-320138-24",
+        AppealSubmittedDate: 1720569600000,
+        AppealDecision: "MODIFIED",
+        AppealDecisionDate: 1729728000000,
+        LinkAppDetails: null,
+      },
+      geometry: { x: -6.5188, y: 53.3684 },
+    };
+    const rec = featureToRecord(feature, "2026-07-20T00:00:00Z")!;
+    // The board modified the conditions of a granted permission — still granted,
+    // not "unknown".
+    expect(rec.status).toBe("granted");
+    expect(rec.appeal_decision).toBe("MODIFIED");
+  });
+
   it("maps the verified live schema for an in-scope authority", () => {
     const feature: ArcgisFeature = {
       attributes: {

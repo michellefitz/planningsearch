@@ -144,8 +144,13 @@ export function featureToRecord(
   const oneOff = /^y(es)?$/i.test(str(attrs, FIELD_MAP.oneOffHouse) ?? "");
   const withdrawnDate = isoDate(attrs, FIELD_MAP.withdrawn);
   // A decided appeal supersedes the council's decision (An Bord Pleanála's
-  // outcome is the operative one), so status comes from it when present.
+  // outcome is the operative one) — but only when it's a clear grant/refuse.
+  // Outcomes like "MODIFIED" or "CONDITIONS VARIED" just alter the conditions
+  // of the council's grant, so the council's decision still stands; falling
+  // back to it avoids an appealed-and-granted case reading as "unknown".
   const appealDecision = str(attrs, FIELD_MAP.appealDecision);
+  const councilStatus = normalizeStatus(statusRaw, decisionRaw);
+  const appealStatus = appealDecision ? normalizeStatus("decided", appealDecision) : null;
 
   return {
     authority_id: authorityId,
@@ -156,9 +161,9 @@ export function featureToRecord(
     is_domestic_guess: oneOff || guessIsDomestic(description) ? 1 : 0,
     status: withdrawnDate
       ? "withdrawn"
-      : appealDecision
-        ? normalizeStatus("decided", appealDecision)
-        : normalizeStatus(statusRaw, decisionRaw),
+      : appealStatus && appealStatus !== "unknown"
+        ? appealStatus
+        : councilStatus,
     status_raw: statusRaw,
     received_date: isoDate(attrs, FIELD_MAP.received),
     validated_date: null,
