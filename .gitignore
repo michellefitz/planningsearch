@@ -12,3 +12,4 @@ server/data/*.db-shm
 api/_data/
 .vercel/
 .worktrees/
+.vercel
