@@ -32,6 +32,7 @@ export interface SearchResultRow {
   received_date: string | null;
   decision: string | null;
   decision_date: string | null;
+  appeal_reference: string | null;
   address_text: string | null;
   lat: number | null;
   lng: number | null;
@@ -148,7 +149,7 @@ function buildWhere(f: SearchFilters, alias = "a"): WhereClause {
 const RESULT_COLUMNS = `
   a.id, a.authority_id, a.planning_reference, a.description, a.status,
   a.application_type, a.is_domestic_guess, a.received_date, a.decision,
-  a.decision_date, a.address_text, a.lat, a.lng,
+  a.decision_date, a.appeal_reference, a.address_text, a.lat, a.lng,
   a.commencement_date, a.completion_date
 `;
 

@@ -27,6 +27,12 @@ describe("toolAppSummary", () => {
     });
     expect(s).not.toHaveProperty("geom_polygon");
   });
+
+  it("surfaces appeal_reference when the row has one", () => {
+    const s = toolAppSummary({ ...ROW, appeal_reference: "ABP-319506-26" } as never);
+    expect(s.appeal_reference).toBe("ABP-319506-26");
+    expect(toolAppSummary(ROW as never).appeal_reference).toBeNull();
+  });
 });
 
 describe("buildToolExecutor", () => {
@@ -66,6 +72,25 @@ describe("buildToolExecutor", () => {
     expect(out.lat).toBe(53.38);
     expect(out.authority_id).toBe("kildare");
     expect(out.confidence).toBe("approximate");
+  });
+
+  it("get_documents falls back to the Agile listing for fingal", async () => {
+    const fingalRow = { ...ROW, id: 43, authority_id: "fingal", planning_reference: "F23/456", source_url: null };
+    const db = { prepare: () => ({ get: (id: number) => (id === 43 ? fingalRow : undefined) }) } as never;
+    const run = buildToolExecutor(db, {
+      fetchAgileDocumentList: async (authorityId: string) => {
+        expect(authorityId).toBe("fingal");
+        return {
+          files: [{ title: "Site Plan", url: "x" }, { title: "Decision Order", url: "y" }],
+          applicationUrl: "https://example.com/app/1",
+        };
+      },
+    } as never);
+    const out = (await run("get_documents", { application_id: 43 })) as {
+      count: number; files: Array<{ title: string }>;
+    };
+    expect(out.count).toBe(2);
+    expect(out.files).toEqual([{ title: "Site Plan" }, { title: "Decision Order" }]);
   });
 
   it("unknown tool → error object, not a throw", async () => {

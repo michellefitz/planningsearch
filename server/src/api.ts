@@ -721,11 +721,14 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const messages: ChatTurn[] = (body?.messages ?? [])
       .filter(
         (m): m is { role: "user" | "assistant"; content: string } =>
+          m != null &&
+          typeof m === "object" &&
           (m.role === "user" || m.role === "assistant") &&
           typeof m.content === "string" &&
           m.content.trim().length > 0
       )
       .slice(-30);
+    while (messages.length && messages[0].role !== "user") messages.shift();
     if (!messages.length || messages[messages.length - 1].role !== "user") {
       return reply.code(400).send({ error: "messages must end with a user message" });
     }

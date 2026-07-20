@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { search as realSearch } from "../search.js";
-import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileConditions } from "../agile.js";
+import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileConditions, fetchAgileDocumentList } from "../agile.js";
 import { fetchZoning } from "../zoning.js";
 import { fetchFlood } from "../flood.js";
 import { abpCaseUrl, fetchAppealCase } from "../abp.js";
@@ -15,6 +15,7 @@ export interface ToolDeps {
   fetchFlood: typeof fetchFlood;
   fetchAppealCase: typeof fetchAppealCase;
   fetchScannedFileList: typeof fetchScannedFileList;
+  fetchAgileDocumentList: typeof fetchAgileDocumentList;
 }
 
 const REAL_DEPS: ToolDeps = {
@@ -24,6 +25,7 @@ const REAL_DEPS: ToolDeps = {
   fetchFlood,
   fetchAppealCase,
   fetchScannedFileList,
+  fetchAgileDocumentList,
 };
 
 export interface AgentAppSummary {
@@ -138,6 +140,16 @@ export function buildToolExecutor(db: Database.Database, deps: Partial<ToolDeps>
           (row.source_url as string | null) ?? null,
           (row.planning_reference as string | null) ?? null
         );
+        // Fingal/DLR have no HTML listing; use the Agile portal API like /files does.
+        if (!listUrl && AGILE_CLIENT_BY_AUTHORITY[String(row.authority_id)]) {
+          const result = await d.fetchAgileDocumentList(
+            String(row.authority_id),
+            (row.source_url as string | null) ?? null,
+            String(row.planning_reference)
+          );
+          if (!result) return { error: "Could not load the document list" };
+          return { count: result.files.length, files: result.files.map((f) => ({ title: f.title })) };
+        }
         if (!listUrl) return { error: "No document listing available for this council" };
         const files = await d.fetchScannedFileList(listUrl);
         if (!files) return { error: "Could not load the document list" };

@@ -139,6 +139,7 @@ describe("search", () => {
     const { results } = search(db, { appealedOnly: true });
     expect(results).toHaveLength(1);
     expect(results[0].planning_reference).toBe("F26A/0311");
+    expect(results[0].appeal_reference).toBe("ABP-319506-26");
   });
 
   it("restricts to a bounding box (search this area, F1.4)", () => {

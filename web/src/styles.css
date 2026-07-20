@@ -112,11 +112,21 @@ body {
 }
 
 .side-panel {
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   overflow-y: auto;
   padding: 0.9rem 1rem;
   max-height: 45dvh;
   border-top: 1px solid var(--line);
+}
+
+/* Search results keep scrolling via .side-panel itself. */
+.search-wrap {
+  flex-shrink: 0;
+}
+.search-wrap[hidden] {
+  display: none;
 }
 
 @media (min-width: 768px) {

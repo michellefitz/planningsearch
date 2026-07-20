@@ -1906,6 +1906,7 @@ async function handleAgentRoute(req, res) {
     )
     .map((m) => ({ role: m.role, content: m.content }))
     .slice(-30);
+  while (messages.length && messages[0].role !== "user") messages.shift();
   if (!messages.length || messages[messages.length - 1].role !== "user") {
     return send(res, 400, { error: "messages must end with a user message" });
   }

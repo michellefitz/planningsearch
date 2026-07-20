@@ -159,7 +159,7 @@ export default function App() {
             </button>
           </div>
 
-          <div hidden={mode !== "search"}>
+          <div hidden={mode !== "search"} className="search-wrap">
             <SearchBar
               value={state.q}
               onChange={(q) => setState((s) => ({ ...s, q }))}
