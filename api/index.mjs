@@ -512,21 +512,15 @@ async function resolveAgileId(client, sourceUrl, reference) {
 
 // The proposal-description field name varies across tenants; take the longest
 // non-empty candidate so we never regress on the truncated national value.
-const AGILE_DESCRIPTION_FIELDS = [
-  "developmentDescription",
-  "proposalDescription",
-  "proposedDevelopment",
-  "natureOfDevelopment",
-  "developmentProposal",
-  "proposal",
-  "applicationDescription",
-  "longDescription",
-  "description",
-];
-function pickLongest(d, fields) {
+// The proposal-description field name varies across tenants and casings
+// (proposalDescription, developmentDescription, proposal_description…), so
+// match on the key rather than an exact name and take the longest such value.
+const DESCRIPTION_KEY_RE = /descript|proposal|development/i;
+function pickDescription(d) {
   let best = null;
-  for (const f of fields) {
-    const v = String(d[f] ?? "").trim();
+  for (const [key, value] of Object.entries(d)) {
+    if (typeof value !== "string" || !DESCRIPTION_KEY_RE.test(key)) continue;
+    const v = value.trim();
     if (v && v.length > (best?.length ?? 0)) best = v;
   }
   return best;
@@ -544,7 +538,7 @@ async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false
   const detail = {
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
-    description: pickLongest(d, AGILE_DESCRIPTION_FIELDS),
+    description: pickDescription(d),
     ...(debug ? { keys: Object.keys(d) } : {}),
   };
   PARTIES_CACHE.set(cacheKey, detail);

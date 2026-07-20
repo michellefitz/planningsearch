@@ -152,24 +152,16 @@ export interface AgileDetail {
   keys?: string[];
 }
 
-// The proposal-description field name varies across the tenants; take the
-// longest non-empty candidate so we never regress on the truncated value.
-const AGILE_DESCRIPTION_FIELDS = [
-  "developmentDescription",
-  "proposalDescription",
-  "proposedDevelopment",
-  "natureOfDevelopment",
-  "developmentProposal",
-  "proposal",
-  "applicationDescription",
-  "longDescription",
-  "description",
-] as const;
+// The proposal-description field name varies across tenants and casings
+// (proposalDescription, developmentDescription, proposal_description…), so
+// match on the key rather than an exact name and take the longest such value.
+const DESCRIPTION_KEY_RE = /descript|proposal|development/i;
 
-function pickLongest(d: Record<string, unknown>, fields: readonly string[]): string | null {
+function pickDescription(d: Record<string, unknown>): string | null {
   let best: string | null = null;
-  for (const f of fields) {
-    const v = String(d[f] ?? "").trim();
+  for (const [key, value] of Object.entries(d)) {
+    if (typeof value !== "string" || !DESCRIPTION_KEY_RE.test(key)) continue;
+    const v = value.trim();
     if (v && v.length > (best?.length ?? 0)) best = v;
   }
   return best;
@@ -198,7 +190,7 @@ export async function fetchAgileDetail(
   return {
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
-    description: pickLongest(d, AGILE_DESCRIPTION_FIELDS),
+    description: pickDescription(d),
     ...(debug ? { keys: Object.keys(d) } : {}),
   };
 }
