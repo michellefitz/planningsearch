@@ -666,39 +666,31 @@ function DecisionSummaryCard({ detail: d }: { detail: AppDetail }) {
       )}
       {state.phase === "loaded" && (
         <>
-          {state.summary && (
-            <p className="detail-summary decision-summary">✦ {state.summary}</p>
-          )}
-          {state.reasons.length > 0 && (
-            <div className="condition-group">
-              <h4>
-                Reasons for refusal <span className="count">{state.reasons.length}</span>
-              </h4>
-              {state.reasons.map((r, i) => (
-                <details key={i} className="condition">
-                  <summary>
-                    <span className="condition-num">{r.number ?? i + 1}</span>
-                    Reason {r.number ?? i + 1}
-                  </summary>
-                  <p className="condition-text">{r.text}</p>
-                </details>
-              ))}
+          {state.reasons.length > 0 ? (
+            <div className="detail-summary refusal-summary decision-summary">
+              {state.summary && <p className="decision-lead">✦ {state.summary}</p>}
+              <ul className="decision-list">
+                {state.reasons.map((r, i) => (
+                  <li key={i}>{r.text}</li>
+                ))}
+              </ul>
             </div>
+          ) : (
+            state.summary && <p className="detail-summary decision-summary">✦ {state.summary}</p>
           )}
           {state.conditions.length > 0 && (
             <div className="condition-group">
               <h4>
                 Conditions of grant <span className="count">{state.conditions.length}</span>
               </h4>
-              {state.conditions.map((c, i) => (
-                <details key={i} className="condition">
-                  <summary>
-                    <span className="condition-num">{c.number ?? i + 1}</span>
-                    {c.title || `Condition ${c.number ?? i + 1}`}
-                  </summary>
-                  {c.text && <p className="condition-text">{c.text}</p>}
-                </details>
-              ))}
+              <ul className="decision-list">
+                {state.conditions.map((c, i) => (
+                  <li key={i}>
+                    <strong>{c.title || `Condition ${c.number ?? i + 1}`}</strong>
+                    {c.text && <span className="cond-text"> — {c.text}</span>}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           <p className="list-note">

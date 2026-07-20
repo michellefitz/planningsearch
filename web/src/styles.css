@@ -1184,6 +1184,26 @@ body {
   border-color: #fca5a5;
 }
 
+/* Bulleted decision reasons / conditions of grant */
+.decision-lead {
+  margin: 0 0 0.4rem;
+}
+.decision-list {
+  margin: 0.3rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.decision-list li {
+  margin: 0.28rem 0;
+}
+.refusal-summary .decision-list {
+  color: #9f1239;
+}
+.cond-text {
+  color: var(--ink-2);
+}
+
 /* Appeal (An Coimisiún Pleanála) section */
 .appeal-summary {
   margin: 0.3rem 0 0.8rem;
