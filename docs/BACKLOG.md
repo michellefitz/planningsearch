@@ -73,21 +73,44 @@
 
 - **Property planning report (paper/PDF + shareable microsite).** A rich,
   readable per-property/site report — the paid deliverable that beats
-  Planify's tables-of-counts "pre-planning report". Pull the *full* available
-  history (not just 2012+). Buyers skew traditional (solicitors, agents,
-  older property people), so it must read like a professional document, not a
-  dashboard. Contents (draft): property identity + map/aerial/Street View
-  (with capture date) + zoning (code, name, objective) + development plan;
-  complete planning history for the address (every application, full
-  description, decision, AI plain-English summary, conditions of grant,
-  refusal reasons, ABP appeal outcome), flagged for refusals/appeals/
-  live/withdrawn/extensions; commencement notices (granted-but-not-built vs
-  under construction vs completed); PPR sale history; constraints/risk (flood,
-  protected structure/ACA if available); a *written narrative* tying it
-  together (the bit Planify skips); optional nearby-precedent comps; source
-  links + methodology + disclaimer ("evidence & precedent", not advice — see
-  liability note). Delivered as a print-clean PDF and/or the standalone
-  microsite above. Monetisable per-report (solicitor/agent) as well as in-app.
+  Planify's tables-of-counts "pre-planning report". A V1 sample layout exists
+  (artifact, 2026-07-21): masthead, planning-history timeline, "was it built",
+  sale history, constraints, written summary, nearby precedent, sources —
+  presentation validated as strong. Buyers skew traditional (solicitors,
+  agents, older property people), so it must read like a professional
+  document, not a dashboard. Delivered as a print-clean PDF and/or the
+  standalone microsite above. Monetisable per-report (solicitor/agent) as
+  well as in-app.
+
+  **Open question — the job of the report is not yet defined.** Needs real
+  customer conversations before build; don't over-invest until the use case
+  is pinned. Design implication already clear: *most properties have little
+  or no planning history*, so the report cannot lean on the applications
+  timeline alone — the sections that stand on every property are the ones to
+  lead with.
+
+  What carries every property (confirmed useful): "was it built" +
+  commencement status, PPR sale history, and **nearby precedent** (rated very
+  interesting). Where the biggest untapped depth is: the **spatial context /
+  development-plan layer**, beyond the flood + zoning + ACA we already have.
+  Candidates to explore — proximity to and designation of adjoining land
+  (green belt, zoned open space / amenity, strategic/development land),
+  protected areas (SAC/SPA/NHA, coastal), local amenities (schools, parks,
+  transport), development-plan objectives/overlays affecting the site or its
+  boundary, and Record of Protected Structures / ACA extent. Motivating case:
+  an owner planning an extension who fears encroaching on an adjoining
+  green/amenity zone — the report should answer "what is that land beside me,
+  and what does the plan intend for it?". Much of this is available from the
+  same MyPlan/DHLGH + council development-plan GIS layers we already touch.
+
+  Full-content draft (for when built): property identity + map/aerial/Street
+  View (with capture date) + zoning + development-plan context; complete
+  planning history (full description, decision, AI summary, conditions,
+  refusal reasons, ABP appeal), flagged for refusals/appeals/live/withdrawn/
+  extensions; commencement notices; PPR sales; constraints/spatial-context
+  layer above; a *written narrative* (the bit Planify skips); nearby-precedent
+  comps; sources + methodology + disclaimer ("evidence & precedent", not
+  advice — see liability note).
 
 - **Aggregate views for commencements + PPR (not just per-property fields).**
   Commencement-notice and Property Price Register data are already connected
