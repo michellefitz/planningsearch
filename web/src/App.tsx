@@ -184,7 +184,7 @@ export default function App() {
           </div>
 
           <div hidden={mode !== "ask"} className="chat-wrap">
-            <ChatPanel onSelectApp={select} onAppsReferenced={showAgentApps} />
+            <ChatPanel onSelectApp={select} onHoverApp={setHoveredId} onAppsReferenced={showAgentApps} />
           </div>
         </div>
 

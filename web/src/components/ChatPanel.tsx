@@ -10,6 +10,7 @@ import { StatusBadge } from "./ResultsList";
 
 interface Props {
   onSelectApp: (id: number) => void;
+  onHoverApp: (id: number | null) => void;
   onAppsReferenced: (apps: AgentAppRef[]) => void;
 }
 
@@ -32,9 +33,25 @@ const TOOL_LABELS: Record<string, string> = {
 
 const TOKEN_RE = /\[app:id:(\d+)\]/g;
 
-function AppRefCard({ app, onSelect }: { app: AgentAppRef; onSelect: (id: number) => void }) {
+function AppRefCard({
+  app,
+  onSelect,
+  onHover,
+}: {
+  app: AgentAppRef;
+  onSelect: (id: number) => void;
+  onHover: (id: number | null) => void;
+}) {
   return (
-    <button type="button" className="result-card chat-app-card" onClick={() => onSelect(app.id)}>
+    <button
+      type="button"
+      className="result-card chat-app-card"
+      onClick={() => onSelect(app.id)}
+      onMouseEnter={() => onHover(app.id)}
+      onMouseLeave={() => onHover(null)}
+      onFocus={() => onHover(app.id)}
+      onBlur={() => onHover(null)}
+    >
       <div className="result-top">
         <strong>{app.address_text ?? app.planning_reference}</strong>
         <StatusBadge status={app.status} label={app.status_label ?? app.status} />
@@ -129,10 +146,12 @@ function AssistantMessage({
   content,
   appRefs,
   onSelectApp,
+  onHoverApp,
 }: {
   content: string;
   appRefs: Map<number, AgentAppRef>;
   onSelectApp: (id: number) => void;
+  onHoverApp: (id: number | null) => void;
 }) {
   const parts: Array<{ text?: string; appId?: number }> = [];
   let last = 0;
@@ -148,7 +167,7 @@ function AssistantMessage({
       {parts.map((p, i) => {
         if (p.appId != null) {
           const app = appRefs.get(p.appId);
-          return app ? <AppRefCard key={i} app={app} onSelect={onSelectApp} /> : null;
+          return app ? <AppRefCard key={i} app={app} onSelect={onSelectApp} onHover={onHoverApp} /> : null;
         }
         return <div key={i}>{renderText(p.text ?? "", i)}</div>;
       })}
@@ -156,7 +175,7 @@ function AssistantMessage({
   );
 }
 
-export default function ChatPanel({ onSelectApp, onAppsReferenced }: Props) {
+export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }: Props) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -233,7 +252,13 @@ export default function ChatPanel({ onSelectApp, onAppsReferenced }: Props) {
               <p>{m.content}</p>
             </div>
           ) : (
-            <AssistantMessage key={i} content={m.content} appRefs={appRefs.current} onSelectApp={onSelectApp} />
+            <AssistantMessage
+              key={i}
+              content={m.content}
+              appRefs={appRefs.current}
+              onSelectApp={onSelectApp}
+              onHoverApp={onHoverApp}
+            />
           )
         )}
         {status && (
