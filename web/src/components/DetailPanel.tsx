@@ -404,17 +404,22 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
       )}
       {state.phase === "loaded" && (
         <>
-          {state.reasons.length > 0 ? (
-            <div className="ai-summary refusal-summary">
-              {state.summary && <p className="decision-lead">✦ {state.summary}</p>}
-              <ul className="decision-list">
-                {state.reasons.map((r, i) => (
-                  <li key={i}>{r.text}</li>
-                ))}
-              </ul>
-            </div>
+          {/* The AI summary is the readable version of the refusal — don't also
+              dump the full reason wording underneath (it's long and hard to read
+              in the panel). Fall back to the raw reasons only when there is no
+              summary; the full order is a click away in the documents. */}
+          {state.summary ? (
+            <p className="ai-summary refusal-summary">✦ {state.summary}</p>
           ) : (
-            state.summary && <p className="ai-summary">✦ {state.summary}</p>
+            state.reasons.length > 0 && (
+              <div className="ai-summary refusal-summary">
+                <ul className="decision-list">
+                  {state.reasons.map((r, i) => (
+                    <li key={i}>{r.text}</li>
+                  ))}
+                </ul>
+              </div>
+            )
           )}
           {state.conditions.length > 0 && (
             <div className="condition-group">
