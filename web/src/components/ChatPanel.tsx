@@ -20,6 +20,16 @@ interface DisplayMessage {
   error?: boolean;
 }
 
+// Chat cards carry only the agent's slim app summary, which has no display
+// name for the council — five tenants, so a local map beats a meta fetch.
+const AUTHORITY_SHORT_NAMES: Record<string, string> = {
+  "dublin-city": "Dublin City",
+  fingal: "Fingal",
+  dlr: "Dún Laoghaire-Rathdown",
+  "south-dublin": "South Dublin",
+  kildare: "Kildare",
+};
+
 const TOOL_LABELS: Record<string, string> = {
   search_applications: "Searching applications…",
   get_application_detail: "Reading an application…",
@@ -61,6 +71,16 @@ function AppRefCard({
       <p className="result-desc">{app.description}</p>
       <p className="result-meta">
         <span className="ref">{app.planning_reference}</span>
+        {AUTHORITY_SHORT_NAMES[app.authority_id] && ` · ${AUTHORITY_SHORT_NAMES[app.authority_id]}`}
+        {app.received_date && ` · received ${app.received_date}`}
+        {app.commencement_date && (
+          <span
+            className="tag tag-commenced"
+            title="A commencement notice was filed with building control for this permission"
+          >
+            {app.completion_date ? "built" : "work commenced"}
+          </span>
+        )}
       </p>
     </button>
   );

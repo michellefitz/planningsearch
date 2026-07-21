@@ -15,6 +15,9 @@ export interface AgentAppRef {
   status: string;
   status_label: string;
   authority_id: string;
+  received_date?: string | null;
+  commencement_date?: string | null;
+  completion_date?: string | null;
   lat: number | null;
   lng: number | null;
 }

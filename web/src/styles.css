@@ -1437,6 +1437,13 @@ body {
   margin: 6px 0;
   width: 100%;
   text-align: left;
+  border-radius: 8px;
+}
+/* The assistant bubble is already grey (--surface-2), so the list view's grey
+   hover is invisible here — go white instead. */
+.chat-app-card:hover,
+.chat-app-card:focus {
+  background: var(--surface);
 }
 .chat-empty {
   color: var(--ink-2);
