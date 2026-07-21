@@ -7,7 +7,7 @@ import {
   fetchAppealDocumentBase64,
   pickAppealDocument,
 } from "./abp.js";
-import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
+import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS, normalizeStatus } from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
 import {
   countObjectionFiles,
@@ -671,6 +671,14 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
         ? (row.ai_summary as string)
         : summariseDescription(dbDescription ?? "", row.application_type as string | null),
     ]);
+    // The council portal reflects the true current status (e.g. "Invalid")
+    // long before the national dataset does. When our baked status is unknown
+    // and the live portal gives a status we can map, that live value wins.
+    const bakedStatus = String(row.status ?? "unknown");
+    const liveStatusRaw = isAgile ? detail?.status ?? null : null;
+    const liveStatus = liveStatusRaw ? normalizeStatus(liveStatusRaw) : "unknown";
+    const useLiveStatus = bakedStatus === "unknown" && liveStatus !== "unknown";
+
     if (isAgile) {
       if (detail) {
         parties = { applicant: detail.applicant, agent: detail.agent };
@@ -681,6 +689,10 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
           return {
             agile_detail_keys: detail.keys ?? null,
             picked_description_len: detail.description?.length ?? 0,
+            picked_status: liveStatusRaw,
+            normalised_status: liveStatus,
+            baked_status: bakedStatus,
+            would_override: useLiveStatus,
             description,
           };
         }
@@ -689,6 +701,14 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       }
     } else if (eplanningParties) {
       parties = eplanningParties;
+    }
+
+    if (useLiveStatus) {
+      db.prepare("UPDATE applications SET status = ?, status_raw = ? WHERE id = ?").run(
+        liveStatus,
+        liveStatusRaw,
+        id
+      );
     }
 
     const descriptionImproved = !!description && description !== dbDescription;
@@ -725,6 +745,11 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       agent_name: agent,
       description,
       eircode,
+      // Present only when the live portal status supersedes an unknown baked
+      // one, so the panel can correct the badge without disturbing the rest.
+      status: useLiveStatus ? liveStatus : null,
+      status_raw: useLiveStatus ? liveStatusRaw : null,
+      status_label: useLiveStatus ? STATUS_LABELS[liveStatus] : null,
     };
   });
 

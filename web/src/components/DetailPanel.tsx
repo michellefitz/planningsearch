@@ -848,6 +848,9 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
     agent_name: string | null;
     description?: string | null;
     eircode?: string | null;
+    status?: string | null;
+    status_raw?: string | null;
+    status_label?: string | null;
   } | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
@@ -856,6 +859,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   // Enrichment can supply a fuller proposal description than the (sometimes
   // truncated) national one — prefer it for both the display and the summary.
   const description = enrich?.description ?? d.description ?? null;
+  // The live portal status only overrides a baked "unknown" — the server sends
+  // it exactly in that case, but guard here too so a correct baked status is
+  // never displaced.
+  const liveStatus = d.status === "unknown" ? enrich?.status ?? null : null;
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
   const isLongDesc = (description ?? "").length > 400;
   const hasConditionsSource = AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
@@ -976,7 +983,13 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   return (
     <aside className="detail-sheet" aria-label={`Application ${d.planning_reference}`} role="dialog">
       <div className="sheet-top">
-        <StatusBadge status={d.status} label={statusDisplayLabel(d)} />
+        {/* The national dataset lags the council portal, so a baked "unknown"
+            status is corrected once enrichment reads the live portal status
+            (e.g. an application since declared invalid). */}
+        <StatusBadge
+          status={liveStatus ?? d.status}
+          label={liveStatus ? enrich?.status_label ?? liveStatus : statusDisplayLabel(d)}
+        />
         <button type="button" className="sheet-close" onClick={onClose} aria-label="Close application details">
           ✕
         </button>

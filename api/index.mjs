@@ -569,6 +569,54 @@ function pickDescription(d) {
   return best;
 }
 
+// The current status lives under a status-ish key whose name varies by tenant;
+// take the longest human string on a /status/ key (description beats a short
+// code), skipping appeal-status and date fields. The live portal reflects
+// "Invalid" etc. long before the national dataset does.
+const STATUS_KEY_RE = /status/i;
+function pickAgileStatus(d) {
+  let best = null;
+  for (const [key, value] of Object.entries(d)) {
+    if (typeof value !== "string" || !STATUS_KEY_RE.test(key)) continue;
+    if (/appeal/i.test(key) || /date/i.test(key)) continue;
+    const v = value.trim();
+    if (!v || /^\d{4}-\d{2}-\d{2}/.test(v)) continue;
+    if (v.length > (best?.length ?? 0)) best = v;
+  }
+  return best;
+}
+
+// Canonical status labels + a lightweight mapper for a single live portal
+// status string (the bundle already carries the baked national status; this
+// only maps the live value we read on demand). Mirrors server/src/normalize.ts.
+const STATUS_LABELS = {
+  pending: "Pending decision",
+  further_info: "Further information",
+  granted: "Granted",
+  refused: "Refused",
+  withdrawn: "Withdrawn",
+  invalid: "Invalid",
+  incomplete: "Incomplete",
+  appealed: "Under appeal",
+  unknown: "Unknown",
+};
+const LIVE_STATUS_RULES = [
+  [/appeal/i, "appealed"],
+  [/further\s*info|f\.?i\.?\s*(req|rec)|additional information/i, "further_info"],
+  [/withdraw/i, "withdrawn"],
+  [/incomplete|not\s*valid/i, "incomplete"],
+  [/invalid/i, "invalid"],
+  [/refus|reject/i, "refused"],
+  [/grant|approv|conditional|unconditional/i, "granted"],
+  [/pending|new application|under consideration|awaiting|received|registered|live/i, "pending"],
+];
+function mapLiveStatus(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "unknown";
+  for (const [re, status] of LIVE_STATUS_RULES) if (re.test(s)) return status;
+  return "unknown";
+}
+
 // Normalise to the canonical "D15 YF1W" form; null unless a real Eircode
 // (routing key + 4-char unique identifier, D6W special-cased) — Dublin
 // tenants often put old postal districts ("2.") in the same field.
@@ -590,6 +638,7 @@ async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false
   const detail = {
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
+    status: pickAgileStatus(d),
     description: pickDescription(d),
     eircode: normaliseEircode(d.postcode),
     ...(debug ? { keys: Object.keys(d) } : {}),
@@ -2457,6 +2506,14 @@ export default async function handler(req, res) {
         : null,
       summariseDescription(description, app.application_type),
     ]);
+    // The council portal reflects the true current status (e.g. "Invalid")
+    // long before the national dataset does. When our baked status is unknown
+    // and the live portal gives a status we can map, that live value wins.
+    const bakedStatus = String(app.status ?? "unknown");
+    const liveStatusRaw = isAgile ? detail?.status ?? null : null;
+    const liveStatus = liveStatusRaw ? mapLiveStatus(liveStatusRaw) : "unknown";
+    const useLiveStatus = bakedStatus === "unknown" && liveStatus !== "unknown";
+
     if (isAgile) {
       if (detail) {
         parties = { applicant: detail.applicant, agent: detail.agent };
@@ -2467,6 +2524,10 @@ export default async function handler(req, res) {
           return send(res, 200, {
             agile_detail_keys: detail.keys ?? null,
             picked_description_len: detail.description?.length ?? 0,
+            picked_status: liveStatusRaw,
+            normalised_status: liveStatus,
+            baked_status: bakedStatus,
+            would_override: useLiveStatus,
             description,
           });
       } else if (debug) {
@@ -2489,6 +2550,11 @@ export default async function handler(req, res) {
       // The national dataset's postcode is ~2% populated; the agile register
       // often has the real Eircode.
       eircode: app.eircode ?? detail?.eircode ?? null,
+      // Present only when the live portal status supersedes an unknown baked
+      // one, so the panel can correct the badge.
+      status: useLiveStatus ? liveStatus : null,
+      status_raw: useLiveStatus ? liveStatusRaw : null,
+      status_label: useLiveStatus ? STATUS_LABELS[liveStatus] : null,
     });
   }
 

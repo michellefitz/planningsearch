@@ -201,6 +201,10 @@ export async function fetchAgileConditions(
 export interface AgileDetail {
   applicant: string | null;
   agent: string | null;
+  /** The portal's current status wording (raw). The national dataset lags —
+   *  it can still say "Validation" after the council has declared an
+   *  application invalid — so the live portal value is the truer one. */
+  status: string | null;
   /** Full proposal description — the national dataset truncates this for big
    *  (e.g. SHD/strategic) applications. */
   description: string | null;
@@ -236,6 +240,23 @@ function pickDescription(d: Record<string, unknown>): string | null {
   return best;
 }
 
+// The current status lives under a status-ish key whose exact name varies by
+// tenant (applicationStatus, applicationStatusDescription, statusDescription…).
+// Take the longest human string on a /status/ key — the description beats a
+// short code — while skipping appeal-status and date fields.
+const STATUS_KEY_RE = /status/i;
+export function pickAgileStatus(d: Record<string, unknown>): string | null {
+  let best: string | null = null;
+  for (const [key, value] of Object.entries(d)) {
+    if (typeof value !== "string" || !STATUS_KEY_RE.test(key)) continue;
+    if (/appeal/i.test(key) || /date/i.test(key)) continue;
+    const v = value.trim();
+    if (!v || /^\d{4}-\d{2}-\d{2}/.test(v)) continue;
+    if (v.length > (best?.length ?? 0)) best = v;
+  }
+  return best;
+}
+
 /**
  * GET /application/{id}: applicant/agent names (absent in the national
  * dataset) and the full proposal description. Returns null if the id can't be
@@ -259,6 +280,7 @@ export async function fetchAgileDetail(
   return {
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
+    status: pickAgileStatus(d),
     description: pickDescription(d),
     eircode: normaliseEircode(d.postcode),
     ...(debug ? { keys: Object.keys(d) } : {}),

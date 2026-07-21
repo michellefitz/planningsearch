@@ -39,6 +39,15 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("Application Complete", "Grant Permission")).toBe("granted");
   });
 
+  it("treats a bare validation stage as unknown, but a declared-invalid status as invalid", () => {
+    // The national dataset can still say "Validation" after the council has
+    // declared an application invalid — the stage word alone is not a status,
+    // so it stays unknown until the live portal status is read.
+    expect(normalizeStatus("Validation")).toBe("unknown");
+    expect(normalizeStatus("Invalid")).toBe("invalid");
+    expect(normalizeStatus("Application Declared Invalid")).toBe("invalid");
+  });
+
   it("never guesses on unrecognised labels", () => {
     expect(normalizeStatus("Something Novel")).toBe("unknown");
     expect(normalizeStatus("Application Finalised")).toBe("unknown");
