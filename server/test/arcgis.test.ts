@@ -110,6 +110,42 @@ describe("featureToRecord", () => {
     expect(rec.appeal_decision).toBe("MODIFIED");
   });
 
+  it("bakes a truncated 'declared invalid' decision as invalid (DCC 4497/23)", () => {
+    const feature: ArcgisFeature = {
+      attributes: {
+        ...CARLOW_SAMPLE.attributes,
+        PlanningAuthority: "Dublin City Council",
+        ApplicationNumber: "4497/23",
+        ApplicationStatus: "Decision Notice Issued",
+        Decision: "APPLICATION DECLARED INVA",
+        DecisionDate: 1695600000000,
+        GrantDate: null,
+        LinkAppDetails: null,
+      },
+      geometry: { x: -6.31, y: 53.31 },
+    };
+    const rec = featureToRecord(feature, "2026-07-21T00:00:00Z")!;
+    expect(rec.status).toBe("invalid");
+  });
+
+  it("infers granted from a final grant date when the decision text is blank", () => {
+    const feature: ArcgisFeature = {
+      attributes: {
+        ...CARLOW_SAMPLE.attributes,
+        PlanningAuthority: "Dublin City Council",
+        ApplicationNumber: "9999/23",
+        ApplicationStatus: "Decision Notice Issued",
+        Decision: null,
+        GrantDate: 1599436800000,
+        LinkAppDetails: null,
+      },
+      geometry: { x: -6.26, y: 53.35 },
+    };
+    const rec = featureToRecord(feature, "2026-07-21T00:00:00Z")!;
+    expect(rec.status).toBe("granted");
+    expect(rec.final_grant_date).toBe("2020-09-07");
+  });
+
   it("maps the verified live schema for an in-scope authority", () => {
     const feature: ArcgisFeature = {
       attributes: {

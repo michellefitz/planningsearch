@@ -74,6 +74,15 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("Application Declared Invalid")).toBe("invalid");
   });
 
+  it("reads the truncated national decision text (…DECLARED INVA -> invalid)", () => {
+    // The national Decision field is cut at ~24 chars: "APPLICATION DECLARED
+    // INVALID" arrives as "APPLICATION DECLARED INVA" (DCC ref 4497/23).
+    expect(normalizeStatus("Decision Notice Issued", "APPLICATION DECLARED INVA")).toBe("invalid");
+    expect(normalizeStatus("Decision Notice Issued", "APPLICATION DECLARED INV")).toBe("invalid");
+    // Grant/refuse keep their keyword at the start, so truncation doesn't hurt.
+    expect(normalizeStatus("Decision Notice Issued", "GRANT PERMISSION FOR RET")).toBe("granted");
+  });
+
   it("never guesses on unrecognised labels", () => {
     expect(normalizeStatus("Something Novel")).toBe("unknown");
     expect(normalizeStatus("Application Finalised")).toBe("unknown");

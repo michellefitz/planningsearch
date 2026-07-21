@@ -149,7 +149,15 @@ export function featureToRecord(
   // of the council's grant, so the council's decision still stands; falling
   // back to it avoids an appealed-and-granted case reading as "unknown".
   const appealDecision = str(attrs, FIELD_MAP.appealDecision);
-  const councilStatus = normalizeStatus(statusRaw, decisionRaw);
+  const grantDate = isoDate(attrs, FIELD_MAP.grantDate);
+  let councilStatus = normalizeStatus(statusRaw, decisionRaw);
+  // A final grant only issues after a grant decision. When the status/decision
+  // text didn't resolve (national fields blank or truncated) but a grant date
+  // is on record, it's granted — this keeps decided permissions off the map's
+  // "unknown" pin without needing a live portal read.
+  if ((councilStatus === "unknown" || councilStatus === "pending") && grantDate) {
+    councilStatus = "granted";
+  }
   const appealStatus = appealDecision ? normalizeStatus("decided", appealDecision) : null;
 
   return {
@@ -181,7 +189,7 @@ export function featureToRecord(
     appeal_lodged_date: isoDate(attrs, FIELD_MAP.appealLodged),
     appeal_decision: appealDecision,
     appeal_decision_date: isoDate(attrs, FIELD_MAP.appealDecisionDate),
-    final_grant_date: isoDate(attrs, FIELD_MAP.grantDate),
+    final_grant_date: grantDate,
     applicant_name: buildApplicantName(attrs),
     agent_name: null,
     address_text: str(attrs, FIELD_MAP.address),

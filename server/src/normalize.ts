@@ -36,7 +36,9 @@ const STATUS_RULES: Array<[RegExp, CanonicalStatus]> = [
   // "Incomplete" is a distinct pre-validation state (missing docs/fees), not
   // the same as a formally invalidated application — keep them separate.
   [/incomplete|not\s*valid/i, "incomplete"],
-  [/invalid/i, "invalid"],
+  // The national Decision/Status text is truncated (~24 chars), so "APPLICATION
+  // DECLARED INVALID" arrives as "…DECLARED INVA" — match the truncated stem too.
+  [/invalid|declared\s+inv/i, "invalid"],
   [/refus|reject/i, "refused"],
   [/grant|approv|conditional|unconditional/i, "granted"],
   [/pending|new application|under consideration|awaiting|received|registered|live/i, "pending"],
@@ -69,7 +71,8 @@ export function normalizeStatus(raw: string | null | undefined, decision?: strin
     if (/refus|reject/i.test(dec)) return "refused";
     if (/grant|approv|conditional/i.test(dec)) return "granted";
     if (/withdraw/i.test(dec)) return "withdrawn";
-    if (/invalid/i.test(dec)) return "invalid";
+    // Truncated national Decision text: "…DECLARED INVALID" arrives as "…INVA".
+    if (/invalid|declared\s+inv/i.test(dec)) return "invalid";
     return null;
   };
   const fromRules = (): CanonicalStatus | null => {
