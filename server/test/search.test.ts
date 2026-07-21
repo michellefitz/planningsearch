@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { openDb, upsertApplication, type ApplicationRecord } from "../src/db.js";
-import { buildFtsQuery, buildTrigramQuery, search, suggest } from "../src/search.js";
+import { aggregateApplications, buildFtsQuery, buildTrigramQuery, search, suggest } from "../src/search.js";
 import type Database from "better-sqlite3";
 
 const base: ApplicationRecord = {
@@ -155,6 +155,40 @@ describe("search", () => {
     });
     expect(results[0].planning_reference).toBe("25/456");
     expect(results[0].distance_km).toBeLessThan(1);
+  });
+});
+
+describe("aggregateApplications", () => {
+  it("counts the whole matching set with breakdowns", () => {
+    const agg = aggregateApplications(db, {});
+    expect(agg.total).toBe(4);
+    expect(agg.granted).toBe(1);
+    expect(agg.refused).toBe(1);
+    expect(agg.by_status.pending).toBe(1);
+    expect(agg.by_status.appealed).toBe(1);
+    expect(agg.appealed).toBe(1);
+  });
+
+  it("respects excludeStatuses (junk filtering)", () => {
+    const agg = aggregateApplications(db, { excludeStatuses: ["pending", "appealed"] });
+    expect(agg.total).toBe(2);
+    expect(agg.by_status.pending).toBeUndefined();
+    expect(agg.granted).toBe(1);
+    expect(agg.refused).toBe(1);
+  });
+
+  it("counts over a keyword-filtered set", () => {
+    const agg = aggregateApplications(db, { q: "extension" });
+    expect(agg.total).toBeGreaterThan(0);
+    expect(agg.total).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("search excludeStatuses", () => {
+  it("drops excluded statuses from results and total", () => {
+    const { results, total } = search(db, { excludeStatuses: ["pending", "appealed"] });
+    expect(total).toBe(2);
+    expect(results.every((r) => r.status !== "pending" && r.status !== "appealed")).toBe(true);
   });
 });
 

@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { AGENT_TOOLS, bboxAround, searchFiltersFromToolInput } from "../src/agent/tools.js";
 
 describe("AGENT_TOOLS", () => {
-  it("defines the eight tools from the spec", () => {
+  it("defines the nine tools from the spec", () => {
     expect(AGENT_TOOLS.map((t) => t.name).sort()).toEqual([
+      "count_applications",
       "geocode_location",
       "get_appeal",
       "get_application_detail",
@@ -56,12 +57,28 @@ describe("searchFiltersFromToolInput", () => {
     expect(f.sort).toBe("distance");
     expect(f.receivedFrom).toBe("2022-01-01");
     expect(f.limit).toBe(10);
+    // Explicit statuses given → no junk exclusion.
+    expect(f.excludeStatuses).toBeUndefined();
   });
 
-  it("defaults: relevance sort without near, limit capped at 50", () => {
+  it("defaults: relevance sort without near, limit capped at 50, junk excluded", () => {
     const f = searchFiltersFromToolInput({ query: "shed", limit: 500 });
     expect(f.sort).toBe("relevance");
     expect(f.bbox).toBeUndefined();
     expect(f.limit).toBe(50);
+    expect(f.excludeStatuses).toEqual(["invalid", "incomplete"]);
+  });
+
+  it("include_invalid keeps invalid/incomplete in scope", () => {
+    const f = searchFiltersFromToolInput({ query: "shed", include_invalid: true });
+    expect(f.excludeStatuses).toBeUndefined();
+  });
+
+  it("maps the sample-basis sort options", () => {
+    expect(searchFiltersFromToolInput({ sort: "recent" }).sort).toBe("received");
+    expect(searchFiltersFromToolInput({ sort: "relevance" }).sort).toBe("relevance");
+    expect(searchFiltersFromToolInput({ sort: "nearest", near: { lat: 53, lng: -6 } }).sort).toBe("distance");
+    // nearest without near still maps to distance (search treats it as non-distance mode)
+    expect(searchFiltersFromToolInput({ near: { lat: 53, lng: -6 } }).sort).toBe("distance");
   });
 });

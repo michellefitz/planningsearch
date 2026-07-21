@@ -1358,6 +1358,7 @@ function parseNear(p) {
 function applyFilters(rows, p) {
   const auths = csv(p.get("authority"));
   const statuses = csv(p.get("status"));
+  const excludeStatuses = csv(p.get("excludeStatus"));
   const types = csv(p.get("type"));
   const domestic = p.get("domestic") === "1" || p.get("domestic") === "true";
   const appealed = p.get("appealed") === "1" || p.get("appealed") === "true";
@@ -1368,6 +1369,7 @@ function applyFilters(rows, p) {
   return rows.filter((a) => {
     if (auths && !auths.includes(a.authority_id)) return false;
     if (statuses && !statuses.includes(a.status)) return false;
+    if (excludeStatuses && excludeStatuses.includes(a.status)) return false;
     if (types && !types.includes(a.application_type)) return false;
     if (domestic && a.is_domestic_guess !== 1) return false;
     if (appealed && !a.appeal_reference) return false;
@@ -1465,11 +1467,24 @@ CLARIFY VAGUE LOCATIONS: A townland or town name alone ("Maynooth") is usually t
 differ street to street. When the location is vague, ask one short clarifying question requesting a more specific \
 address, street or eircode, and stop. When it is specific enough, proceed without nagging.
 
-RESEARCH APPROACH: Typically geocode_location first, then search_applications scoped near those coordinates with \
-keywords matching the user's proposal, filtered to likely-domestic where relevant. Then examine the most comparable \
-results: get_conditions on granted ones, get_conditions on refused ones (reasons), get_appeal on any with an appeal \
-reference, and get_zoning on the closest application to describe the area's designation. Fetch conditions for at most \
-5 applications per reply. Prefer recent applications (last ~5 years) when plenty exist.
+RESEARCH APPROACH: Typically geocode_location first. Then call count_applications scoped near those coordinates \
+(with keywords and likely-domestic filter where relevant) to establish the full set BEFORE looking at examples. Then \
+call search_applications for a sample of specific applications to cite. Then examine the most comparable ones: \
+get_conditions on granted ones, get_conditions on refused ones (reasons), get_appeal on any with an appeal reference, \
+and get_zoning on the closest application to describe the area's designation. Fetch conditions for at most 5 \
+applications per reply. Prefer recent applications (last ~5 years) when plenty exist.
+
+SCOPE AND SAMPLING — BE EXPLICIT, NEVER GUESS FROM A HANDFUL: All rates and counts you quote (grant vs refusal, how \
+many domestic, how many commenced) must come from count_applications over the WHOLE set — never inferred from the \
+capped sample. search_applications returns at most 50 rows: that is a SAMPLE for citing individual examples, not the \
+basis for statistics. Always open an area answer by stating the size of the set and the scope, e.g. "There are 214 \
+domestic applications within 1 km — 63% granted, 22% refused." Then say which sample you looked at and on what basis, \
+e.g. "I've highlighted the 25 nearest." Default scope for a specific address is a 1 km radius and the nearest 25 as \
+the example sample. When the matching set is much larger than the sample, or the area is broad, proactively offer to \
+adjust — a wider or tighter radius (e.g. 500 m or 3 km), a larger sample (up to 50), or a different basis (nearest, \
+most recent) — and invite the user to change it. Honour such requests via radius_km, limit and sort. Invalid and \
+incomplete applications are excluded by default (abandoned part-submissions); do not mention them unless asked, and \
+only include them if the user specifically wants them.
 
 CONDITIONS — SUBSTANTIVE VS BOILERPLATE: Most grants carry near-identical boilerplate conditions (construction hours, \
 noise limits, site tidiness, development contributions, water/drainage standards). Do not present these as a pattern — \
@@ -1502,12 +1517,46 @@ const AGENT_STATUSES = [
 
 const AGENT_TOOLS = [
   {
+    name: "count_applications",
+    description:
+      "Count and break down ALL applications matching the filters — the true size of the set, with no " +
+      "result cap. Returns total plus breakdowns by status, type and year and counts of domestic, " +
+      "granted, refused, appealed and commenced. Use this FIRST for any area/pattern question to " +
+      "establish the denominator and compute rates over the whole set — never estimate rates from a " +
+      "sample. Same filters as search_applications. Invalid/incomplete applications are excluded by " +
+      "default (set include_invalid to count them).",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Keywords, e.g. 'two storey extension'" },
+        statuses: { type: "array", items: { type: "string", enum: AGENT_STATUSES } },
+        domestic_only: { type: "boolean" },
+        appealed_only: { type: "boolean" },
+        commenced_only: { type: "boolean" },
+        include_invalid: {
+          type: "boolean",
+          description: "Include invalid/incomplete applications (excluded by default as they are usually junk)",
+        },
+        near: {
+          type: "object",
+          properties: { lat: { type: "number" }, lng: { type: "number" } },
+          required: ["lat", "lng"],
+        },
+        radius_km: { type: "number", description: "Search radius in km, used with near" },
+        received_from: { type: "string", description: "ISO date lower bound on received date" },
+        received_to: { type: "string", description: "ISO date upper bound on received date" },
+      },
+    },
+  },
+  {
     name: "search_applications",
     description:
-      "Search planning applications across Dublin City, Fingal, Dún Laoghaire-Rathdown, South Dublin " +
-      "and Kildare. Full-text over address, planning reference, applicant and description, with filters. " +
-      "Returns application summaries including id, status, decision, dates and coordinates. " +
-      "Use near+radius_km to scope to an area (results sorted nearest first).",
+      "Return a sample of individual applications (for citing specific examples). Full-text over address, " +
+      "planning reference, applicant and description, with filters. Returns summaries including id, status, " +
+      "decision, dates and coordinates. Capped at 50, so this is a SAMPLE — get the full-set stats from " +
+      "count_applications, and use this for the specific examples you cite. Choose the sample basis with " +
+      "sort (nearest / recent / relevance) and say which you used. Invalid/incomplete applications are " +
+      "excluded by default.",
     input_schema: {
       type: "object",
       properties: {
@@ -1520,6 +1569,17 @@ const AGENT_TOOLS = [
           description:
             "Only permissions where a commencement notice was filed with building control — i.e. work actually started (or is about to)",
         },
+        include_invalid: {
+          type: "boolean",
+          description: "Include invalid/incomplete applications (excluded by default as they are usually junk)",
+        },
+        sort: {
+          type: "string",
+          enum: ["nearest", "recent", "relevance"],
+          description:
+            "Sample basis: 'nearest' (needs near; the true closest N), 'recent' (most recently received), " +
+            "or 'relevance' (best keyword match). Defaults to nearest when near is given, else recent.",
+        },
         near: {
           type: "object",
           properties: { lat: { type: "number" }, lng: { type: "number" } },
@@ -1528,7 +1588,7 @@ const AGENT_TOOLS = [
         radius_km: { type: "number", description: "Search radius in km, used with near" },
         received_from: { type: "string", description: "ISO date lower bound on received date" },
         received_to: { type: "string", description: "ISO date upper bound on received date" },
-        limit: { type: "number", description: "Max results, default 25, cap 50" },
+        limit: { type: "number", description: "Sample size, default 25, cap 50" },
       },
     },
   },
@@ -1617,11 +1677,16 @@ function agentBboxAround(lat, lng, km) {
   return [lng - dLng, lat - dLat, lng + dLng, lat + dLat];
 }
 
+const AGENT_JUNK_STATUSES = ["invalid", "incomplete"];
+
 /** Map tool input onto the query params runSearch() already understands. */
 function agentSearchParams(input) {
   const p = new URLSearchParams();
   if (typeof input.query === "string" && input.query.trim()) p.set("q", input.query.trim());
-  if (Array.isArray(input.statuses) && input.statuses.length) p.set("status", input.statuses.map(String).join(","));
+  const statuses = Array.isArray(input.statuses) && input.statuses.length ? input.statuses.map(String) : null;
+  if (statuses) p.set("status", statuses.join(","));
+  // Drop invalid/incomplete junk unless a status set was given or opted in.
+  else if (input.include_invalid !== true) p.set("excludeStatus", AGENT_JUNK_STATUSES.join(","));
   if (input.domestic_only === true) p.set("domestic", "1");
   if (input.appealed_only === true) p.set("appealed", "1");
   if (input.commenced_only === true) p.set("commenced", "1");
@@ -1632,11 +1697,42 @@ function agentSearchParams(input) {
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
     p.set("lat", String(lat));
     p.set("lng", String(lng));
-    p.set("sort", "distance");
     const radius = Number(input.radius_km);
     if (Number.isFinite(radius) && radius > 0) p.set("bbox", agentBboxAround(lat, lng, radius).join(","));
   }
+  // Sample basis: nearest (needs near), recent, or relevance.
+  const sort =
+    input.sort === "recent" ? "received" :
+    input.sort === "relevance" ? "relevance" :
+    input.sort === "nearest" ? "distance" :
+    (Number.isFinite(lat) && Number.isFinite(lng) ? "distance" : "received");
+  if (sort === "distance" && Number.isFinite(lat) && Number.isFinite(lng)) p.set("sort", "distance");
+  else if (sort === "received") p.set("sort", "received");
   return p;
+}
+
+/** Counts + breakdowns over the whole matching set (count_applications). */
+function agentAggregate(input) {
+  const rows = runSearch(agentSearchParams(input)).rows;
+  const by = (key) => {
+    const m = {};
+    for (const a of rows) {
+      const k = key(a);
+      if (k != null && String(k).length) m[k] = (m[k] ?? 0) + 1;
+    }
+    return m;
+  };
+  return {
+    total: rows.length,
+    by_status: by((a) => a.status),
+    by_type: by((a) => a.application_type),
+    by_year: by((a) => (a.received_date ? a.received_date.slice(0, 4) : null)),
+    domestic: rows.filter((a) => a.is_domestic_guess === 1).length,
+    commenced: rows.filter((a) => a.commencement_date).length,
+    appealed: rows.filter((a) => a.appeal_reference).length,
+    granted: rows.filter((a) => a.status === "granted").length,
+    refused: rows.filter((a) => a.status === "refused").length,
+  };
 }
 
 function agentAppSummary(a) {
@@ -1668,10 +1764,17 @@ async function executeAgentTool(name, input) {
     return Number.isFinite(id) ? BUNDLE.applications.find((a) => a.id === id) ?? null : null;
   };
   switch (name) {
+    case "count_applications": {
+      return agentAggregate(input);
+    }
     case "search_applications": {
       const limit = Math.min(Number(input.limit) || 25, 50);
-      const { rows, fuzzy } = runSearch(agentSearchParams(input));
-      return { total: rows.length, fuzzy, results: rows.slice(0, limit).map(agentAppSummary) };
+      const p = agentSearchParams(input);
+      const { rows, fuzzy } = runSearch(p);
+      const sortParam = p.get("sort");
+      const sample_basis = sortParam === "distance" ? "nearest" : sortParam === "received" ? "recent" : "relevance";
+      const sample = rows.slice(0, limit);
+      return { total: rows.length, fuzzy, returned: sample.length, sample_basis, results: sample.map(agentAppSummary) };
     }
     case "get_application_detail": {
       const app = getApp();

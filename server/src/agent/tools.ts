@@ -13,12 +13,46 @@ const STATUSES = [
 
 export const AGENT_TOOLS: AnthropicTool[] = [
   {
+    name: "count_applications",
+    description:
+      "Count and break down ALL applications matching the filters — the true size of the set, with no " +
+      "result cap. Returns total plus breakdowns by status, type and year and counts of domestic, " +
+      "granted, refused, appealed and commenced. Use this FIRST for any area/pattern question to " +
+      "establish the denominator and compute rates over the whole set — never estimate rates from a " +
+      "sample. Same filters as search_applications. Invalid/incomplete applications are excluded by " +
+      "default (set include_invalid to count them).",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Keywords, e.g. 'two storey extension'" },
+        statuses: { type: "array", items: { type: "string", enum: STATUSES } },
+        domestic_only: { type: "boolean" },
+        appealed_only: { type: "boolean" },
+        commenced_only: { type: "boolean" },
+        include_invalid: {
+          type: "boolean",
+          description: "Include invalid/incomplete applications (excluded by default as they are usually junk)",
+        },
+        near: {
+          type: "object",
+          properties: { lat: { type: "number" }, lng: { type: "number" } },
+          required: ["lat", "lng"],
+        },
+        radius_km: { type: "number", description: "Search radius in km, used with near" },
+        received_from: { type: "string", description: "ISO date lower bound on received date" },
+        received_to: { type: "string", description: "ISO date upper bound on received date" },
+      },
+    },
+  },
+  {
     name: "search_applications",
     description:
-      "Search planning applications across Dublin City, Fingal, Dún Laoghaire-Rathdown, South Dublin " +
-      "and Kildare. Full-text over address, planning reference, applicant and description, with filters. " +
-      "Returns application summaries including id, status, decision, dates and coordinates. " +
-      "Use near+radius_km to scope to an area (results sorted nearest first).",
+      "Return a sample of individual applications (for citing specific examples). Full-text over address, " +
+      "planning reference, applicant and description, with filters. Returns summaries including id, status, " +
+      "decision, dates and coordinates. Capped at 50, so this is a SAMPLE — get the full-set stats from " +
+      "count_applications, and use this for the specific examples you cite. Choose the sample basis with " +
+      "sort (nearest / recent / relevance) and say which you used. Invalid/incomplete applications are " +
+      "excluded by default.",
     input_schema: {
       type: "object",
       properties: {
@@ -31,6 +65,17 @@ export const AGENT_TOOLS: AnthropicTool[] = [
           description:
             "Only permissions where a commencement notice was filed with building control — i.e. work actually started (or is about to)",
         },
+        include_invalid: {
+          type: "boolean",
+          description: "Include invalid/incomplete applications (excluded by default as they are usually junk)",
+        },
+        sort: {
+          type: "string",
+          enum: ["nearest", "recent", "relevance"],
+          description:
+            "Sample basis: 'nearest' (needs near; the true closest N), 'recent' (most recently received), " +
+            "or 'relevance' (best keyword match). Defaults to nearest when near is given, else recent.",
+        },
         near: {
           type: "object",
           properties: { lat: { type: "number" }, lng: { type: "number" } },
@@ -39,7 +84,7 @@ export const AGENT_TOOLS: AnthropicTool[] = [
         radius_km: { type: "number", description: "Search radius in km, used with near" },
         received_from: { type: "string", description: "ISO date lower bound on received date" },
         received_to: { type: "string", description: "ISO date upper bound on received date" },
-        limit: { type: "number", description: "Max results, default 25, cap 50" },
+        limit: { type: "number", description: "Sample size, default 25, cap 50" },
       },
     },
   },
@@ -128,15 +173,41 @@ export function bboxAround(lat: number, lng: number, km: number): [number, numbe
   return [lng - dLng, lat - dLat, lng + dLng, lat + dLat];
 }
 
+/** Invalid/incomplete applications are usually junk (abandoned part-submissions
+ *  that get re-filed properly right after), so exclude them by default. */
+const JUNK_STATUSES = ["invalid", "incomplete"];
+
 export function searchFiltersFromToolInput(input: Record<string, unknown>): SearchFilters {
   const nearRaw = input.near as { lat?: unknown; lng?: unknown } | undefined;
   const lat = Number(nearRaw?.lat);
   const lng = Number(nearRaw?.lng);
   const near = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : undefined;
   const radius = Number(input.radius_km);
+  const statuses = Array.isArray(input.statuses) ? input.statuses.map(String) : undefined;
+  // Only drop junk when the caller hasn't asked for a specific status set and
+  // hasn't opted to include them.
+  const excludeStatuses =
+    !statuses && input.include_invalid !== true ? JUNK_STATUSES : undefined;
+
+  let sort: SearchFilters["sort"];
+  switch (input.sort) {
+    case "recent":
+      sort = "received";
+      break;
+    case "relevance":
+      sort = "relevance";
+      break;
+    case "nearest":
+      sort = "distance";
+      break;
+    default:
+      sort = near ? "distance" : "relevance";
+  }
+
   return {
     q: typeof input.query === "string" && input.query.trim() ? input.query : undefined,
-    statuses: Array.isArray(input.statuses) ? input.statuses.map(String) : undefined,
+    statuses,
+    excludeStatuses,
     domesticOnly: input.domestic_only === true,
     appealedOnly: input.appealed_only === true,
     commencedOnly: input.commenced_only === true,
@@ -144,7 +215,7 @@ export function searchFiltersFromToolInput(input: Record<string, unknown>): Sear
     receivedTo: typeof input.received_to === "string" ? input.received_to : undefined,
     near,
     bbox: near && Number.isFinite(radius) && radius > 0 ? bboxAround(near.lat, near.lng, radius) : undefined,
-    sort: near ? "distance" : "relevance",
+    sort,
     limit: Math.min(Number(input.limit) || 25, 50),
   };
 }

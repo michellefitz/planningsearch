@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { search as realSearch } from "../search.js";
+import { aggregateApplications, search as realSearch } from "../search.js";
 import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileConditions, fetchAgileDocumentList } from "../agile.js";
 import { fetchZoning } from "../zoning.js";
 import { fetchFlood } from "../flood.js";
@@ -47,6 +47,8 @@ export interface AgentAppSummary {
   /** BCMS: notified start of works / completion certificate, when filed. */
   commencement_date?: string | null;
   completion_date?: string | null;
+  /** Set when the search was scoped near a point — how far this app is. */
+  distance_km?: number;
 }
 
 export function toolAppSummary(row: Record<string, unknown>): AgentAppSummary {
@@ -68,6 +70,9 @@ export function toolAppSummary(row: Record<string, unknown>): AgentAppSummary {
     appeal_reference: (row.appeal_reference as string | null) ?? null,
     commencement_date: (row.commencement_date as string | null) ?? null,
     completion_date: (row.completion_date as string | null) ?? null,
+    ...(typeof (row as { distance_km?: number }).distance_km === "number"
+      ? { distance_km: (row as { distance_km: number }).distance_km }
+      : {}),
   };
 }
 
@@ -84,9 +89,19 @@ export function buildToolExecutor(db: Database.Database, deps: Partial<ToolDeps>
 
   return async (name: string, input: Record<string, unknown>): Promise<unknown> => {
     switch (name) {
+      case "count_applications": {
+        return aggregateApplications(db, searchFiltersFromToolInput(input));
+      }
       case "search_applications": {
-        const { results, total, fuzzy } = d.search(db, searchFiltersFromToolInput(input));
-        return { total, fuzzy, results: results.map((r) => toolAppSummary(r as never)) };
+        const filters = searchFiltersFromToolInput(input);
+        const { results, total, fuzzy } = d.search(db, filters);
+        return {
+          total,
+          fuzzy,
+          returned: results.length,
+          sample_basis: filters.sort === "distance" ? "nearest" : filters.sort === "received" ? "recent" : "relevance",
+          results: results.map((r) => toolAppSummary(r as never)),
+        };
       }
       case "get_application_detail": {
         const row = getRow(input);

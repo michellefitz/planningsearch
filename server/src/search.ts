@@ -8,6 +8,8 @@ export interface SearchFilters {
   domesticOnly?: boolean;
   appealedOnly?: boolean;
   commencedOnly?: boolean;
+  /** Statuses to drop (e.g. invalid/incomplete junk) — applied as NOT IN. */
+  excludeStatuses?: string[];
   receivedFrom?: string;
   receivedTo?: string;
   decisionFrom?: string;
@@ -119,6 +121,13 @@ function buildWhere(f: SearchFilters, alias = "a"): WhereClause {
     });
     clauses.push(`${alias}.application_type IN (${keys.join(",")})`);
   }
+  if (f.excludeStatuses?.length) {
+    const keys = f.excludeStatuses.map((v, i) => {
+      params[`ex${i}`] = v;
+      return `@ex${i}`;
+    });
+    clauses.push(`${alias}.status NOT IN (${keys.join(",")})`);
+  }
   if (f.domesticOnly) clauses.push(`${alias}.is_domestic_guess = 1`);
   if (f.appealedOnly) clauses.push(`${alias}.appeal_reference IS NOT NULL`);
   if (f.commencedOnly) clauses.push(`${alias}.commencement_date IS NOT NULL`);
@@ -153,13 +162,22 @@ const RESULT_COLUMNS = `
   a.commencement_date, a.completion_date
 `;
 
+// When sorting by distance we fetch a wide candidate pool (bbox-bounded) and
+// pick the nearest N in JS, so "nearest" is truly the nearest — not just the
+// nearest within a small page ordered by date/relevance.
+const DISTANCE_POOL = 3000;
+
 export function search(
   db: Database.Database,
   f: SearchFilters
 ): { results: SearchResultRow[]; total: number; fuzzy: boolean } {
   const limit = Math.min(Math.max(f.limit ?? 25, 1), 200);
   const page = Math.max(f.page ?? 1, 1);
-  const offset = (page - 1) * limit;
+  const distanceMode = f.sort === "distance" && !!f.near;
+  // In distance mode, pull the whole (bbox-limited) set and rank by distance
+  // ourselves; otherwise page normally.
+  const fetchLimit = distanceMode ? DISTANCE_POOL : limit;
+  const offset = distanceMode ? 0 : (page - 1) * limit;
   const where = buildWhere(f);
 
   let rows: SearchResultRow[] = [];
@@ -169,13 +187,13 @@ export function search(
   if (f.q?.trim()) {
     const ftsQuery = buildFtsQuery(f.q);
     if (ftsQuery) {
-      ({ rows, total } = runFtsSearch(db, "fts_apps", ftsQuery, where, limit, offset));
+      ({ rows, total } = runFtsSearch(db, "fts_apps", ftsQuery, where, fetchLimit, offset));
     }
     if (rows.length === 0) {
       // No exact/prefix hits: fall back to trigram matching so typos still land.
       const triQuery = buildTrigramQuery(f.q);
       if (triQuery) {
-        ({ rows, total } = runFtsSearch(db, "fts_tri", triQuery, where, limit, offset));
+        ({ rows, total } = runFtsSearch(db, "fts_tri", triQuery, where, fetchLimit, offset));
         fuzzy = rows.length > 0;
         rows.forEach((r) => (r.match_quality = "fuzzy"));
       }
@@ -193,7 +211,7 @@ export function search(
       .prepare(
         `SELECT ${RESULT_COLUMNS} FROM applications a WHERE 1=1 ${where.sql} ${orderBy} LIMIT @limit OFFSET @offset`
       )
-      .all({ ...where.params, limit, offset }) as SearchResultRow[];
+      .all({ ...where.params, limit: fetchLimit, offset }) as SearchResultRow[];
   }
 
   if (f.near) {
@@ -202,11 +220,77 @@ export function search(
         r.distance_km = Math.round(haversineKm(f.near.lat, f.near.lng, r.lat, r.lng) * 100) / 100;
       }
     }
-    if (f.sort === "distance") {
+    if (distanceMode) {
       rows.sort((a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity));
+      rows = rows.slice(0, limit); // the true nearest N
     }
   }
   return { results: rows, total, fuzzy };
+}
+
+export interface AreaAggregate {
+  total: number;
+  by_status: Record<string, number>;
+  by_type: Record<string, number>;
+  by_year: Record<string, number>;
+  domestic: number;
+  commenced: number;
+  appealed: number;
+  granted: number;
+  refused: number;
+}
+
+function groupCount(
+  db: Database.Database,
+  sql: string,
+  params: Record<string, unknown>
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of db.prepare(sql).all(params) as Array<{ k: string | null; c: number }>) {
+    if (r.k != null && String(r.k).length) out[String(r.k)] = r.c;
+  }
+  return out;
+}
+
+/**
+ * Counts and breakdowns over the ENTIRE matching set (no result cap), so the
+ * agent can report the true size of the set and compute rates from all of it
+ * rather than from a sample.
+ */
+export function aggregateApplications(db: Database.Database, f: SearchFilters): AreaAggregate {
+  const where = buildWhere(f);
+  const ftsQuery = f.q?.trim() ? buildFtsQuery(f.q) : null;
+  let base: string;
+  let params: Record<string, unknown>;
+  if (ftsQuery) {
+    base = `FROM fts_apps ff JOIN applications a ON a.id = ff.application_id WHERE fts_apps MATCH @match ${where.sql}`;
+    params = { ...where.params, match: ftsQuery };
+  } else {
+    base = `FROM applications a WHERE 1=1 ${where.sql}`;
+    params = where.params;
+  }
+  const totals = db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN a.is_domestic_guess = 1 THEN 1 ELSE 0 END) AS domestic,
+        SUM(CASE WHEN a.commencement_date IS NOT NULL THEN 1 ELSE 0 END) AS commenced,
+        SUM(CASE WHEN a.appeal_reference IS NOT NULL THEN 1 ELSE 0 END) AS appealed,
+        SUM(CASE WHEN a.status = 'granted' THEN 1 ELSE 0 END) AS granted,
+        SUM(CASE WHEN a.status = 'refused' THEN 1 ELSE 0 END) AS refused
+       ${base}`
+    )
+    .get(params) as Record<string, number>;
+  return {
+    total: totals.total ?? 0,
+    by_status: groupCount(db, `SELECT a.status AS k, COUNT(*) AS c ${base} GROUP BY a.status`, params),
+    by_type: groupCount(db, `SELECT a.application_type AS k, COUNT(*) AS c ${base} GROUP BY a.application_type`, params),
+    by_year: groupCount(db, `SELECT substr(a.received_date, 1, 4) AS k, COUNT(*) AS c ${base} GROUP BY substr(a.received_date, 1, 4)`, params),
+    domestic: totals.domestic ?? 0,
+    commenced: totals.commenced ?? 0,
+    appealed: totals.appealed ?? 0,
+    granted: totals.granted ?? 0,
+    refused: totals.refused ?? 0,
+  };
 }
 
 function orderClause(sort: NonNullable<SearchFilters["sort"]>): string {
