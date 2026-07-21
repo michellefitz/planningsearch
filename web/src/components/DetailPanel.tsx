@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
-import { StatusBadge } from "./ResultsList";
+import { SecondaryPills, StatusBadge } from "./ResultsList";
 
 /**
  * Application detail (PRD F3) presented as a right-hand overlay sheet.
@@ -988,13 +988,30 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   return (
     <aside className="detail-sheet" aria-label={`Application ${d.planning_reference}`} role="dialog">
       <div className="sheet-top">
-        {/* The national dataset lags the council portal, so a baked "unknown"
-            status is corrected once enrichment reads the live portal status
-            (e.g. an application since declared invalid). */}
-        <StatusBadge
-          status={liveStatus ?? d.status}
-          label={liveStatus ? enrich?.status_label ?? liveStatus : statusDisplayLabel(d)}
-        />
+        <div className="sheet-status">
+          {/* The national dataset lags the council portal, so a baked "unknown"
+              status is corrected once enrichment reads the live portal status
+              (e.g. an application since declared invalid). */}
+          <StatusBadge
+            status={liveStatus ?? d.status}
+            label={liveStatus ? enrich?.status_label ?? liveStatus : statusDisplayLabel(d)}
+          />
+          {/* Retention is a materially different thing to an ordinary
+              permission, so surface the type up here rather than only in the
+              facts list. "Other" carries no signal, so it stays hidden. */}
+          {d.application_type !== "other" && d.application_type_label && (
+            <span className="pill pill-type" title="Application type">
+              {d.application_type_label}
+            </span>
+          )}
+          <SecondaryPills
+            appealReference={d.appeal_reference}
+            appealDecision={d.appeal_decision}
+            appealUrl={d.appeal_url}
+            commencementDate={d.commencement_date}
+            completionDate={d.completion_date}
+          />
+        </div>
         <button type="button" className="sheet-close" onClick={onClose} aria-label="Close application details">
           ✕
         </button>

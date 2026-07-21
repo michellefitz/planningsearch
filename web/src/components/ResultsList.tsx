@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { AppSummary } from "../api";
 import { STATUS_STYLE } from "./MapView";
 
@@ -19,6 +19,74 @@ export function StatusBadge({ status, label }: { status: string; label: string }
       {label}
     </span>
   );
+}
+
+/**
+ * Secondary pills for the axes the single status badge can't carry — appeal and
+ * commencement (BCMS). They sit next to the status, so "granted" no longer
+ * hides that a case went to appeal or that work has started on site. All data
+ * is already on the record; nothing extra is fetched. `appealUrl` is only
+ * passed where the pill isn't nested in a <button> (the detail sheet), since an
+ * anchor inside a button is invalid markup — in the list it renders as text.
+ */
+export function SecondaryPills({
+  appealReference,
+  appealDecision,
+  appealUrl,
+  commencementDate,
+  completionDate,
+}: {
+  appealReference?: string | null;
+  appealDecision?: string | null;
+  appealUrl?: string | null;
+  commencementDate?: string | null;
+  completionDate?: string | null;
+}) {
+  const pills: ReactNode[] = [];
+
+  if (appealReference || appealDecision) {
+    const label = appealDecision ? `Appeal: ${appealDecision}` : "Appealed";
+    const title = "This application went to An Coimisiún Pleanála on appeal";
+    pills.push(
+      appealUrl ? (
+        <a
+          key="appeal"
+          className="pill pill-appeal"
+          href={appealUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={title}
+        >
+          {label} ↗
+        </a>
+      ) : (
+        <span key="appeal" className="pill pill-appeal" title={title}>
+          {label}
+        </span>
+      )
+    );
+  }
+
+  if (commencementDate) {
+    const future = commencementDate > new Date().toISOString().slice(0, 10);
+    const built = Boolean(completionDate);
+    pills.push(
+      <span
+        key="commenced"
+        className={`pill pill-commenced${built ? " pill-built" : ""}`}
+        title={
+          built
+            ? "A completion certificate is on file with building control"
+            : "A commencement notice was filed with building control for this permission"
+        }
+      >
+        {built ? "Built" : future ? "Commencing" : "Commenced"}
+      </span>
+    );
+  }
+
+  if (!pills.length) return null;
+  return <span className="pill-row">{pills}</span>;
 }
 
 export default function ResultsList({
@@ -59,6 +127,14 @@ export default function ResultsList({
                 <strong>{r.address_text ?? r.planning_reference}</strong>
                 <StatusBadge status={r.status} label={r.status_label} />
               </div>
+              {/* Secondary axes the status badge can't carry — appeal and
+                  commencement. No appealUrl here: the card is a <button>, so an
+                  anchor pill would be invalid markup (it links from the sheet). */}
+              <SecondaryPills
+                appealReference={r.appeal_reference}
+                commencementDate={r.commencement_date}
+                completionDate={r.completion_date}
+              />
               <p className="result-desc">{r.description}</p>
               <p className="result-meta">
                 <span className="ref">{r.planning_reference}</span> · {r.authority_short_name}
@@ -67,14 +143,6 @@ export default function ResultsList({
                 {r.is_domestic_guess && (
                   <span className="tag" title="Best-effort classification, not an official category">
                     likely domestic
-                  </span>
-                )}
-                {r.commencement_date && (
-                  <span
-                    className="tag tag-commenced"
-                    title="A commencement notice was filed with building control for this permission"
-                  >
-                    {r.completion_date ? "built" : "work commenced"}
                   </span>
                 )}
               </p>

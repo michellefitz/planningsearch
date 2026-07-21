@@ -52,6 +52,23 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
         </div>
       </fieldset>
       <fieldset>
+        <legend>Type</legend>
+        <div className="chip-row">
+          {Object.entries(meta?.application_types ?? {})
+            .filter(([k]) => k !== "other")
+            .map(([key, label]) => (
+              <label key={key} className={`chip ${state.types.includes(key) ? "chip-on" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={state.types.includes(key)}
+                  onChange={() => onChange({ ...state, types: toggle(state.types, key) })}
+                />
+                {label}
+              </label>
+            ))}
+        </div>
+      </fieldset>
+      <fieldset>
         <legend>Received between</legend>
         <div className="date-row">
           <input
@@ -125,6 +142,7 @@ function countActive(s: SearchState): number {
   return (
     s.authorities.length +
     s.statuses.length +
+    s.types.length +
     (s.domesticOnly ? 1 : 0) +
     (s.appealedOnly ? 1 : 0) +
     (s.commencedOnly ? 1 : 0) +

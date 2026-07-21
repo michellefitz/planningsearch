@@ -586,6 +586,22 @@ function pickAgileStatus(d) {
   return best;
 }
 
+// The real outcome ("Grant Permission", "Application Declared Invalid") lives on
+// a decision-ish key, distinct from the status stage; reading it lets
+// mapLiveStatus defer to the outcome. Skip date/appeal keys; longest wins.
+const DECISION_KEY_RE = /decision/i;
+function pickAgileDecision(d) {
+  let best = null;
+  for (const [key, value] of Object.entries(d)) {
+    if (typeof value !== "string" || !DECISION_KEY_RE.test(key)) continue;
+    if (/appeal/i.test(key) || /date/i.test(key)) continue;
+    const v = value.trim();
+    if (!v || /^\d{4}-\d{2}-\d{2}/.test(v)) continue;
+    if (v.length > (best?.length ?? 0)) best = v;
+  }
+  return best;
+}
+
 // Canonical status labels + a lightweight mapper for a single live portal
 // status string (the bundle already carries the baked national status; this
 // only maps the live value we read on demand). Mirrors server/src/normalize.ts.
@@ -610,11 +626,36 @@ const LIVE_STATUS_RULES = [
   [/grant|approv|conditional|unconditional/i, "granted"],
   [/pending|new application|under consideration|awaiting|received|registered|live/i, "pending"],
 ];
-function mapLiveStatus(raw) {
-  const s = String(raw ?? "").trim();
-  if (!s) return "unknown";
+// A stage that means "a decision exists, read the Decision field" — mirrors
+// DECIDED_OPAQUE in server/src/normalize.ts. Without "decision notice", the
+// agile portals' "Decision Notice Issued" stage maps to nothing.
+const DECIDED_OPAQUE =
+  /finalised|finalized|decision made|decision notice|notification of decision|decided|closed|\bcomplete/i;
+function liveDecisionToStatus(dec) {
+  const d = String(dec ?? "").trim();
+  if (!d) return null;
+  if (/refus|reject/i.test(d)) return "refused";
+  if (/grant|approv|conditional/i.test(d)) return "granted";
+  if (/withdraw/i.test(d)) return "withdrawn";
+  if (/invalid/i.test(d)) return "invalid";
+  return null;
+}
+function liveStatusFromRules(s) {
   for (const [re, status] of LIVE_STATUS_RULES) if (re.test(s)) return status;
-  return "unknown";
+  return null;
+}
+// Maps a live portal status (and its decision, when present) onto a canonical
+// status. Unlike the ingest normaliser it never defaults a blank read to
+// "pending" — this is only ever used to correct a baked status, and an empty
+// live read carries no signal.
+function mapLiveStatus(raw, decision) {
+  const s = String(raw ?? "").trim();
+  if (s) {
+    if (DECIDED_OPAQUE.test(s)) return liveDecisionToStatus(decision) ?? liveStatusFromRules(s) ?? "unknown";
+    const viaRules = liveStatusFromRules(s);
+    if (viaRules) return viaRules;
+  }
+  return liveDecisionToStatus(decision) ?? "unknown";
 }
 
 // Normalise to the canonical "D15 YF1W" form; null unless a real Eircode
@@ -639,6 +680,7 @@ async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
     status: pickAgileStatus(d),
+    decision: pickAgileDecision(d),
     description: pickDescription(d),
     eircode: normaliseEircode(d.postcode),
     ...(debug ? { keys: Object.keys(d) } : {}),
@@ -2510,13 +2552,26 @@ export default async function handler(req, res) {
         : null,
       summariseDescription(description, app.application_type),
     ]);
-    // The council portal reflects the true current status (e.g. "Invalid")
-    // long before the national dataset does. When our baked status is unknown
-    // and the live portal gives a status we can map, that live value wins.
+    // The council portal reflects the true current outcome (e.g. "Invalid",
+    // "Grant Permission") long before the national dataset does. The portal
+    // status is often just a stage ("Decision Notice Issued"), so we read the
+    // live decision too and let mapLiveStatus defer to the real outcome.
     const bakedStatus = String(app.status ?? "unknown");
     const liveStatusRaw = isAgile ? detail?.status ?? null : null;
-    const liveStatus = liveStatusRaw ? mapLiveStatus(liveStatusRaw) : "unknown";
-    const useLiveStatus = bakedStatus === "unknown" && liveStatus !== "unknown";
+    const liveDecisionRaw = isAgile ? detail?.decision ?? null : null;
+    const liveRaw = liveStatusRaw ?? liveDecisionRaw;
+    const liveStatus =
+      liveStatusRaw || liveDecisionRaw ? mapLiveStatus(liveStatusRaw, liveDecisionRaw) : "unknown";
+    // Correct the baked status when it never mapped (fill an "unknown"), or when
+    // the portal shows a terminal outcome the register hasn't caught up to —
+    // but only override a not-yet-resolved baked state, never a decided one.
+    const CORRECTABLE_BAKED = new Set(["unknown", "pending", "further_info", "incomplete"]);
+    const TERMINAL_LIVE = new Set(["granted", "refused", "invalid", "withdrawn"]);
+    const useLiveStatus =
+      liveStatus !== "unknown" &&
+      liveStatus !== bakedStatus &&
+      (bakedStatus === "unknown" ||
+        (CORRECTABLE_BAKED.has(bakedStatus) && TERMINAL_LIVE.has(liveStatus)));
 
     if (isAgile) {
       if (detail) {
@@ -2529,6 +2584,7 @@ export default async function handler(req, res) {
             agile_detail_keys: detail.keys ?? null,
             picked_description_len: detail.description?.length ?? 0,
             picked_status: liveStatusRaw,
+            picked_decision: liveDecisionRaw,
             normalised_status: liveStatus,
             baked_status: bakedStatus,
             would_override: useLiveStatus,
@@ -2554,10 +2610,10 @@ export default async function handler(req, res) {
       // The national dataset's postcode is ~2% populated; the agile register
       // often has the real Eircode.
       eircode: app.eircode ?? detail?.eircode ?? null,
-      // Present only when the live portal status supersedes an unknown baked
-      // one, so the panel can correct the badge.
+      // Present only when the live portal outcome supersedes the baked status,
+      // so the panel can correct the badge.
       status: useLiveStatus ? liveStatus : null,
-      status_raw: useLiveStatus ? liveStatusRaw : null,
+      status_raw: useLiveStatus ? liveRaw : null,
       status_label: useLiveStatus ? STATUS_LABELS[liveStatus] : null,
     });
   }

@@ -209,6 +209,11 @@ export interface AgileDetail {
    *  it can still say "Validation" after the council has declared an
    *  application invalid — so the live portal value is the truer one. */
   status: string | null;
+  /** The portal's decision/outcome wording (raw), e.g. "Grant Permission" or
+   *  "Application Declared Invalid". Distinct from status, which is often just
+   *  a stage ("Decision Notice Issued"); feeding it to normalizeStatus lets the
+   *  outcome win over the stage. */
+  decision: string | null;
   /** Full proposal description — the national dataset truncates this for big
    *  (e.g. SHD/strategic) applications. */
   description: string | null;
@@ -261,6 +266,24 @@ export function pickAgileStatus(d: Record<string, unknown>): string | null {
   return best;
 }
 
+// The council's actual outcome ("Grant Permission", "Application Declared
+// Invalid") lives on a decision-ish key, distinct from the application status
+// (which is often just a stage like "Decision Notice Issued"). Reading it lets
+// normalizeStatus defer to the real outcome rather than the stage word. Skip
+// date and appeal keys; take the longest human string (description over code).
+const DECISION_KEY_RE = /decision/i;
+export function pickAgileDecision(d: Record<string, unknown>): string | null {
+  let best: string | null = null;
+  for (const [key, value] of Object.entries(d)) {
+    if (typeof value !== "string" || !DECISION_KEY_RE.test(key)) continue;
+    if (/appeal/i.test(key) || /date/i.test(key)) continue;
+    const v = value.trim();
+    if (!v || /^\d{4}-\d{2}-\d{2}/.test(v)) continue;
+    if (v.length > (best?.length ?? 0)) best = v;
+  }
+  return best;
+}
+
 /**
  * GET /application/{id}: applicant/agent names (absent in the national
  * dataset) and the full proposal description. Returns null if the id can't be
@@ -285,6 +308,7 @@ export async function fetchAgileDetail(
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
     status: pickAgileStatus(d),
+    decision: pickAgileDecision(d),
     description: pickDescription(d),
     eircode: normaliseEircode(d.postcode),
     ...(debug ? { keys: Object.keys(d) } : {}),

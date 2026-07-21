@@ -671,13 +671,27 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
         ? (row.ai_summary as string)
         : summariseDescription(dbDescription ?? "", row.application_type as string | null),
     ]);
-    // The council portal reflects the true current status (e.g. "Invalid")
-    // long before the national dataset does. When our baked status is unknown
-    // and the live portal gives a status we can map, that live value wins.
+    // The council portal reflects the true current outcome (e.g. "Invalid",
+    // "Grant Permission") long before the national dataset does. The portal's
+    // status is often just a stage ("Decision Notice Issued"), so we read the
+    // live decision too and let normalizeStatus defer to the real outcome.
     const bakedStatus = String(row.status ?? "unknown");
     const liveStatusRaw = isAgile ? detail?.status ?? null : null;
-    const liveStatus = liveStatusRaw ? normalizeStatus(liveStatusRaw) : "unknown";
-    const useLiveStatus = bakedStatus === "unknown" && liveStatus !== "unknown";
+    const liveDecisionRaw = isAgile ? detail?.decision ?? null : null;
+    const liveRaw = liveStatusRaw ?? liveDecisionRaw;
+    const liveStatus =
+      liveStatusRaw || liveDecisionRaw ? normalizeStatus(liveStatusRaw, liveDecisionRaw) : "unknown";
+    // Correct the baked status when it never mapped (fill an "unknown"), or when
+    // the portal shows a terminal outcome the register hasn't caught up to —
+    // but only override a not-yet-resolved baked state, never a decided one, so
+    // a fresh national decision is never clobbered by a stale portal read.
+    const CORRECTABLE_BAKED = new Set(["unknown", "pending", "further_info", "incomplete"]);
+    const TERMINAL_LIVE = new Set(["granted", "refused", "invalid", "withdrawn"]);
+    const useLiveStatus =
+      liveStatus !== "unknown" &&
+      liveStatus !== bakedStatus &&
+      (bakedStatus === "unknown" ||
+        (CORRECTABLE_BAKED.has(bakedStatus) && TERMINAL_LIVE.has(liveStatus)));
 
     if (isAgile) {
       if (detail) {
@@ -690,6 +704,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
             agile_detail_keys: detail.keys ?? null,
             picked_description_len: detail.description?.length ?? 0,
             picked_status: liveStatusRaw,
+            picked_decision: liveDecisionRaw,
             normalised_status: liveStatus,
             baked_status: bakedStatus,
             would_override: useLiveStatus,
@@ -706,7 +721,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     if (useLiveStatus) {
       db.prepare("UPDATE applications SET status = ?, status_raw = ? WHERE id = ?").run(
         liveStatus,
-        liveStatusRaw,
+        liveRaw,
         id
       );
     }
@@ -745,10 +760,10 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       agent_name: agent,
       description,
       eircode,
-      // Present only when the live portal status supersedes an unknown baked
-      // one, so the panel can correct the badge without disturbing the rest.
+      // Present only when the live portal outcome supersedes the baked status,
+      // so the panel can correct the badge without disturbing the rest.
       status: useLiveStatus ? liveStatus : null,
-      status_raw: useLiveStatus ? liveStatusRaw : null,
+      status_raw: useLiveStatus ? liveRaw : null,
       status_label: useLiveStatus ? STATUS_LABELS[liveStatus] : null,
     };
   });

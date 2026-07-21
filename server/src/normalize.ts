@@ -43,13 +43,17 @@ const STATUS_RULES: Array<[RegExp, CanonicalStatus]> = [
 ];
 
 /**
- * Statuses that only say "the case is closed" without the outcome (e.g. the
- * national dataset's "APPLICATION FINALISED", "DECISION MADE") — the real
- * outcome lives in the Decision field, so defer to it.
+ * Statuses that only say "the case is closed / a decision exists" without the
+ * outcome itself (e.g. the national dataset's "APPLICATION FINALISED",
+ * "DECISION MADE", or the agile portals' "Decision Notice Issued" /
+ * "Notification of Decision") — the real outcome lives in the Decision field,
+ * so defer to it. Without this, "Decision Notice Issued" matches no rule and a
+ * genuinely-decided (or declared-invalid) application reads as "unknown".
  */
 // \bcomplete so "Application Complete"/"Completed" counts as closed, but
 // "Incomplete Application" does not (it's a distinct pre-validation state).
-const DECIDED_OPAQUE = /finalised|finalized|decision made|decided|closed|\bcomplete/i;
+const DECIDED_OPAQUE =
+  /finalised|finalized|decision made|decision notice|notification of decision|decided|closed|\bcomplete/i;
 
 export function normalizeStatus(raw: string | null | undefined, decision?: string | null): CanonicalStatus {
   const source = `${raw ?? ""}`.trim();
@@ -109,6 +113,33 @@ export function normalizeApplicationType(raw: string | null | undefined): Canoni
   if (/consequent/.test(s)) return "permission_consequent";
   if (/extension\s+of\s+duration|extend.*duration/.test(s)) return "extension_of_duration";
   if (/permission|full/.test(s)) return "permission";
+  return "other";
+}
+
+/**
+ * The national ApplicationType field is only sparsely populated, so when it is
+ * blank or unclassifiable we infer the type from the development description.
+ * Only types with unambiguous wording are inferred — retention, outline,
+ * extension of duration, permission-consequent — plus plain "permission" when
+ * the text explicitly seeks it. Anything else stays "other" rather than
+ * guessing. Retention is checked first and keyed on the whole word "retention"
+ * (not "retain", which catches "retaining wall" — a normal permission), since
+ * separating retention from ordinary permission is the point.
+ */
+export function deriveApplicationType(
+  raw: string | null | undefined,
+  description: string | null | undefined
+): CanonicalApplicationType {
+  const fromRaw = normalizeApplicationType(raw);
+  if (fromRaw !== "other") return fromRaw;
+  const text = `${description ?? ""}`;
+  if (!text.trim()) return "other";
+  if (/\bretention\b/i.test(text)) return "retention";
+  if (/\boutline permission\b|\bpermission in outline\b/i.test(text)) return "outline";
+  if (/extension\s+of\s+duration|extend(?:ing)?\s+the\s+duration/i.test(text))
+    return "extension_of_duration";
+  if (/consequent/i.test(text)) return "permission_consequent";
+  if (/\bpermission\b/i.test(text)) return "permission";
   return "other";
 }
 

@@ -42,6 +42,10 @@ export interface AppSummary {
   portal_url: string | null;
   commencement_date?: string | null;
   completion_date?: string | null;
+  /** Present on search rows too (RESULT_COLUMNS) — drives the "Appealed" pill. */
+  appeal_reference?: string | null;
+  /** Deep link to the An Coimisiún Pleanála case file when an appeal exists. */
+  appeal_url?: string | null;
 }
 
 export interface AppDetail extends AppSummary {
@@ -131,6 +135,7 @@ export interface SearchState {
   q: string;
   authorities: string[];
   statuses: string[];
+  types: string[];
   domesticOnly: boolean;
   appealedOnly: boolean;
   commencedOnly: boolean;
@@ -144,6 +149,7 @@ export const EMPTY_SEARCH: SearchState = {
   q: "",
   authorities: [],
   statuses: [],
+  types: [],
   domesticOnly: false,
   appealedOnly: false,
   commencedOnly: false,
@@ -162,6 +168,7 @@ export function searchParams(
   if (s.q.trim()) p.set("q", s.q.trim());
   if (s.authorities.length) p.set("authority", s.authorities.join(","));
   if (s.statuses.length) p.set("status", s.statuses.join(","));
+  if (s.types.length) p.set("type", s.types.join(","));
   if (s.domesticOnly) p.set("domestic", "1");
   if (s.appealedOnly) p.set("appealed", "1");
   if (s.commencedOnly) p.set("commenced", "1");

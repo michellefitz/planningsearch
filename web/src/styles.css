@@ -1210,9 +1210,58 @@ body {
   color: var(--ink-3);
   font-weight: 400;
 }
-.tag-commenced {
-  color: #166534;
-  background: #f0fdf4;
+/* ---------- Secondary pills (type / appeal / commencement) ---------- */
+/* Axes the single status badge can't carry, shown next to it in the list and
+   the detail sheet. Same light-tinted treatment as .status-badge; the accent
+   colour is per-pill via --pc. */
+.sheet-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.pill-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  vertical-align: middle;
+}
+
+.result-card .pill-row {
+  margin-top: 0.3rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 550;
+  white-space: nowrap;
+  text-decoration: none;
+  background: color-mix(in srgb, var(--pc, #64748b) 12%, #fff);
+  color: color-mix(in srgb, var(--pc, #64748b) 80%, #000);
+  border: 1px solid color-mix(in srgb, var(--pc, #64748b) 22%, transparent);
+}
+
+a.pill:hover {
+  background: color-mix(in srgb, var(--pc, #64748b) 20%, #fff);
+}
+
+.pill-type {
+  --pc: #4f46e5;
+}
+.pill-appeal {
+  --pc: #ea580c;
+}
+.pill-commenced {
+  --pc: #166534;
+}
+.pill-built {
+  --pc: #15803d;
 }
 
 /* Appeal, told inside the decision section. */

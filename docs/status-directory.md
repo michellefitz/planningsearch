@@ -231,11 +231,13 @@ only in the scanned decision PDF, AI-extracted on demand and **not** written to
   consulted, and even a correct live read is discarded unless the baked status
   was `unknown`.
 
-**Fix direction (not yet done):** (a) add `decision notice issued` /
-`notification of decision` to `DECIDED_OPAQUE` so it defers to the decision;
-(b) in `/enrich`, feed `conditions.decisionText` into `normalizeStatus` and
-allow live status to *correct* (not just fill) a stale baked stage; (c)
-reconsider "longest wins" in `pickAgileStatus`.
+**✅ Fixed.** (a) `decision notice` / `notification of decision` added to
+`DECIDED_OPAQUE`, so the stage defers to the decision (`normalize.ts`).
+(b) `fetchAgileDetail` now also reads the live **decision** (`pickAgileDecision`)
+and `/enrich` feeds it into `normalizeStatus`, so the outcome wins over the
+stage. (c) "longest wins" in `pickAgileStatus` is left as-is — it's now moot,
+because even when a verbose stage label wins, the decision is consulted and
+takes precedence. Mirrored in the serverless entry `api/index.mjs`.
 
 ### 6.2 "Validation" and other bare stage words → `unknown` ("?")
 Intentional (`normalize.test.ts:42`) — a stage word alone isn't an outcome — but
@@ -247,6 +249,15 @@ question mark" cases.
 The whole baked status is only as fresh as the last `npm run ingest`. Pending →
 decided → appealed transitions can be weeks stale. Agile councils can be nudged
 live per-application on sheet-open; Kildare cannot at all.
+
+> **Partly addressed.** The live-portal correction in `/enrich` previously only
+> filled a baked `unknown`. It now also *corrects* a stale `pending` /
+> `further_info` / `incomplete` when the portal shows a terminal outcome
+> (granted/refused/invalid/withdrawn) — the "SD22A/0440 still pending" class of
+> bug. On the long-running server this persists back to the map; on the
+> read-only Vercel bundle it corrects the open detail sheet only (the map pin
+> reflects the bundle until the next rebuild). A decided baked status is never
+> overridden, so a fresh national decision is never clobbered.
 
 ### 6.4 `invalid` vs `incomplete` collapse
 We keep them distinct in the model, but source systems use the words
@@ -289,10 +300,14 @@ columns — `validation_state`, `decision_outcome`, `appeal_state`,
 while the sheet shows all four. That removes the lossy collapse in
 `arcgis.ts:145` and makes "granted → appealed → upheld → commenced" expressible.
 
-**Recommended first slice:** fix §6.1 (the Dublin City invalid/decision-notice
-handling) since it's a correctness bug, then add the Appealed + Commenced
-secondary pills (pure UI, no schema change). The full four-axis split is a
-larger change to sequence after.
+**✅ First slice shipped:** §6.1 (invalid/decision-notice) is fixed and the
+live-status correction broadened (§6.3); the detail sheet and result cards now
+show **Type**, **Appealed**, and **Commenced/Built** pills next to the status
+badge (`SecondaryPills` in `ResultsList.tsx`); application **type is inferred
+from the description** when the national type field is blank
+(`deriveApplicationType`), so retention is separated from ordinary permission;
+and an application-**type filter** was added to the filter bar. The full
+four-axis schema split remains the larger change to sequence after.
 
 ---
 

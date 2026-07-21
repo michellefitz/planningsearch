@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveApplicationType,
   guessIsDomestic,
   normalizeApplicationType,
   normalizeStatus,
@@ -39,6 +40,17 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("Application Complete", "Grant Permission")).toBe("granted");
   });
 
+  it("defers a 'decision notice issued' stage to the decision/outcome (DCC invalid case)", () => {
+    // The stage word alone means nothing; the real outcome is in the decision.
+    expect(normalizeStatus("Decision Notice Issued", "Application Declared Invalid")).toBe("invalid");
+    expect(normalizeStatus("Decision Notice Issued", "Grant Permission")).toBe("granted");
+    expect(normalizeStatus("Decision Notice Issued", "Refuse Permission")).toBe("refused");
+    // Outcome embedded in the status text still reads when the decision is empty.
+    expect(normalizeStatus("Notification of Decision to Grant Permission", null)).toBe("granted");
+    // No outcome anywhere still can't be guessed.
+    expect(normalizeStatus("Decision Notice Issued", null)).toBe("unknown");
+  });
+
   it("treats a bare validation stage as unknown, but a declared-invalid status as invalid", () => {
     // The national dataset can still say "Validation" after the council has
     // declared an application invalid — the stage word alone is not a status,
@@ -62,6 +74,35 @@ describe("normalizeApplicationType", () => {
     expect(normalizeApplicationType("Outline Permission")).toBe("outline");
     expect(normalizeApplicationType("Extension of Duration")).toBe("extension_of_duration");
     expect(normalizeApplicationType("weird")).toBe("other");
+  });
+});
+
+describe("deriveApplicationType", () => {
+  it("uses the explicit type when it classifies", () => {
+    expect(deriveApplicationType("Retention Permission", "anything")).toBe("retention");
+    expect(deriveApplicationType("Permission", null)).toBe("permission");
+  });
+
+  it("infers from the description when the type field is blank", () => {
+    expect(
+      deriveApplicationType(null, "Permission for retention of a single storey rear extension")
+    ).toBe("retention");
+    expect(deriveApplicationType("", "Outline permission for a dwelling")).toBe("outline");
+    expect(
+      deriveApplicationType(null, "Extension of duration of planning permission reg. ref. 12/345")
+    ).toBe("extension_of_duration");
+    expect(deriveApplicationType(null, "Permission for a two storey dwelling")).toBe("permission");
+  });
+
+  it("does not mistake a retaining wall for a retention application", () => {
+    expect(
+      deriveApplicationType(null, "Permission for a retaining wall and new vehicular entrance")
+    ).toBe("permission");
+  });
+
+  it("stays 'other' when nothing is inferable", () => {
+    expect(deriveApplicationType(null, null)).toBe("other");
+    expect(deriveApplicationType(null, "The development will consist of site works")).toBe("other");
   });
 });
 

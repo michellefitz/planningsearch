@@ -15,8 +15,8 @@ import {
   AUTHORITY_BY_ID,
 } from "../config/authorities.js";
 import {
+  deriveApplicationType,
   guessIsDomestic,
-  normalizeApplicationType,
   normalizeStatus,
 } from "../normalize.js";
 import type { ApplicationRecord } from "../db.js";
@@ -156,7 +156,10 @@ export function featureToRecord(
     authority_id: authorityId,
     planning_reference: reference,
     description,
-    application_type: normalizeApplicationType(typeRaw),
+    // National ApplicationType is sparse; fall back to the description so
+    // retention (a materially different thing to compare against ordinary
+    // permission) is separated out even when the type field is blank.
+    application_type: deriveApplicationType(typeRaw, description),
     application_type_raw: typeRaw,
     is_domestic_guess: oneOff || guessIsDomestic(description) ? 1 : 0,
     status: withdrawnDate
