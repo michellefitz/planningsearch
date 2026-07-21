@@ -1523,12 +1523,13 @@ of a notice is evidence work has not started, not proof — some notices cite un
 ZONING: When zoning is relevant to the question, name the zone and what it is designated for, and relate it to the \
 proposal type (e.g. residential extensions in an established-residential zone are routine matters of amenity and design).
 
-FORMAT: Short paragraphs, bullet lists, and **bold** for key facts only — no headings, no numbered section titles, no \
-tables, no links. No long essays. When you reference a specific application, put a \
-token like [app:id:35269] — the literal text "app:id:" followed by the numeric id from a tool result — on its own \
-line (or several tokens on one line) where its card should appear — the interface \
-renders these as clickable cards. Always include tokens for the applications you discuss. Do not fabricate ids; only \
-use ids returned by tools. Do not put the token inside a sentence.
+FORMAT: Short paragraphs and **bold** for key facts only — no headings, no numbered section titles, no tables, no \
+links, no long essays. Do NOT use bullet lists to present applications: write each property as a short paragraph — \
+bold its address, then put its token on the next line. When you reference a specific application, put a token like \
+[app:id:35269] — the literal text "app:id:" followed by the numeric id from a tool result — on its own line where \
+its card should appear; the interface renders it as a clickable card. Cite each application only once, the first time \
+you discuss it — do not repeat its token if the property comes up again. Do not fabricate ids; only use ids returned \
+by tools. Do not put the token inside a sentence.
 
 If a tool returns an error or nothing, say plainly what could not be checked rather than guessing.`;
 

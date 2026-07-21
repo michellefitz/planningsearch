@@ -167,34 +167,44 @@ function renderText(text: string, key: number) {
 function AssistantMessage({
   content,
   appRefs,
+  seenCards,
   onSelectApp,
   onHoverApp,
 }: {
   content: string;
   appRefs: Map<number, AgentAppRef>;
+  seenCards: Set<number>;
   onSelectApp: (id: number) => void;
   onHoverApp: (id: number | null) => void;
 }) {
-  const parts: Array<{ text?: string; appId?: number }> = [];
-  let last = 0;
-  for (const m of content.matchAll(TOKEN_RE)) {
-    if (m.index! > last) parts.push({ text: content.slice(last, m.index) });
-    parts.push({ appId: Number(m[1]) });
-    last = m.index! + m[0].length;
-  }
-  if (last < content.length) parts.push({ text: content.slice(last) });
+  // Cards are pulled out of the prose and rendered after the paragraph they
+  // appear in — never mid-sentence — and only the first time a property comes
+  // up in the whole conversation. `seenCards` is threaded across messages so a
+  // property mentioned again later doesn't render its card a second time.
+  const blocks: ReactNode[] = [];
+  content.split(/\n{2,}/).forEach((para, pi) => {
+    const ids: number[] = [];
+    for (const m of para.matchAll(TOKEN_RE)) ids.push(Number(m[1]));
+    // Strip the tokens from the prose and tidy the whitespace/punctuation they
+    // leave behind so a mid-sentence reference reads cleanly.
+    const prose = para
+      .replace(TOKEN_RE, "")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/[ \t]+([.,;:!?])/g, "$1")
+      .trim();
+    if (prose) blocks.push(<div key={`t${pi}`}>{renderText(prose, pi)}</div>);
+    for (const id of ids) {
+      if (seenCards.has(id)) continue;
+      seenCards.add(id);
+      const app = appRefs.get(id);
+      if (app)
+        blocks.push(
+          <AppRefCard key={`c${pi}-${id}`} app={app} onSelect={onSelectApp} onHover={onHoverApp} />
+        );
+    }
+  });
 
-  return (
-    <div className="chat-msg chat-assistant">
-      {parts.map((p, i) => {
-        if (p.appId != null) {
-          const app = appRefs.get(p.appId);
-          return app ? <AppRefCard key={i} app={app} onSelect={onSelectApp} onHover={onHoverApp} /> : null;
-        }
-        return <div key={i}>{renderText(p.text ?? "", i)}</div>;
-      })}
-    </div>
-  );
+  return <div className="chat-msg chat-assistant">{blocks}</div>;
 }
 
 export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }: Props) {
@@ -264,25 +274,32 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
             </ul>
           </div>
         )}
-        {messages.map((m, i) =>
-          m.role === "user" ? (
-            <div key={i} className="chat-msg chat-user">
-              <p>{m.content}</p>
-            </div>
-          ) : m.error ? (
-            <div key={i} className="chat-msg chat-assistant chat-error">
-              <p>{m.content}</p>
-            </div>
-          ) : (
-            <AssistantMessage
-              key={i}
-              content={m.content}
-              appRefs={appRefs.current}
-              onSelectApp={onSelectApp}
-              onHoverApp={onHoverApp}
-            />
-          )
-        )}
+        {(() => {
+          // One card per property for the whole conversation. Built fresh each
+          // render and mutated as messages render top-to-bottom, so an earlier
+          // message keeps the card and later mentions don't repeat it.
+          const seenCards = new Set<number>();
+          return messages.map((m, i) =>
+            m.role === "user" ? (
+              <div key={i} className="chat-msg chat-user">
+                <p>{m.content}</p>
+              </div>
+            ) : m.error ? (
+              <div key={i} className="chat-msg chat-assistant chat-error">
+                <p>{m.content}</p>
+              </div>
+            ) : (
+              <AssistantMessage
+                key={i}
+                content={m.content}
+                appRefs={appRefs.current}
+                seenCards={seenCards}
+                onSelectApp={onSelectApp}
+                onHoverApp={onHoverApp}
+              />
+            )
+          );
+        })()}
         {status && (
           <p className="chat-status" role="status">
             {status}
