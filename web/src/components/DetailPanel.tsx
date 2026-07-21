@@ -893,6 +893,25 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           if (!cancelled) setEnrichLoading(false);
         });
     }
+    // When the refusal came from the appeal (council granted, Commission
+    // refused), the council's conditions hold no refusal reasons — they live
+    // in the Board's order, so summarise the appeal into the same slot.
+    if (
+      d.appeal_decision &&
+      /refus/i.test(d.appeal_decision) &&
+      !/refus/i.test(d.decision ?? "")
+    ) {
+      setRefusalLoading(true);
+      api
+        .appealSummary(d.id)
+        .then((r) => {
+          if (!cancelled) setRefusalSummary(r.summary ?? null);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setRefusalLoading(false);
+        });
+    }
     if (hasConditionsSource) {
       setConditionsLoading(true);
       // Conditions and enrich hit the same council portal, and conditions can

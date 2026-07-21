@@ -39,7 +39,8 @@ proposal type (e.g. residential extensions in an established-residential zone ar
 
 FORMAT: Short paragraphs, bullet lists, and **bold** for key facts only — no headings, no numbered section titles, no \
 tables, no links. No long essays. When you reference a specific application, put a \
-token [app:id:<id>] on its own line (or several tokens on one line) where its card should appear — the interface \
+token like [app:id:35269] — the literal text "app:id:" followed by the numeric id from a tool result — on its own \
+line (or several tokens on one line) where its card should appear — the interface \
 renders these as clickable cards. Always include tokens for the applications you discuss. Do not fabricate ids; only \
 use ids returned by tools. Do not put the token inside a sentence.
 

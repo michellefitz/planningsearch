@@ -31,7 +31,9 @@ const TOOL_LABELS: Record<string, string> = {
   geocode_location: "Locating the area…",
 };
 
-const TOKEN_RE = /\[app:id:(\d+)\]/g;
+// Canonical form is [app:id:35269], but the model sometimes emits
+// [app:35269] or [app:35269:35269] — accept all three.
+const TOKEN_RE = /\[app:(?:id:)?(\d+)(?::\d+)?\]/g;
 
 function AppRefCard({
   app,
