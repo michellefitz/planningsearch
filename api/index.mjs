@@ -624,7 +624,7 @@ const LIVE_STATUS_RULES = [
   [/invalid/i, "invalid"],
   [/refus|reject/i, "refused"],
   [/grant|approv|conditional|unconditional/i, "granted"],
-  [/pending|new application|under consideration|awaiting|received|registered|live/i, "pending"],
+  [/pending|new application|under consideration|awaiting|received|registered|live|validat|assess|lodged|acknowledg/i, "pending"],
 ];
 // A stage that means "a decision exists, read the Decision field" — mirrors
 // DECIDED_OPAQUE in server/src/normalize.ts. Without "decision notice", the

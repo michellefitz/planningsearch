@@ -240,10 +240,18 @@ because even when a verbose stage label wins, the decision is consulted and
 takes precedence. Mirrored in the serverless entry `api/index.mjs`.
 
 ### 6.2 "Validation" and other bare stage words → `unknown` ("?")
-Intentional (`normalize.test.ts:42`) — a stage word alone isn't an outcome — but
-because Kildare and un-enriched agile rows are never corrected, these sit as "?"
-on the map indefinitely. This is the main population of the "marked with a
-question mark" cases.
+**✅ Fixed.** Previously "Validation" and similar early-lifecycle stages mapped
+to `unknown` on the theory that a stage word alone isn't an outcome — but that
+turned genuinely live applications (e.g. DLR REF10726, received days earlier,
+no decision) into "?" pins the map could never self-correct. The early stages
+("Validation" / "Validated" / "Under Assessment" / "Lodged" / "Acknowledged")
+now map to **pending**; the invalid/incomplete rules still run first, and a
+recorded decision still supersedes the stage (§6.8), so a real invalid or a
+decided case is unaffected. Baked at ingest, so the map/list read pending
+directly. Two other truncation/date sources of "?" were fixed alongside: the
+national Decision text is truncated (~24 chars) so "…DECLARED INVALID" arrives
+as "…INVA" — the `declared inv` stem is now matched — and a bare `GrantDate`
+with blank decision text now bakes as granted.
 
 ### 6.3 National feed lag
 The whole baked status is only as fresh as the last `npm run ingest`. Pending →

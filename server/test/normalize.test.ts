@@ -65,11 +65,16 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("Decision Notice Issued", null)).toBe("unknown");
   });
 
-  it("treats a bare validation stage as unknown, but a declared-invalid status as invalid", () => {
-    // The national dataset can still say "Validation" after the council has
-    // declared an application invalid — the stage word alone is not a status,
-    // so it stays unknown until the live portal status is read.
-    expect(normalizeStatus("Validation")).toBe("unknown");
+  it("treats the validation/assessment stage as pending, but a declared-invalid status as invalid", () => {
+    // "Validation" is the live pre-assessment stage of a genuinely live
+    // application (DLR ref REF10726, received days earlier, no decision), so
+    // pending — not a "?" pin. A recorded decision still supersedes the stage,
+    // and a real invalid is caught by the invalid keyword first.
+    expect(normalizeStatus("Validation")).toBe("pending");
+    expect(normalizeStatus("Validated")).toBe("pending");
+    expect(normalizeStatus("Under Assessment")).toBe("pending");
+    expect(normalizeStatus("Validation", "REFUSE PERMISSION")).toBe("refused");
+    expect(normalizeStatus("Invalidated")).toBe("invalid");
     expect(normalizeStatus("Invalid")).toBe("invalid");
     expect(normalizeStatus("Application Declared Invalid")).toBe("invalid");
   });

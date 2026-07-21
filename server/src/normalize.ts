@@ -41,7 +41,11 @@ const STATUS_RULES: Array<[RegExp, CanonicalStatus]> = [
   [/invalid|declared\s+inv/i, "invalid"],
   [/refus|reject/i, "refused"],
   [/grant|approv|conditional|unconditional/i, "granted"],
-  [/pending|new application|under consideration|awaiting|received|registered|live/i, "pending"],
+  // Early lifecycle stages of a live application — "Validation"/"Validated",
+  // "Under Assessment", "Lodged", "Acknowledged" — are pending, not "?". The
+  // invalid/incomplete rules run first (so "Invalidated" is caught above), and
+  // a recorded decision still supersedes this stage in normalizeStatus.
+  [/pending|new application|under consideration|awaiting|received|registered|live|validat|assess|lodged|acknowledg/i, "pending"],
 ];
 
 /**
