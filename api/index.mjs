@@ -1124,11 +1124,14 @@ async function summariseRefusal(appId, reasons) {
   if (REFUSAL_SUMMARY_CACHE.has(appId)) return REFUSAL_SUMMARY_CACHE.get(appId);
   const systemPrompt =
     "You explain why an Irish council refused a planning application, in one short sentence " +
-    'of plain English starting with "Refused because". ' +
-    "The reader is a regular person, not a planner. Name the actual problems " +
-    "(too close to a sewer, would overlook neighbours, no drainage details, out of character " +
-    "with the area…), never the policy or plan citations. " +
-    "If there are several reasons, mention the main ones. Keep it under 35 words. " +
+    'of plain English starting with "Refused because". The reader is a regular person, not a planner. ' +
+    "For refusals on planning merits, name the actual problems (too close to a sewer, would overlook " +
+    "neighbours, no drainage details, out of character with the area…) rather than the policy or plan " +
+    "citation numbers. For procedural or statutory refusals — e.g. an extension of duration refused " +
+    "because works had not commenced or the legal basis was removed, or an application refused as " +
+    "invalid or out of time — explain that reason plainly in everyday terms (say why permission or the " +
+    "extension could no longer be granted). Always produce a sentence when a reason is given. " +
+    "If there are several reasons, mention the main ones. Keep it under 40 words. " +
     NO_LEAK_RULE;
   const userMsg = reasons.map((r, i) => `Reason ${i + 1}: ${r.title}\n${r.text}`).join("\n\n");
   const text = isUsableSummary(await callHaiku(systemPrompt, userMsg));
