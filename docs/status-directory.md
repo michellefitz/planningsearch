@@ -279,6 +279,18 @@ of grant/refuse the regex hits first (`grant` is checked before… actually
 A permission where work has started/finished looks identical on the map to one
 that was never built.
 
+### 6.8 A stale status stage short-circuits a recorded decision
+**✅ Fixed.** The clearest instance of §6.3's lag, but in the *baked* data, not
+the live path: SD22A/0440 (South Dublin) carried `status_raw = "Registered
+Application"` → `pending`, yet also `decision = "GRANT PERMISSION"` with a 2023
+decision date and final grant. `normalizeStatus` matched the `registered →
+pending` rule and returned before ever reading the Decision field, so the map,
+list and sheet all showed "pending" for a long-granted permission. Now a
+recorded decision supersedes a status that is only a not-yet-decided stage
+(pending / further-info / incomplete), while a status that itself names a
+terminal outcome (refused / withdrawn / invalid / appealed) still stands. Baked
+at ingest, so it corrects everywhere on the next data rebuild — no live call.
+
 ---
 
 ## 7. Proposal: multiple pills

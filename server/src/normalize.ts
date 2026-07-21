@@ -55,6 +55,12 @@ const STATUS_RULES: Array<[RegExp, CanonicalStatus]> = [
 const DECIDED_OPAQUE =
   /finalised|finalized|decision made|decision notice|notification of decision|decided|closed|\bcomplete/i;
 
+// Statuses that only describe a not-yet-decided stage. When a decision is
+// actually on record, it supersedes these — the national status field lags and
+// can still read "Registered Application"/"New Application" years after a grant
+// or refusal issued (e.g. SD22A/0440: still "Registered" in 2026, granted 2023).
+const NON_TERMINAL_STAGES = new Set<CanonicalStatus>(["pending", "further_info", "incomplete"]);
+
 export function normalizeStatus(raw: string | null | undefined, decision?: string | null): CanonicalStatus {
   const source = `${raw ?? ""}`.trim();
   const fromDecision = (): CanonicalStatus | null => {
@@ -72,18 +78,22 @@ export function normalizeStatus(raw: string | null | undefined, decision?: strin
     }
     return null;
   };
+  const viaDecision = fromDecision();
   if (source) {
     // "Finalised"/"decision made" style statuses often carry no outcome — the
     // Decision field is authoritative there. But some do embed the outcome in
     // the status itself (e.g. "Finalised Unconditional" = granted without
     // conditions), so if the Decision field is empty, still read the status
     // text before giving up.
-    if (DECIDED_OPAQUE.test(source)) return fromDecision() ?? fromRules() ?? "unknown";
+    if (DECIDED_OPAQUE.test(source)) return viaDecision ?? fromRules() ?? "unknown";
     const viaRules = fromRules();
+    // A recorded decision beats a status that is only a not-yet-decided stage
+    // (the register lags); a status that itself names a terminal outcome
+    // (refused/withdrawn/invalid/appealed) still stands.
+    if (viaDecision && (!viaRules || NON_TERMINAL_STAGES.has(viaRules))) return viaDecision;
     if (viaRules) return viaRules;
   }
   // Some sources leave status blank once decided; fall back to the decision text.
-  const viaDecision = fromDecision();
   if (viaDecision) return viaDecision;
   return source ? "unknown" : "pending";
 }

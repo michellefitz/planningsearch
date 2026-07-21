@@ -40,6 +40,20 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("Application Complete", "Grant Permission")).toBe("granted");
   });
 
+  it("lets a recorded decision supersede a stale not-yet-decided status stage", () => {
+    // The national status field lags (SD22A/0440: still "Registered
+    // Application" in 2026 though granted in 2023) — the decision on record wins.
+    expect(normalizeStatus("Registered Application", "GRANT PERMISSION")).toBe("granted");
+    expect(normalizeStatus("New Application", "Refuse Permission")).toBe("refused");
+    expect(normalizeStatus("Further Information Requested", "GRANT PERMISSION")).toBe("granted");
+    // A status naming a terminal outcome is not overridden by the decision…
+    expect(normalizeStatus("Application Withdrawn", "GRANT PERMISSION")).toBe("withdrawn");
+    // …and an appeal stage stands (appeal supersession is handled downstream).
+    expect(normalizeStatus("Appealed to An Bord Pleanala", "Grant Permission")).toBe("appealed");
+    // No decision on record: the stage stands.
+    expect(normalizeStatus("Registered Application", null)).toBe("pending");
+  });
+
   it("defers a 'decision notice issued' stage to the decision/outcome (DCC invalid case)", () => {
     // The stage word alone means nothing; the real outcome is in the decision.
     expect(normalizeStatus("Decision Notice Issued", "Application Declared Invalid")).toBe("invalid");
