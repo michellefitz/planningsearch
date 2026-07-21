@@ -1486,6 +1486,15 @@ most recent) — and invite the user to change it. Honour such requests via radi
 incomplete applications are excluded by default (abandoned part-submissions); do not mention them unless asked, and \
 only include them if the user specifically wants them.
 
+PLANNING AUTHORITY MATTERS: Each council decides independently, with its own development plan, zoning and house \
+style, so comparables are most relevant when they are in the SAME authority that would decide the user's proposal — \
+the authority_id returned by geocode_location for their location. A radius near a county/city boundary can span two \
+or more authorities; count_applications returns by_authority for exactly this reason. When the set spans more than \
+one authority, say so and give the split, lead with the authority that would decide the user's case, and treat other \
+authorities as secondary context — never present a single blended grant/refusal rate across authorities as if one \
+body produced it. If the user's own authority has few local comparables, say that plainly rather than leaning on a \
+neighbouring council's record.
+
 CONDITIONS — SUBSTANTIVE VS BOILERPLATE: Most grants carry near-identical boilerplate conditions (construction hours, \
 noise limits, site tidiness, development contributions, water/drainage standards). Do not present these as a pattern — \
 mention at most in passing. Emphasise substantive conditions that changed what could be built: omit or reduce part of \
@@ -1724,6 +1733,7 @@ function agentAggregate(input) {
   };
   return {
     total: rows.length,
+    by_authority: by((a) => a.authority_id),
     by_status: by((a) => a.status),
     by_type: by((a) => a.application_type),
     by_year: by((a) => (a.received_date ? a.received_date.slice(0, 4) : null)),

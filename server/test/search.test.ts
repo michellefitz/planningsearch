@@ -167,6 +167,10 @@ describe("aggregateApplications", () => {
     expect(agg.by_status.pending).toBe(1);
     expect(agg.by_status.appealed).toBe(1);
     expect(agg.appealed).toBe(1);
+    // Breaks down by planning authority (2 fingal, 1 kildare, 1 dublin-city).
+    expect(agg.by_authority.fingal).toBe(2);
+    expect(agg.by_authority.kildare).toBe(1);
+    expect(agg.by_authority["dublin-city"]).toBe(1);
   });
 
   it("respects excludeStatuses (junk filtering)", () => {

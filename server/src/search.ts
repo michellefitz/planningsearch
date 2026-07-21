@@ -230,6 +230,9 @@ export function search(
 
 export interface AreaAggregate {
   total: number;
+  /** Counts per planning authority — a boundary-spanning radius mixes councils
+   *  that decide independently, so the agent breaks results down by authority. */
+  by_authority: Record<string, number>;
   by_status: Record<string, number>;
   by_type: Record<string, number>;
   by_year: Record<string, number>;
@@ -282,6 +285,7 @@ export function aggregateApplications(db: Database.Database, f: SearchFilters): 
     .get(params) as Record<string, number>;
   return {
     total: totals.total ?? 0,
+    by_authority: groupCount(db, `SELECT a.authority_id AS k, COUNT(*) AS c ${base} GROUP BY a.authority_id`, params),
     by_status: groupCount(db, `SELECT a.status AS k, COUNT(*) AS c ${base} GROUP BY a.status`, params),
     by_type: groupCount(db, `SELECT a.application_type AS k, COUNT(*) AS c ${base} GROUP BY a.application_type`, params),
     by_year: groupCount(db, `SELECT substr(a.received_date, 1, 4) AS k, COUNT(*) AS c ${base} GROUP BY substr(a.received_date, 1, 4)`, params),
