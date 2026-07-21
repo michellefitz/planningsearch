@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
 import { StatusBadge } from "./ResultsList";
 
@@ -341,16 +341,20 @@ type DecisionOrderState =
     };
 
 /**
- * On-demand read of the council's scanned decision order — for
- * eplanning/iDocs councils that expose no structured conditions, the
- * summary, conditions of grant and any reasons for refusal live only in
- * that PDF. Reading it is slow, so it stays a click.
+ * Read of the council's scanned decision order — for eplanning/iDocs councils
+ * (e.g. Kildare) that expose no structured conditions, the summary, conditions
+ * of grant and any reasons for refusal live only in that PDF.
+ *
+ * A refusal fetches automatically: its reasons are the point of the decision,
+ * and every other council shows them inline, so a click here reads as clunky
+ * and inconsistent. Grants keep the manual trigger — the conditions of grant
+ * are supplementary and reading the PDF is slow enough to defer until asked.
  */
 function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
+  const isRefusal = /refus/i.test(d.decision ?? "") || d.status === "refused";
   const [state, setState] = useState<DecisionOrderState>({ phase: "idle" });
-  useEffect(() => setState({ phase: "idle" }), [d.id]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setState({ phase: "loading" });
     try {
       const res = await api.decisionSummary(d.id);
@@ -368,7 +372,12 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
     } catch {
       setState({ phase: "failed" });
     }
-  };
+  }, [d.id]);
+
+  useEffect(() => {
+    if (isRefusal) load();
+    else setState({ phase: "idle" });
+  }, [d.id, isRefusal, load]);
 
   return (
     <div className="on-demand">
@@ -381,9 +390,12 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
         <span className="hint loading-line">Reading the decision order…</span>
       )}
       {state.phase === "failed" && (
-        <p className="list-note">
-          Couldn't read the decision order just now — see the documents below.
-        </p>
+        <>
+          <p className="list-note">Couldn't read the decision order just now.</p>
+          <button type="button" className="btn ai" onClick={load}>
+            ✦ Try again
+          </button>
+        </>
       )}
       {state.phase === "empty" && (
         <p className="list-note">
