@@ -549,11 +549,23 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     if (!(row.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
       return { supported: false, conditions: null };
     }
+    const debug = (req.query as { debug?: string }).debug === "1";
+    const trace: DiagnosticStep[] | undefined = debug ? [] : undefined;
     const conditions = await fetchAgileConditions(
       row.authority_id,
       row.source_url,
-      row.planning_reference
+      row.planning_reference,
+      trace
     );
+    if (debug) {
+      return {
+        reference: row.planning_reference,
+        source_url: row.source_url,
+        conditions,
+        codes_present: conditions?.items.map((i) => i.code) ?? null,
+        trace,
+      };
+    }
     // The plain-English refusal line is its own (cached) endpoint so the
     // conditions themselves never wait on a model call.
     return {

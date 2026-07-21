@@ -821,14 +821,24 @@ const CONDITIONS_CACHE = new Map();
  * coded by kind: C condition of grant, R reason for refusal, D directive
  * (what an F.I. request asked for), I informative, N note.
  */
-async function fetchAgileConditions(authorityId, sourceUrl, reference) {
+async function fetchAgileConditions(authorityId, sourceUrl, reference, trace) {
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   if (!client) return null;
   const cacheKey = `${authorityId}:${reference}`;
-  if (CONDITIONS_CACHE.has(cacheKey)) return CONDITIONS_CACHE.get(cacheKey);
-  const id = await resolveAgileId(client, sourceUrl, reference);
+  if (!trace && CONDITIONS_CACHE.has(cacheKey)) return CONDITIONS_CACHE.get(cacheKey);
+  const id = await resolveAgileId(client, sourceUrl, reference, trace);
   if (!id) return null;
-  const d = await agileGetJson(`${AGILE_API}/application/${id}/conditions`, client);
+  const url = `${AGILE_API}/application/${id}/conditions`;
+  const d = await agileGetJson(url, client);
+  trace?.push({
+    step: "agile_conditions",
+    url,
+    bodySnippet: JSON.stringify({
+      decisionText: d?.decisionText ?? null,
+      prescriptionCount: d?.applicationPrescriptions?.length ?? 0,
+      codes: (d?.applicationPrescriptions ?? []).map((p) => p.prescriptionCode),
+    }).slice(0, 500),
+  });
   if (!d || typeof d !== "object") return null;
   const items = (d.applicationPrescriptions ?? [])
     .map((p) => ({
@@ -2204,11 +2214,23 @@ export default async function handler(req, res) {
     if (!(app.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
       return send(res, 200, { supported: false, conditions: null });
     }
+    const debug = p.get("debug") === "1";
+    const trace = debug ? [] : undefined;
     const conditions = await fetchAgileConditions(
       app.authority_id,
       app.source_url,
-      app.planning_reference
+      app.planning_reference,
+      trace
     );
+    if (debug) {
+      return send(res, 200, {
+        reference: app.planning_reference,
+        source_url: app.source_url,
+        conditions,
+        codes_present: conditions?.items.map((i) => i.code) ?? null,
+        trace,
+      });
+    }
     // The plain-English refusal line is its own (cached) endpoint so the
     // conditions themselves never wait on a model call.
     return send(res, 200, {

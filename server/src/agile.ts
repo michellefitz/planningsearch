@@ -150,13 +150,15 @@ export interface DecisionConditions {
 export async function fetchAgileConditions(
   authorityId: string,
   sourceUrl: string | null,
-  reference: string
+  reference: string,
+  trace?: DiagnosticStep[]
 ): Promise<DecisionConditions | null> {
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   if (!client) return null;
-  const id = await resolveAgileId(client, sourceUrl, reference);
+  const id = await resolveAgileId(client, sourceUrl, reference, trace);
   if (!id) return null;
-  const d = (await getJson(`${AGILE_API}/application/${id}/conditions`, client)) as {
+  const url = `${AGILE_API}/application/${id}/conditions`;
+  const d = (await getJson(url, client)) as {
     decisionText?: string | null;
     decisionDate?: string | null;
     applicationPrescriptions?: Array<{
@@ -167,6 +169,15 @@ export async function fetchAgileConditions(
       orderNumber?: number | null;
     }>;
   } | null;
+  trace?.push({
+    step: "agile_conditions",
+    url,
+    bodySnippet: JSON.stringify({
+      decisionText: d?.decisionText ?? null,
+      prescriptionCount: d?.applicationPrescriptions?.length ?? 0,
+      codes: (d?.applicationPrescriptions ?? []).map((p) => p.prescriptionCode),
+    }).slice(0, 500),
+  });
   if (!d || typeof d !== "object") return null;
   const items: ConditionItem[] = (d.applicationPrescriptions ?? [])
     .map((p) => ({
