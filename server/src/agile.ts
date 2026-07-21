@@ -173,10 +173,14 @@ export async function fetchAgileConditions(
     step: "agile_conditions",
     url,
     bodySnippet: JSON.stringify({
+      keys: d && typeof d === "object" ? Object.keys(d) : null,
       decisionText: d?.decisionText ?? null,
       prescriptionCount: d?.applicationPrescriptions?.length ?? 0,
       codes: (d?.applicationPrescriptions ?? []).map((p) => p.prescriptionCode),
-    }).slice(0, 500),
+      // The raw payload so a differently-shaped tenant response (reasons under
+      // an unexpected key) is visible rather than silently read as empty.
+      raw: JSON.stringify(d ?? null).slice(0, 1500),
+    }).slice(0, 2500),
   });
   if (!d || typeof d !== "object") return null;
   const items: ConditionItem[] = (d.applicationPrescriptions ?? [])
