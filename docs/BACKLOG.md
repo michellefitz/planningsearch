@@ -59,6 +59,43 @@
   on deploy; a weekly cron (Vercel deploy hook) would keep the register data
   current without code changes.
 
+- **Shareable standalone property page (parked — flesh out the "why" first).**
+  Add a small open-in-new-tab icon to the top corner of the detail slide-over
+  that opens the same property as its own standalone route
+  (e.g. `/application/:id` or `/property/:slug`), keeping the panel/tab
+  behaviour unchanged. The standalone page fetches the *full* data set (not
+  the summary payload the panel loads): full description, conditions, refusal
+  reasons, appeal/ABP outcome, all applications at the address, commencement
+  notices, PPR sales, zoning + flood. Value is distribution — a link that
+  forwards between developer/architect/solicitor/vendor, and an indexable SEO
+  surface Planify (paywalled) can't have. Parked until the use case is
+  decided; likely the on-screen twin of the property report below.
+
+- **Property planning report (paper/PDF + shareable microsite).** A rich,
+  readable per-property/site report — the paid deliverable that beats
+  Planify's tables-of-counts "pre-planning report". Pull the *full* available
+  history (not just 2012+). Buyers skew traditional (solicitors, agents,
+  older property people), so it must read like a professional document, not a
+  dashboard. Contents (draft): property identity + map/aerial/Street View
+  (with capture date) + zoning (code, name, objective) + development plan;
+  complete planning history for the address (every application, full
+  description, decision, AI plain-English summary, conditions of grant,
+  refusal reasons, ABP appeal outcome), flagged for refusals/appeals/
+  live/withdrawn/extensions; commencement notices (granted-but-not-built vs
+  under construction vs completed); PPR sale history; constraints/risk (flood,
+  protected structure/ACA if available); a *written narrative* tying it
+  together (the bit Planify skips); optional nearby-precedent comps; source
+  links + methodology + disclaimer ("evidence & precedent", not advice — see
+  liability note). Delivered as a print-clean PDF and/or the standalone
+  microsite above. Monetisable per-report (solicitor/agent) as well as in-app.
+
+- **Aggregate views for commencements + PPR (not just per-property fields).**
+  Commencement-notice and Property Price Register data are already connected
+  but only surfaced as fields on a single application. Consider area-level
+  displays: commencement activity / build-out rates by area, PPR price trends
+  overlaid on the map or in the agent's aggregates — "which permissions are
+  actually being built, and what did things sell for round here."
+
 - **Eircode is ~2% populated at source.** Checked 2026-07-20: only 1,839 of
   96,587 national-dataset applications received since 2024 have
   DevelopmentPostcode filled — councils don't key it in, though it usually
