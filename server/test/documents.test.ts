@@ -5,9 +5,34 @@ import {
   deriveScannedFilesUrl,
   extractFrameSrc,
   parseEplanningParties,
+  parseEplanningRelated,
   parseFileListHtml,
   presentDocument,
 } from "../src/documents.js";
+
+describe("parseEplanningRelated", () => {
+  const html = `
+    <div id="DivApplicant"><a href="/KildareCC/AppFileRefDetails/22177/0">self</a></div>
+    <h3>Related Applications</h3>
+    <table>
+      <tr><td><a href="/KildareCC/AppFileRefDetails/33001/0">21/1200</a></td><td>Rear extension</td></tr>
+      <tr><td><a href="/KildareCC/AppFileRefDetails/33002/0">21/1201</a></td></tr>
+      <tr><td><a href="/KildareCC/AppFileRefDetails/33001/0">21/1200</a></td></tr>
+      <tr><td><a href="/KildareCC/AppFileRefDetails/22177/0">21/9999</a></td></tr>
+    </table>`;
+
+  it("extracts related links, dropping the self link and duplicates", () => {
+    const out = parseEplanningRelated(html, "22177");
+    expect(out.map((r) => r.eplanningId)).toEqual(["33001", "33002"]);
+    expect(out[0].reference).toBe("21/1200");
+  });
+
+  it("returns empty when there is no Related Applications section", () => {
+    const noSection =
+      '<h3>Applicant</h3><a href="/KildareCC/AppFileRefDetails/999/0">21/0001</a>';
+    expect(parseEplanningRelated(noSection)).toEqual([]);
+  });
+});
 
 describe("presentDocument", () => {
   it("opens PDFs and images inline, normalising a generic type by extension", () => {

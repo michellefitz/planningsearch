@@ -206,6 +206,17 @@ export const api = {
   suggest: (q: string) =>
     getJson<{ suggestions: string[] }>(`/api/suggest?q=${encodeURIComponent(q)}`),
   detail: (id: number) => getJson<AppDetail>(`/api/applications/${id}`),
+  related: (id: number) =>
+    getJson<{
+      supported: boolean;
+      related: Array<{
+        id: number | null;
+        planning_reference: string;
+        description: string | null;
+        status: string | null;
+        eplanning_url: string;
+      }>;
+    }>(`/api/applications/${id}/related`),
   files: (id: number) =>
     getJson<{
       supported: boolean;

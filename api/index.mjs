@@ -977,6 +977,44 @@ async function fetchEplanningParties(sourceUrl) {
   }
 }
 
+// Parse the eplanning "Related Applications" section (Kildare) — conservative:
+// anchor on the label, take a window, extract only links to other application
+// pages. Empty when the label isn't found, never a wrong guess.
+function parseEplanningRelated(html, selfId) {
+  const label = html.search(/related\s+applications?/i);
+  if (label < 0) return [];
+  const region = html.slice(label, label + 8000);
+  const out = [];
+  const seen = new Set();
+  const re = /href="[^"]*AppFileRefDetails\/(\d+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(region))) {
+    const eplanningId = m[1];
+    const reference = decodeEntities(stripTags(m[2])).trim();
+    if (!reference || !/\d/.test(reference)) continue;
+    if (eplanningId === selfId || seen.has(eplanningId)) continue;
+    seen.add(eplanningId);
+    out.push({ reference, eplanningId });
+  }
+  return out;
+}
+
+async function fetchEplanningRelated(sourceUrl) {
+  if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return [];
+  const selfId = sourceUrl.match(/AppFileRefDetails\/(\d+)/i)?.[1] ?? null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(sourceUrl, { signal: controller.signal, headers: UA_HEADERS });
+    if (!res.ok) return [];
+    return parseEplanningRelated(await res.text(), selfId);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function callHaiku(systemPrompt, userMsg) {
   if (!ANTHROPIC_API_KEY) return null;
   const controller = new AbortController();
@@ -2538,17 +2576,27 @@ export default async function handler(req, res) {
     const id = Number(m[1]);
     const app = BUNDLE.applications.find((a) => a.id === id);
     if (!app) return send(res, 404, { error: "Application not found" });
-    const related = BUNDLE.applications
-      .filter((a) => a.id !== id && a.authority_id === app.authority_id && a.address_text === app.address_text)
-      .slice(0, 10)
-      .map((a) => ({
-        id: a.id,
-        planning_reference: a.planning_reference,
-        description: a.description,
-        status: a.status,
-        received_date: a.received_date,
-        decision_date: a.decision_date,
-      }));
+    // Kildare (eplanning) addresses are townlands, so same-address matching is
+    // meaningless — its real related applications load on demand from /related.
+    const related =
+      app.authority_id === "kildare"
+        ? []
+        : BUNDLE.applications
+            .filter(
+              (a) =>
+                a.id !== id &&
+                a.authority_id === app.authority_id &&
+                a.address_text === app.address_text
+            )
+            .slice(0, 10)
+            .map((a) => ({
+              id: a.id,
+              planning_reference: a.planning_reference,
+              description: a.description,
+              status: a.status,
+              received_date: a.received_date,
+              decision_date: a.decision_date,
+            }));
     // Slow upstream work lives on /enrich so the sheet renders immediately;
     // anything already in the warm-instance caches still comes through here.
     return send(res, 200, {
@@ -2557,6 +2605,36 @@ export default async function handler(req, res) {
       documents: [],
       related,
     });
+  }
+
+  const rel = route.match(/^\/api\/applications\/(\d+)\/related$/);
+  if (rel) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(rel[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    if (app.authority_id !== "kildare" || !app.source_url) {
+      return send(res, 200, { supported: false, related: [] });
+    }
+    const found = await fetchEplanningRelated(app.source_url);
+    const related = found.map((r) => {
+      const match = BUNDLE.applications.find(
+        (a) =>
+          a.authority_id === app.authority_id &&
+          typeof a.source_url === "string" &&
+          a.source_url.includes(`AppFileRefDetails/${r.eplanningId}/`)
+      );
+      return {
+        id: match?.id ?? null,
+        planning_reference: match?.planning_reference ?? r.reference,
+        description: match?.description ?? null,
+        status: match?.status ?? null,
+        eplanning_url: app.source_url.replace(
+          /AppFileRefDetails\/\d+(\/\d*)?.*/i,
+          `AppFileRefDetails/${r.eplanningId}/0`
+        ),
+      };
+    });
+    if (p.get("debug") === "1") return send(res, 200, { supported: true, found, related });
+    return send(res, 200, { supported: true, related });
   }
 
   const em = route.match(/^\/api\/applications\/(\d+)\/enrich$/);

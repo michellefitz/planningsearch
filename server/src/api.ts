@@ -13,6 +13,7 @@ import {
   countObjectionFiles,
   deriveScannedFilesUrl,
   fetchEplanningParties,
+  fetchEplanningRelated,
   fetchScannedDocument,
   fetchScannedFileList,
   presentDocument,
@@ -653,14 +654,22 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const documents = db
       .prepare("SELECT * FROM documents WHERE application_id = ? ORDER BY id")
       .all(id);
-    const related = db
-      .prepare(
-        `SELECT id, planning_reference, description, status, received_date, decision_date
-         FROM applications
-         WHERE id != @id AND authority_id = @authority_id AND address_text = @address_text
-         ORDER BY received_date DESC LIMIT 10`
-      )
-      .all({ id, authority_id: row.authority_id, address_text: row.address_text });
+    // Address-based "other applications here" only makes sense where the
+    // address is a real address. Kildare (eplanning) addresses are often
+    // townlands shared by unrelated sites, so the match is meaningless — that
+    // council publishes genuine related applications, loaded on demand from
+    // /related instead.
+    const isEplanning = AUTHORITY_BY_ID.get(String(row.authority_id))?.sourceSystem === "eplanning";
+    const related = isEplanning
+      ? []
+      : db
+          .prepare(
+            `SELECT id, planning_reference, description, status, received_date, decision_date
+             FROM applications
+             WHERE id != @id AND authority_id = @authority_id AND address_text = @address_text
+             ORDER BY received_date DESC LIMIT 10`
+          )
+          .all({ id, authority_id: row.authority_id, address_text: row.address_text });
 
     // Slow upstream work (AI summary, party backfill) lives on /enrich so
     // the sheet renders immediately; cached values still come through here.
@@ -670,6 +679,44 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       documents,
       related,
     };
+  });
+
+  // Genuinely-related applications for eplanning councils (Kildare), scraped on
+  // demand from the council's own "Related Applications" section — the correct
+  // substitute for address matching where addresses are townlands. Each is
+  // joined back to our records by the other application's eplanning id (found in
+  // its source_url), so in-register ones open in place and the rest deep-link.
+  app.get("/api/applications/:id/related", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare("SELECT authority_id, source_url FROM applications WHERE id = ?")
+      .get(id) as { authority_id: string; source_url: string | null } | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    const isEplanning = AUTHORITY_BY_ID.get(row.authority_id)?.sourceSystem === "eplanning";
+    if (!isEplanning || !row.source_url) return { supported: false, related: [] };
+
+    const found = await fetchEplanningRelated(row.source_url);
+    const lookup = db.prepare(
+      "SELECT id, planning_reference, description, status FROM applications WHERE authority_id = ? AND source_url LIKE ?"
+    );
+    const related = found.map((r) => {
+      const match = lookup.get(row.authority_id, `%AppFileRefDetails/${r.eplanningId}/%`) as
+        | { id: number; planning_reference: string; description: string | null; status: string }
+        | undefined;
+      return {
+        id: match?.id ?? null,
+        planning_reference: match?.planning_reference ?? r.reference,
+        description: match?.description ?? null,
+        status: match?.status ?? null,
+        // Keep the council slug from the source_url; only swap the id.
+        eplanning_url: row.source_url!.replace(
+          /AppFileRefDetails\/\d+(\/\d*)?.*/i,
+          `AppFileRefDetails/${r.eplanningId}/0`
+        ),
+      };
+    });
+    if ((req.query as { debug?: string }).debug === "1") return { supported: true, found, related };
+    return { supported: true, related };
   });
 
   // Enrichment that needs upstream calls: AI summary (Haiku) plus applicant/

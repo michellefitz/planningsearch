@@ -261,6 +261,60 @@ export function parseEplanningParties(html: string): EplanningParties {
   return { applicant, agent };
 }
 
+export interface EplanningRelated {
+  /** The reference text shown in the related link. */
+  reference: string;
+  /** The other application's eplanning internal id (from its AppFileRefDetails
+   *  link) — the reliable join key back to our records via their source_url. */
+  eplanningId: string;
+}
+
+/**
+ * Parse the eplanning detail page's "Related Applications" section. Kildare
+ * addresses are often townlands, so matching applications by address is wrong;
+ * eplanning instead publishes the genuinely-related file references here.
+ *
+ * Deliberately conservative: it anchors on the "Related Applications" label,
+ * takes a window from there, and extracts only links to other AppFileRefDetails
+ * pages. If the label isn't found the result is empty — never a wrong guess.
+ */
+export function parseEplanningRelated(html: string, selfId?: string | null): EplanningRelated[] {
+  const label = html.search(/related\s+applications?/i);
+  if (label < 0) return [];
+  const region = html.slice(label, label + 8000);
+  const out: EplanningRelated[] = [];
+  const seen = new Set<string>();
+  const re = /href="[^"]*AppFileRefDetails\/(\d+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(region))) {
+    const eplanningId = m[1];
+    const reference = decodeEntities(stripTags(m[2])).trim();
+    // Require a reference-looking token, dedupe, and drop the self link.
+    if (!reference || !/\d/.test(reference)) continue;
+    if (eplanningId === selfId || seen.has(eplanningId)) continue;
+    seen.add(eplanningId);
+    out.push({ reference, eplanningId });
+  }
+  return out;
+}
+
+/** On-demand fetch of the "Related Applications" from an eplanning detail page. */
+export async function fetchEplanningRelated(sourceUrl: string): Promise<EplanningRelated[]> {
+  if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return [];
+  const selfId = sourceUrl.match(/AppFileRefDetails\/(\d+)/i)?.[1] ?? null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(sourceUrl, { signal: controller.signal, headers: UA_HEADERS });
+    if (!res.ok) return [];
+    return parseEplanningRelated(await res.text(), selfId);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** On-demand fetch of both parties from an eplanning detail page. */
 export async function fetchEplanningParties(sourceUrl: string): Promise<EplanningParties> {
   const none: EplanningParties = { applicant: null, agent: null };

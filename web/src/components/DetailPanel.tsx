@@ -840,8 +840,66 @@ function PropertyContext({
   );
 }
 
+/**
+ * Kildare's own "Related Applications", fetched on demand from the eplanning
+ * detail page. Ones already in our register open in place; the rest deep-link
+ * to eplanning. Renders nothing while loading or when there are none.
+ */
+function EplanningRelated({
+  detail: d,
+  onSelectRelated,
+}: {
+  detail: AppDetail;
+  onSelectRelated: (id: number) => void;
+}) {
+  const [items, setItems] = useState<
+    Array<{
+      id: number | null;
+      planning_reference: string;
+      description: string | null;
+      status: string | null;
+      eplanning_url: string;
+    }> | null
+  >(null);
+  useEffect(() => {
+    let alive = true;
+    setItems(null);
+    api
+      .related(d.id)
+      .then((r) => alive && setItems(r.related ?? []))
+      .catch(() => alive && setItems([]));
+    return () => {
+      alive = false;
+    };
+  }, [d.id]);
+  if (!items || items.length === 0) return null;
+  return (
+    <section aria-labelledby="related-h">
+      <h3 id="related-h">Related applications</h3>
+      <ul className="related-list">
+        {items.map((r) => (
+          <li key={r.id ?? r.eplanning_url}>
+            {r.id != null ? (
+              <button type="button" className="link-btn ref" onClick={() => onSelectRelated(r.id!)}>
+                {r.planning_reference}
+              </button>
+            ) : (
+              <a className="ref" href={r.eplanning_url} target="_blank" rel="noopener noreferrer">
+                {r.planning_reference} ↗
+              </a>
+            )}
+            {r.description ? <> — {r.description.slice(0, 80)}…</> : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated }: Props) {
   const glossary = meta?.glossary ?? {};
+  const isEplanning =
+    meta?.authorities.find((a) => a.id === d.authority_id)?.source_system === "eplanning";
   const timeline = buildTimeline(d);
   const [conditions, setConditions] = useState<DecisionConditions | null>(null);
   const [conditionsLoading, setConditionsLoading] = useState(false);
@@ -1195,20 +1253,26 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
         eircode={d.eircode ?? enrich?.eircode ?? null}
       />
 
-      {d.related.length > 0 && (
-        <section aria-labelledby="related-h">
-          <h3 id="related-h">Other applications at this address</h3>
-          <ul className="related-list">
-            {d.related.map((r) => (
-              <li key={r.id}>
-                <button type="button" className="link-btn ref" onClick={() => onSelectRelated(r.id)}>
-                  {r.planning_reference}
-                </button>{" "}
-                — {r.description?.slice(0, 80)}…
-              </li>
-            ))}
-          </ul>
-        </section>
+      {isEplanning ? (
+        // Kildare (eplanning): its own "Related Applications", since townland
+        // addresses make same-address matching meaningless.
+        <EplanningRelated detail={d} onSelectRelated={onSelectRelated} />
+      ) : (
+        d.related.length > 0 && (
+          <section aria-labelledby="related-h">
+            <h3 id="related-h">Other applications at this address</h3>
+            <ul className="related-list">
+              {d.related.map((r) => (
+                <li key={r.id}>
+                  <button type="button" className="link-btn ref" onClick={() => onSelectRelated(r.id)}>
+                    {r.planning_reference}
+                  </button>{" "}
+                  — {r.description?.slice(0, 80)}…
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
       )}
 
       <footer className="detail-footer">
