@@ -2539,11 +2539,10 @@ export default async function handler(req, res) {
     let description = app.description ?? null;
     let parties = { applicant: null, agent: null };
     const debug = p.get("debug") === "1";
-    // The summary runs on the description we already hold, in parallel with
-    // the party/description backfill — waiting on the portal before starting
-    // the model call is what made the sheet feel slow. Only when the quick
-    // pass can't produce a summary (usually a truncated national description)
-    // and the portal supplied a fuller one do we summarise again.
+    // Summarise in parallel only for non-agile councils, whose description we
+    // already hold in full. Agile councils get a fuller description from the
+    // portal, so we summarise after that fetch (below) — otherwise the summary
+    // is built from the truncated national text.
     const isAgile = app.authority_id in AGILE_CLIENT_BY_AUTHORITY;
     const [detail, eplanningParties, quickSummary] = await Promise.all([
       isAgile
@@ -2552,7 +2551,7 @@ export default async function handler(req, res) {
       !isAgile && !(app.applicant_name && app.agent_name) && app.source_url
         ? fetchEplanningParties(app.source_url)
         : null,
-      summariseDescription(description, app.application_type),
+      isAgile ? null : summariseDescription(description, app.application_type),
     ]);
     // The council portal reflects the true current outcome (e.g. "Invalid",
     // "Grant Permission") long before the national dataset does. The portal
@@ -2599,11 +2598,13 @@ export default async function handler(req, res) {
       parties = eplanningParties;
     }
 
+    // Summarise the final description now when we deferred it (agile) or when the
+    // portal lengthened the text; otherwise reuse the parallel summary.
+    const descriptionImproved = description !== (app.description ?? null);
     const aiSummary =
-      quickSummary ??
-      (description !== (app.description ?? null)
-        ? await summariseDescription(description, app.application_type)
-        : null);
+      descriptionImproved || (isAgile && !quickSummary)
+        ? (await summariseDescription(description, app.application_type)) ?? quickSummary
+        : quickSummary;
     return send(res, 200, {
       ai_summary: aiSummary,
       applicant_name: app.applicant_name ?? parties.applicant,

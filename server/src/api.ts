@@ -667,9 +667,16 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       !isAgile && (!row.applicant_name || !row.agent_name) && row.source_url
         ? fetchEplanningParties(row.source_url as string)
         : null,
+      // Summarise in parallel only when the description we already hold is the
+      // final one: a cached summary, or a non-agile council (whose portal
+      // backfill doesn't lengthen the description). Agile councils get a fuller
+      // description from the portal, so we summarise after that fetch (below) —
+      // otherwise the summary is built from the truncated national text.
       row.ai_summary
         ? (row.ai_summary as string)
-        : summariseDescription(dbDescription ?? "", row.application_type as string | null),
+        : isAgile
+          ? null
+          : summariseDescription(dbDescription ?? "", row.application_type as string | null),
     ]);
     // The council portal reflects the true current outcome (e.g. "Invalid",
     // "Grant Permission") long before the national dataset does. The portal's
@@ -727,11 +734,14 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     }
 
     const descriptionImproved = !!description && description !== dbDescription;
-    const aiSummary =
-      quickSummary ??
-      (descriptionImproved
-        ? await summariseDescription(description ?? "", row.application_type as string | null)
-        : null);
+    // Summarise the final description now when we deferred it (agile) or when the
+    // portal lengthened the text (the parallel/cached summary was built from the
+    // shorter description); otherwise reuse the parallel/cached summary.
+    const needsSummary = descriptionImproved || (isAgile && !quickSummary);
+    const aiSummary = needsSummary
+      ? (await summariseDescription(description ?? "", row.application_type as string | null)) ??
+        quickSummary
+      : quickSummary;
 
     if (aiSummary && aiSummary !== row.ai_summary) {
       db.prepare("UPDATE applications SET ai_summary = ? WHERE id = ?").run(aiSummary, id);
