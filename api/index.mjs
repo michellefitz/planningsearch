@@ -977,26 +977,44 @@ async function fetchEplanningParties(sourceUrl) {
   }
 }
 
-// Parse the eplanning "Related Applications" section (Kildare) — conservative:
-// anchor on the label, take a window, extract only links to other application
-// pages. Empty when the label isn't found, never a wrong guess.
+// Parse the eplanning "Related Applications" table (Kildare): a table inside
+// <div id="DivRelatedApplications"> with columns File No, Status, Type,
+// Decision, Received, Name, Address, Description. Loose markup (unclosed <a>),
+// so parse by rows/cells. Empty when the section is absent — never a wrong guess.
 function parseEplanningRelated(html, selfId) {
-  const label = html.search(/related\s+applications?/i);
-  if (label < 0) return [];
-  const region = html.slice(label, label + 8000);
+  const section = html.match(/id="DivRelatedApplications"[\s\S]*?<table[\s\S]*?<\/table>/i);
+  if (!section) return [];
   const out = [];
   const seen = new Set();
-  const re = /href="[^"]*AppFileRefDetails\/(\d+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
-  let m;
-  while ((m = re.exec(region))) {
-    const eplanningId = m[1];
-    const reference = decodeEntities(stripTags(m[2])).trim();
-    if (!reference || !/\d/.test(reference)) continue;
-    if (eplanningId === selfId || seen.has(eplanningId)) continue;
+  for (const row of section[0].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const body = row[1];
+    if (/<th[\s>]/i.test(body)) continue;
+    const cells = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((c) => c[1]);
+    if (cells.length < 8) continue;
+    const eplanningId = cells[0].match(/AppFileRefDetails\/(\d+)/i)?.[1];
+    if (!eplanningId || eplanningId === selfId || seen.has(eplanningId)) continue;
     seen.add(eplanningId);
-    out.push({ reference, eplanningId });
+    const text = (i) => decodeEntities(stripTags(cells[i] ?? "")).trim() || null;
+    out.push({
+      reference: text(0) ?? eplanningId,
+      eplanningId,
+      statusText: text(1),
+      decisionCode: text(3),
+      address: text(6),
+      description: text(7),
+    });
   }
   return out;
+}
+
+// Kildare single-letter decision codes → decision text mapLiveStatus understands.
+function expandDecisionCode(code) {
+  const c = String(code ?? "").trim().toUpperCase();
+  if (c === "R") return "REFUSE PERMISSION";
+  if (c === "C" || c === "G" || c === "U") return "GRANT PERMISSION";
+  if (c === "W") return "WITHDRAWN";
+  if (c === "I") return "INVALID";
+  return null;
 }
 
 async function fetchEplanningRelated(sourceUrl) {
@@ -2625,8 +2643,9 @@ export default async function handler(req, res) {
       return {
         id: match?.id ?? null,
         planning_reference: match?.planning_reference ?? r.reference,
-        description: match?.description ?? null,
-        status: match?.status ?? null,
+        description: r.description ?? match?.description ?? null,
+        address: r.address,
+        status: match?.status ?? mapLiveStatus(r.statusText, expandDecisionCode(r.decisionCode)),
         eplanning_url: app.source_url.replace(
           /AppFileRefDetails\/\d+(\/\d*)?.*/i,
           `AppFileRefDetails/${r.eplanningId}/0`

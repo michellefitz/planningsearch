@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
+import { STATUS_STYLE } from "./MapView";
 
 /**
  * Application detail (PRD F3) presented as a right-hand overlay sheet.
@@ -857,6 +858,7 @@ function EplanningRelated({
       id: number | null;
       planning_reference: string;
       description: string | null;
+      address: string | null;
       status: string | null;
       eplanning_url: string;
     }> | null
@@ -888,7 +890,10 @@ function EplanningRelated({
                 {r.planning_reference} ↗
               </a>
             )}
-            {r.description ? <> — {r.description.slice(0, 80)}…</> : null}
+            {r.status && STATUS_STYLE[r.status] && (
+              <StatusBadge status={r.status} label={STATUS_STYLE[r.status].label} />
+            )}
+            {r.description ? <> — {r.description.slice(0, 90)}…</> : null}
           </li>
         ))}
       </ul>

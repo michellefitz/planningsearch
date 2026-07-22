@@ -11,25 +11,49 @@ import {
 } from "../src/documents.js";
 
 describe("parseEplanningRelated", () => {
+  // Real eplanning markup: table in <div id="DivRelatedApplications">, unclosed
+  // <a>, uppercase <BR>, 8 columns (File No, Status, Type, Decision, Received,
+  // Name, Address, Description).
   const html = `
-    <div id="DivApplicant"><a href="/KildareCC/AppFileRefDetails/22177/0">self</a></div>
-    <h3>Related Applications</h3>
-    <table>
-      <tr><td><a href="/KildareCC/AppFileRefDetails/33001/0">21/1200</a></td><td>Rear extension</td></tr>
-      <tr><td><a href="/KildareCC/AppFileRefDetails/33002/0">21/1201</a></td></tr>
-      <tr><td><a href="/KildareCC/AppFileRefDetails/33001/0">21/1200</a></td></tr>
-      <tr><td><a href="/KildareCC/AppFileRefDetails/22177/0">21/9999</a></td></tr>
-    </table>`;
+    <div id="DivRelatedApplications" title="Related Applications Section" style="display: none">
+    <p><table class="table">
+      <tr style="background:#E6EDF5"><th>File No</th><th>Staus</th><th>Type</th><th>Decision</th><th>Received Date</th><th>Name</th><th>Development Address</th><th>Description</th></tr>
+      <tr>
+        <td><a target="_blank" href="../../AppFileRefDetails/191121/0">191121</td>
+        <td>APPLICATION FINALISED</td><td>PERMISSION</td><td>R</td>
+        <td>09/10/2019<br>Wednesday</td><td>Samantha Dempsey,</td>
+        <td>Curryhill,<BR>Maynooth Road,<BR>Prosperous,</td>
+        <td>Two storey dwelling house, domestic garage, stable building</td>
+      </tr>
+      <tr>
+        <td><a target="_blank" href="../../AppFileRefDetails/20421/0">20421</td>
+        <td>APPLICATION FINALISED</td><td>PERMISSION</td><td>C</td>
+        <td>23/04/2020<br>Thursday</td><td>Samantha Dempsey,</td>
+        <td>Curryhills,<BR>Prosperous,</td>
+        <td>two storey dwelling house, upgraded existing site entrance</td>
+      </tr>
+      <tr>
+        <td><a target="_blank" href="../../AppFileRefDetails/22177/0">22177</td>
+        <td>APPLICATION FINALISED</td><td>PERMISSION</td><td>R</td>
+        <td>11/08/2021</td><td>x</td><td>Curryhills</td><td>self, must be dropped</td>
+      </tr>
+    </table></p></div>`;
 
-  it("extracts related links, dropping the self link and duplicates", () => {
+  it("parses the related table, dropping the self row", () => {
     const out = parseEplanningRelated(html, "22177");
-    expect(out.map((r) => r.eplanningId)).toEqual(["33001", "33002"]);
-    expect(out[0].reference).toBe("21/1200");
+    expect(out.map((r) => r.eplanningId)).toEqual(["191121", "20421"]);
+    expect(out[0]).toMatchObject({
+      reference: "191121",
+      statusText: "APPLICATION FINALISED",
+      decisionCode: "R",
+    });
+    expect(out[0].description).toContain("Two storey dwelling house");
+    expect(out[0].address).toContain("Curryhill");
   });
 
   it("returns empty when there is no Related Applications section", () => {
     const noSection =
-      '<h3>Applicant</h3><a href="/KildareCC/AppFileRefDetails/999/0">21/0001</a>';
+      '<div id="DivApplicant"><a href="/KildareCC/AppFileRefDetails/999/0">21/0001</a></div>';
     expect(parseEplanningRelated(noSection)).toEqual([]);
   });
 });

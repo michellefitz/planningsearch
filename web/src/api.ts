@@ -213,6 +213,7 @@ export const api = {
         id: number | null;
         planning_reference: string;
         description: string | null;
+        address: string | null;
         status: string | null;
         eplanning_url: string;
       }>;

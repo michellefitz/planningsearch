@@ -262,38 +262,52 @@ export function parseEplanningParties(html: string): EplanningParties {
 }
 
 export interface EplanningRelated {
-  /** The reference text shown in the related link. */
+  /** File-No text shown in the table (Kildare's own reference). */
   reference: string;
   /** The other application's eplanning internal id (from its AppFileRefDetails
    *  link) — the reliable join key back to our records via their source_url. */
   eplanningId: string;
+  /** Raw status wording, e.g. "APPLICATION FINALISED". */
+  statusText: string | null;
+  /** Single-letter decision code from the Decision column (R/C/G/…). */
+  decisionCode: string | null;
+  address: string | null;
+  description: string | null;
 }
 
 /**
- * Parse the eplanning detail page's "Related Applications" section. Kildare
- * addresses are often townlands, so matching applications by address is wrong;
- * eplanning instead publishes the genuinely-related file references here.
+ * Parse the eplanning detail page's "Related Applications" table (Kildare).
+ * Kildare addresses are often townlands, so matching applications by address is
+ * wrong; eplanning instead publishes the genuinely-related files here, in a
+ * table inside `<div id="DivRelatedApplications">` with columns: File No,
+ * Status, Type, Decision, Received Date, Name, Development Address, Description.
  *
- * Deliberately conservative: it anchors on the "Related Applications" label,
- * takes a window from there, and extracts only links to other AppFileRefDetails
- * pages. If the label isn't found the result is empty — never a wrong guess.
+ * The markup is loose (unclosed <a>, uppercase <BR>), so we parse the section's
+ * table by rows/cells rather than by well-formed anchors. Empty when the section
+ * isn't present — never a wrong guess.
  */
 export function parseEplanningRelated(html: string, selfId?: string | null): EplanningRelated[] {
-  const label = html.search(/related\s+applications?/i);
-  if (label < 0) return [];
-  const region = html.slice(label, label + 8000);
+  const section = html.match(/id="DivRelatedApplications"[\s\S]*?<table[\s\S]*?<\/table>/i);
+  if (!section) return [];
   const out: EplanningRelated[] = [];
   const seen = new Set<string>();
-  const re = /href="[^"]*AppFileRefDetails\/(\d+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(region))) {
-    const eplanningId = m[1];
-    const reference = decodeEntities(stripTags(m[2])).trim();
-    // Require a reference-looking token, dedupe, and drop the self link.
-    if (!reference || !/\d/.test(reference)) continue;
-    if (eplanningId === selfId || seen.has(eplanningId)) continue;
+  for (const row of section[0].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const body = row[1];
+    if (/<th[\s>]/i.test(body)) continue; // header row
+    const cells = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((c) => c[1]);
+    if (cells.length < 8) continue;
+    const eplanningId = cells[0].match(/AppFileRefDetails\/(\d+)/i)?.[1];
+    if (!eplanningId || eplanningId === selfId || seen.has(eplanningId)) continue;
     seen.add(eplanningId);
-    out.push({ reference, eplanningId });
+    const text = (i: number): string | null => decodeEntities(stripTags(cells[i] ?? "")).trim() || null;
+    out.push({
+      reference: text(0) ?? eplanningId,
+      eplanningId,
+      statusText: text(1),
+      decisionCode: text(3),
+      address: text(6),
+      description: text(7),
+    });
   }
   return out;
 }

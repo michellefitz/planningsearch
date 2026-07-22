@@ -7,7 +7,13 @@ import {
   fetchAppealDocumentBase64,
   pickAppealDocument,
 } from "./abp.js";
-import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS, normalizeStatus } from "./normalize.js";
+import {
+  APPLICATION_TYPE_LABELS,
+  GLOSSARY,
+  STATUS_LABELS,
+  expandDecisionCode,
+  normalizeStatus,
+} from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
 import {
   countObjectionFiles,
@@ -706,8 +712,13 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       return {
         id: match?.id ?? null,
         planning_reference: match?.planning_reference ?? r.reference,
-        description: match?.description ?? null,
-        status: match?.status ?? null,
+        // The eplanning table carries the full description; our register copy is
+        // the truncated national one, so prefer the scraped text.
+        description: r.description ?? match?.description ?? null,
+        address: r.address,
+        // Our canonical status for in-register rows; else derive from the
+        // eplanning status wording plus its decision code.
+        status: match?.status ?? normalizeStatus(r.statusText, expandDecisionCode(r.decisionCode)),
         // Keep the council slug from the source_url; only swap the id.
         eplanning_url: row.source_url!.replace(
           /AppFileRefDetails\/\d+(\/\d*)?.*/i,

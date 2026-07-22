@@ -114,6 +114,20 @@ export function normalizeStatus(raw: string | null | undefined, decision?: strin
   return source ? "unknown" : "pending";
 }
 
+/**
+ * Expand the single-letter decision code eplanning/Kildare list tables use into
+ * decision text `normalizeStatus` understands. R=Refuse, C/G/U=Grant
+ * (conditional/grant/unconditional), W=Withdrawn, I=Invalid; anything else null.
+ */
+export function expandDecisionCode(code: string | null | undefined): string | null {
+  const c = `${code ?? ""}`.trim().toUpperCase();
+  if (c === "R") return "REFUSE PERMISSION";
+  if (c === "C" || c === "G" || c === "U") return "GRANT PERMISSION";
+  if (c === "W") return "WITHDRAWN";
+  if (c === "I") return "INVALID";
+  return null;
+}
+
 export type CanonicalApplicationType =
   | "permission"
   | "retention"
