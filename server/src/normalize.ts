@@ -15,6 +15,9 @@ export type CanonicalStatus =
   | "invalid"
   | "incomplete"
   | "appealed"
+  // Part granted, part refused ("Split Decision" / "Grant Permission & Refuse
+  // Permission") — a distinct outcome, not a clean grant or refusal.
+  | "split"
   // A finished case whose outcome isn't a permission grant/refuse — chiefly
   // Section 5 declarations of exemption ("Declared Exempt" / "Declared Not
   // Exempt" / "Declared to be Development"). Kept out of granted/refused so it
@@ -31,6 +34,7 @@ export const STATUS_LABELS: Record<CanonicalStatus, string> = {
   invalid: "Invalid",
   incomplete: "Incomplete",
   appealed: "Under appeal",
+  split: "Split decision",
   decided: "Decided",
   unknown: "Unknown",
 };
@@ -45,6 +49,9 @@ const STATUS_RULES: Array<[RegExp, CanonicalStatus]> = [
   // The national Decision/Status text is truncated (~24 chars), so "APPLICATION
   // DECLARED INVALID" arrives as "…DECLARED INVA" — match the truncated stem too.
   [/invalid|declared\s+inv/i, "invalid"],
+  // Part grant / part refuse — before the plain grant/refuse rules so it isn't
+  // swallowed by whichever keyword appears first.
+  [/split\s*decision|part\s*(ly)?\s*grant|grant.*(and|&|,|\/).*refus|refus.*(and|&|,|\/).*grant/i, "split"],
   [/refus|reject/i, "refused"],
   [/grant|approv|conditional|unconditional/i, "granted"],
   // Early lifecycle stages of a live application — "Validation"/"Validated",
@@ -78,6 +85,10 @@ export function normalizeStatus(raw: string | null | undefined, decision?: strin
   const fromDecision = (): CanonicalStatus | null => {
     const dec = `${decision ?? ""}`.trim();
     if (!dec) return null;
+    // Part grant / part refuse — check before the individual grant/refuse tests
+    // so a split (which contains both words) isn't classified as just refused.
+    if (/split\s*decision/i.test(dec) || (/grant|approv|conditional/i.test(dec) && /refus|reject/i.test(dec)))
+      return "split";
     if (/refus|reject/i.test(dec)) return "refused";
     if (/grant|approv|conditional/i.test(dec)) return "granted";
     if (/withdraw/i.test(dec)) return "withdrawn";

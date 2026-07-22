@@ -614,6 +614,7 @@ const STATUS_LABELS = {
   invalid: "Invalid",
   incomplete: "Incomplete",
   appealed: "Under appeal",
+  split: "Split decision",
   decided: "Decided",
   unknown: "Unknown",
 };
@@ -623,6 +624,7 @@ const LIVE_STATUS_RULES = [
   [/withdraw/i, "withdrawn"],
   [/incomplete|not\s*valid/i, "incomplete"],
   [/invalid/i, "invalid"],
+  [/split\s*decision|part\s*(ly)?\s*grant|grant.*(and|&|,|\/).*refus|refus.*(and|&|,|\/).*grant/i, "split"],
   [/refus|reject/i, "refused"],
   [/grant|approv|conditional|unconditional/i, "granted"],
   [/pending|new application|under consideration|awaiting|received|registered|live|validat|assess|lodged|acknowledg|referral/i, "pending"],
@@ -635,6 +637,8 @@ const DECIDED_OPAQUE =
 function liveDecisionToStatus(dec) {
   const d = String(dec ?? "").trim();
   if (!d) return null;
+  if (/split\s*decision/i.test(d) || (/grant|approv|conditional/i.test(d) && /refus|reject/i.test(d)))
+    return "split";
   if (/refus|reject/i.test(d)) return "refused";
   if (/grant|approv|conditional/i.test(d)) return "granted";
   if (/withdraw/i.test(d)) return "withdrawn";
@@ -1718,7 +1722,7 @@ If a tool returns an error or nothing, say plainly what could not be checked rat
 
 const AGENT_STATUSES = [
   "pending", "further_info", "granted", "refused",
-  "withdrawn", "invalid", "incomplete", "appealed", "decided",
+  "withdrawn", "invalid", "incomplete", "appealed", "split", "decided",
 ];
 
 const AGENT_TOOLS = [

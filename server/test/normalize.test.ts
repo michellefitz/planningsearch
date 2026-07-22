@@ -95,6 +95,16 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("SAI Referral")).toBe("pending");
   });
 
+  it("maps a part-grant/part-refuse decision to split", () => {
+    expect(normalizeStatus("Decision", "SPLIT DECISION")).toBe("split");
+    expect(normalizeStatus("Decision", "GRANT PERMISSION & REFUSE PERMISSION")).toBe("split");
+    expect(normalizeStatus("Split Decision")).toBe("split");
+    expect(normalizeStatus(null, "Part Grant, Part Refuse")).toBe("split");
+    // A plain grant or refuse is unaffected.
+    expect(normalizeStatus("Decision", "REFUSE PERMISSION")).toBe("refused");
+    expect(normalizeStatus("Decision", "GRANT PERMISSION")).toBe("granted");
+  });
+
   it("maps a Section 5 exemption declaration to decided, not granted/refused", () => {
     // ED26/0037: status "Decision", decision "DECLARED NOT EXEMPT" — a real
     // outcome, but not a permission grant/refuse, so it gets its own bucket.
