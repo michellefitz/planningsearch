@@ -15,6 +15,11 @@ export type CanonicalStatus =
   | "invalid"
   | "incomplete"
   | "appealed"
+  // A finished case whose outcome isn't a permission grant/refuse — chiefly
+  // Section 5 declarations of exemption ("Declared Exempt" / "Declared Not
+  // Exempt" / "Declared to be Development"). Kept out of granted/refused so it
+  // doesn't skew permission grant rates.
+  | "decided"
   | "unknown";
 
 export const STATUS_LABELS: Record<CanonicalStatus, string> = {
@@ -26,6 +31,7 @@ export const STATUS_LABELS: Record<CanonicalStatus, string> = {
   invalid: "Invalid",
   incomplete: "Incomplete",
   appealed: "Under appeal",
+  decided: "Decided",
   unknown: "Unknown",
 };
 
@@ -45,7 +51,7 @@ const STATUS_RULES: Array<[RegExp, CanonicalStatus]> = [
   // "Under Assessment", "Lodged", "Acknowledged" — are pending, not "?". The
   // invalid/incomplete rules run first (so "Invalidated" is caught above), and
   // a recorded decision still supersedes this stage in normalizeStatus.
-  [/pending|new application|under consideration|awaiting|received|registered|live|validat|assess|lodged|acknowledg/i, "pending"],
+  [/pending|new application|under consideration|awaiting|received|registered|live|validat|assess|lodged|acknowledg|referral/i, "pending"],
 ];
 
 /**
@@ -77,6 +83,9 @@ export function normalizeStatus(raw: string | null | undefined, decision?: strin
     if (/withdraw/i.test(dec)) return "withdrawn";
     // Truncated national Decision text: "…DECLARED INVALID" arrives as "…INVA".
     if (/invalid|declared\s+inv/i.test(dec)) return "invalid";
+    // Section 5 exemption declarations ("Declared Exempt/Not Exempt", "Declared
+    // to be Development") — a real outcome, but not a permission grant/refuse.
+    if (/exempt|declar|is\s+(not\s+)?development/i.test(dec)) return "decided";
     return null;
   };
   const fromRules = (): CanonicalStatus | null => {

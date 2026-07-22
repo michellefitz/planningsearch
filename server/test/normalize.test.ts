@@ -88,6 +88,25 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("Decision Notice Issued", "GRANT PERMISSION FOR RET")).toBe("granted");
   });
 
+  it("maps referral/assessment stages to pending", () => {
+    // DLR "Referral" (D26B/0411/WEB) and SDCC "SAI Referral" (SD26B/0070W) are
+    // live in-assessment stages, not "?".
+    expect(normalizeStatus("Referral")).toBe("pending");
+    expect(normalizeStatus("SAI Referral")).toBe("pending");
+  });
+
+  it("maps a Section 5 exemption declaration to decided, not granted/refused", () => {
+    // ED26/0037: status "Decision", decision "DECLARED NOT EXEMPT" — a real
+    // outcome, but not a permission grant/refuse, so it gets its own bucket.
+    expect(normalizeStatus("Decision", "DECLARED NOT EXEMPT")).toBe("decided");
+    expect(normalizeStatus("Decision", "DECLARED EXEMPT")).toBe("decided");
+    expect(normalizeStatus("Decided", "Declared to be Development")).toBe("decided");
+    // A truncated "declared invalid" is still invalid, not decided.
+    expect(normalizeStatus("Decision", "APPLICATION DECLARED INVA")).toBe("invalid");
+    // A normal permission decision is unaffected.
+    expect(normalizeStatus("Decision", "GRANT PERMISSION")).toBe("granted");
+  });
+
   it("never guesses on unrecognised labels", () => {
     expect(normalizeStatus("Something Novel")).toBe("unknown");
     expect(normalizeStatus("Application Finalised")).toBe("unknown");

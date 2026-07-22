@@ -42,6 +42,7 @@ export const STATUS_STYLE: Record<string, { color: string; letter: string; label
   invalid: { color: "#a16207", letter: "I", label: "Invalid" },
   incomplete: { color: "#b45309", letter: "!", label: "Incomplete" },
   appealed: { color: "#ea580c", letter: "A", label: "Under appeal" },
+  decided: { color: "#0d9488", letter: "D", label: "Decided" },
   unknown: { color: "#64748b", letter: "?", label: "Unknown" },
 };
 

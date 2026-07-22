@@ -614,6 +614,7 @@ const STATUS_LABELS = {
   invalid: "Invalid",
   incomplete: "Incomplete",
   appealed: "Under appeal",
+  decided: "Decided",
   unknown: "Unknown",
 };
 const LIVE_STATUS_RULES = [
@@ -624,7 +625,7 @@ const LIVE_STATUS_RULES = [
   [/invalid/i, "invalid"],
   [/refus|reject/i, "refused"],
   [/grant|approv|conditional|unconditional/i, "granted"],
-  [/pending|new application|under consideration|awaiting|received|registered|live|validat|assess|lodged|acknowledg/i, "pending"],
+  [/pending|new application|under consideration|awaiting|received|registered|live|validat|assess|lodged|acknowledg|referral/i, "pending"],
 ];
 // A stage that means "a decision exists, read the Decision field" — mirrors
 // DECIDED_OPAQUE in server/src/normalize.ts. Without "decision notice", the
@@ -637,7 +638,8 @@ function liveDecisionToStatus(dec) {
   if (/refus|reject/i.test(d)) return "refused";
   if (/grant|approv|conditional/i.test(d)) return "granted";
   if (/withdraw/i.test(d)) return "withdrawn";
-  if (/invalid/i.test(d)) return "invalid";
+  if (/invalid|declared\s+inv/i.test(d)) return "invalid";
+  if (/exempt|declar|is\s+(not\s+)?development/i.test(d)) return "decided";
   return null;
 }
 function liveStatusFromRules(s) {
@@ -1630,7 +1632,7 @@ If a tool returns an error or nothing, say plainly what could not be checked rat
 
 const AGENT_STATUSES = [
   "pending", "further_info", "granted", "refused",
-  "withdrawn", "invalid", "incomplete", "appealed",
+  "withdrawn", "invalid", "incomplete", "appealed", "decided",
 ];
 
 const AGENT_TOOLS = [

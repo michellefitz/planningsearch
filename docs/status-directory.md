@@ -30,6 +30,7 @@ council is mapped onto exactly one of these and stored in
 | `invalid` | Invalid | **I** · amber `#a16207` | Formally declared invalid |
 | `incomplete` | Incomplete | (no glyph) | Pre-validation: missing docs/fees |
 | `appealed` | Under appeal | **A** · orange `#ea580c` | At An Coimisiún Pleanála |
+| `decided` | Decided | **D** · teal `#0d9488` | Finished, but not a grant/refuse — Section 5 exemption declarations |
 | `unknown` | Unknown | **?** | Couldn't map — see §6 |
 
 Source of truth for glyph/colour is `web/src/components/MapView.tsx:36`
@@ -282,6 +283,16 @@ status but changes the real conditions.
 "Grant in part, refuse in part" has no representation — it collapses to whichever
 of grant/refuse the regex hits first (`grant` is checked before… actually
 `refus` is checked first in `fromDecision`, so a split reads as `refused`).
+
+### 6.9 Section 5 exemption declarations had no home → "?"
+**✅ Fixed.** Declaration-of-Exemption (Section 5) applications are decided with
+an outcome vocabulary of their own — "Declared Exempt" / "Declared Not Exempt" /
+"Declared to be Development" (e.g. SDCC ED26/0037) — which is neither grant nor
+refuse, so they fell through to `unknown`. Added a `decided` canonical status
+(teal **D**) and route these outcomes to it, deliberately *not* into
+granted/refused so they don't skew permission grant rates. The referral stages
+("Referral" / "SAI Referral", e.g. D26B/0411/WEB, SD26B/0070W) now map to
+pending like the other in-assessment stages (§6.2).
 
 ### 6.7 Commencement invisible outside the sheet
 A permission where work has started/finished looks identical on the map to one

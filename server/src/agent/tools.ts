@@ -8,7 +8,7 @@ export interface AnthropicTool {
 
 const STATUSES = [
   "pending", "further_info", "granted", "refused",
-  "withdrawn", "invalid", "incomplete", "appealed",
+  "withdrawn", "invalid", "incomplete", "appealed", "decided",
 ];
 
 export const AGENT_TOOLS: AnthropicTool[] = [
