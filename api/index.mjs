@@ -995,11 +995,13 @@ function parseEplanningRelated(html, selfId) {
     if (!eplanningId || eplanningId === selfId || seen.has(eplanningId)) continue;
     seen.add(eplanningId);
     const text = (i) => decodeEntities(stripTags(cells[i] ?? "")).trim() || null;
+    const dm = (cells[4] ?? "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
     out.push({
       reference: text(0) ?? eplanningId,
       eplanningId,
       statusText: text(1),
       decisionCode: text(3),
+      received: dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : null,
       address: text(6),
       description: text(7),
     });
@@ -2645,6 +2647,7 @@ export default async function handler(req, res) {
         planning_reference: match?.planning_reference ?? r.reference,
         description: r.description ?? match?.description ?? null,
         address: r.address,
+        received_date: r.received,
         status: match?.status ?? mapLiveStatus(r.statusText, expandDecisionCode(r.decisionCode)),
         eplanning_url: app.source_url.replace(
           /AppFileRefDetails\/\d+(\/\d*)?.*/i,

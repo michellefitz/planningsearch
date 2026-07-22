@@ -271,6 +271,8 @@ export interface EplanningRelated {
   statusText: string | null;
   /** Single-letter decision code from the Decision column (R/C/G/…). */
   decisionCode: string | null;
+  /** Received date, normalised to ISO (YYYY-MM-DD). */
+  received: string | null;
   address: string | null;
   description: string | null;
 }
@@ -300,11 +302,14 @@ export function parseEplanningRelated(html: string, selfId?: string | null): Epl
     if (!eplanningId || eplanningId === selfId || seen.has(eplanningId)) continue;
     seen.add(eplanningId);
     const text = (i: number): string | null => decodeEntities(stripTags(cells[i] ?? "")).trim() || null;
+    // Received cell is "DD/MM/YYYY<br>Weekday" — take the date, normalise to ISO.
+    const dm = (cells[4] ?? "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
     out.push({
       reference: text(0) ?? eplanningId,
       eplanningId,
       statusText: text(1),
       decisionCode: text(3),
+      received: dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : null,
       address: text(6),
       description: text(7),
     });

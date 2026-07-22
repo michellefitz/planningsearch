@@ -214,6 +214,7 @@ export const api = {
         planning_reference: string;
         description: string | null;
         address: string | null;
+        received_date: string | null;
         status: string | null;
         eplanning_url: string;
       }>;

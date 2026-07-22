@@ -859,6 +859,7 @@ function EplanningRelated({
       planning_reference: string;
       description: string | null;
       address: string | null;
+      received_date: string | null;
       status: string | null;
       eplanning_url: string;
     }> | null
@@ -880,20 +881,27 @@ function EplanningRelated({
       <h3 id="related-h">Related applications</h3>
       <ul className="related-list">
         {items.map((r) => (
-          <li key={r.id ?? r.eplanning_url}>
-            {r.id != null ? (
-              <button type="button" className="link-btn ref" onClick={() => onSelectRelated(r.id!)}>
-                {r.planning_reference}
-              </button>
-            ) : (
-              <a className="ref" href={r.eplanning_url} target="_blank" rel="noopener noreferrer">
-                {r.planning_reference} ↗
-              </a>
-            )}
-            {r.status && STATUS_STYLE[r.status] && (
-              <StatusBadge status={r.status} label={STATUS_STYLE[r.status].label} />
-            )}
-            {r.description ? <> — {r.description.slice(0, 90)}…</> : null}
+          <li key={r.id ?? r.eplanning_url} className="related-item">
+            <div className="related-top">
+              {r.id != null ? (
+                <button
+                  type="button"
+                  className="link-btn ref"
+                  onClick={() => onSelectRelated(r.id!)}
+                >
+                  {r.planning_reference}
+                </button>
+              ) : (
+                <a className="ref" href={r.eplanning_url} target="_blank" rel="noopener noreferrer">
+                  {r.planning_reference} ↗
+                </a>
+              )}
+              {r.status && STATUS_STYLE[r.status] && (
+                <StatusBadge status={r.status} label={STATUS_STYLE[r.status].label} />
+              )}
+              {r.received_date && <span className="related-date">received {r.received_date}</span>}
+            </div>
+            {r.description && <p className="related-desc">{r.description}</p>}
           </li>
         ))}
       </ul>

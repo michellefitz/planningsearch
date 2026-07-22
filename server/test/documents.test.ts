@@ -46,6 +46,7 @@ describe("parseEplanningRelated", () => {
       reference: "191121",
       statusText: "APPLICATION FINALISED",
       decisionCode: "R",
+      received: "2019-10-09",
     });
     expect(out[0].description).toContain("Two storey dwelling house");
     expect(out[0].address).toContain("Curryhill");

@@ -716,6 +716,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
         // the truncated national one, so prefer the scraped text.
         description: r.description ?? match?.description ?? null,
         address: r.address,
+        received_date: r.received,
         // Our canonical status for in-register rows; else derive from the
         // eplanning status wording plus its decision code.
         status: match?.status ?? normalizeStatus(r.statusText, expandDecisionCode(r.decisionCode)),

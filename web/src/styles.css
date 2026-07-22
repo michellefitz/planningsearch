@@ -796,10 +796,54 @@ body {
   font-size: 0.86rem;
 }
 
-.doc-list li,
-.related-list li {
+.doc-list li {
   padding: 0.28rem 0;
   line-height: 1.45;
+}
+
+/* Related applications as compact cards: ref + status + date on top, a clamped
+   description below. */
+.related-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.related-item {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.related-top {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.related-top .ref {
+  font-weight: 550;
+}
+
+.related-date {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.related-desc {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .doc-list a {
