@@ -122,13 +122,53 @@ const REFUSAL_SUMMARY_CACHE = new Map<number, string>();
 const APPEAL_SUMMARY_CACHE = new Map<number, { summary: string; based_on_document: string | null }>();
 const DECISION_SUMMARY_CACHE = new Map<number, DecisionExtract & { source_document: string | null }>();
 
-/** Pick the decision-order document from a scanned-file listing. */
-function findDecisionDocIndex(files: Array<{ title: string }>): number {
-  const specific = files.findIndex((f) =>
-    /notification of decision|decision order|manager.?s order|board order|order to (grant|refuse)/i.test(f.title)
-  );
-  if (specific >= 0) return specific;
-  return files.findIndex((f) => /\bdecision\b|refus|grant of permission|\border\b/i.test(f.title));
+// Appeal documents — An Bord Pleanála / An Coimisiún Pleanála board order and
+// inspector's report. They carry the *appeal* reasons (surfaced separately in
+// the appeal section), so the council decision summary must never pick them.
+const APPEAL_DOC_RE =
+  /board\s*(order|direction)|an\s*bord|coimisi|plean[aá]la|\babp\b|\bacp\b|inspector|\bappeal/i;
+// Documents that are not the planning decision order: forms, Part V / social-
+// housing exemption certificates (Section 96/97), maps/drawings, site notices,
+// correspondence, submissions. Kildare's file list is full of these and several
+// (e.g. "Part V Exemption Application Form — Managers Order") collide on
+// keywords like "order", so exclude them explicitly.
+const NON_DECISION_DOC_RE =
+  /application form|part\s*v\b|exemption|section\s*9[67]\b|social housing|site (notice|location)|\bmaps?\b|drawing|\bplans?\b|elevation|photograph|receipt|\bfees?\b|cover(ing)? letter|acknowledg|further information|\bf\.?i\.?\b|submission|observation|objection|correspond/i;
+
+/**
+ * Pick the council's own decision-order document from a scanned-file listing,
+ * for the council decision summary. Excludes appeal and non-decision documents,
+ * then scores the rest by how decision-order-like the title is, preferring one
+ * consistent with the recorded outcome (a refusal doc for a refused case).
+ * Returns -1 when no council decision order is present, so the box shows its
+ * empty state rather than summarising the wrong document.
+ */
+export function findDecisionDocIndex(
+  files: Array<{ title: string }>,
+  decision?: string | null
+): number {
+  const wantRefusal = /refus|reject/i.test(decision ?? "");
+  const wantGrant = /grant|approv|conditional/i.test(decision ?? "");
+  let best = -1;
+  let bestScore = 0;
+  files.forEach((f, i) => {
+    const t = f.title;
+    if (APPEAL_DOC_RE.test(t) || NON_DECISION_DOC_RE.test(t)) return;
+    let score = 0;
+    if (/notification of decision/i.test(t)) score += 5;
+    if (/order to (grant|refuse)/i.test(t)) score += 5;
+    if (/decision order|\bdecision\b/i.test(t)) score += 3;
+    if (/manager.?s order|chief executive.?s order/i.test(t)) score += 2;
+    if (/\border\b/i.test(t)) score += 1;
+    if (score === 0) return;
+    if (wantRefusal && /refus|reject/i.test(t)) score += 2;
+    if (wantGrant && /\bgrant/i.test(t)) score += 2;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  });
+  return best;
 }
 
 export function registerRoutes(app: FastifyInstance, db: Database.Database) {
@@ -372,7 +412,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     const debug = (req.query as { debug?: string }).debug === "1";
     const trace: DiagnosticStep[] | undefined = debug ? [] : undefined;
     const files = await fetchScannedFileList(listUrl, trace);
-    const index = files ? findDecisionDocIndex(files) : -1;
+    const index = files ? findDecisionDocIndex(files, row.decision) : -1;
     if (debug) {
       const doc = index >= 0 ? await fetchScannedDocument(listUrl, index, 10_000_000, trace) : null;
       return {

@@ -1147,12 +1147,40 @@ async function extractDecisionDocument(pdfBase64, decision) {
 }
 
 const DECISION_SUMMARY_CACHE = new Map();
-function findDecisionDocIndex(files) {
-  const specific = files.findIndex((f) =>
-    /notification of decision|decision order|manager.?s order|board order|order to (grant|refuse)/i.test(f.title)
-  );
-  if (specific >= 0) return specific;
-  return files.findIndex((f) => /\bdecision\b|refus|grant of permission|\border\b/i.test(f.title));
+// Appeal docs (ABP/ACP board order, inspector's report) carry the appeal
+// reasons, surfaced separately — never pick them for the council decision.
+const APPEAL_DOC_RE =
+  /board\s*(order|direction)|an\s*bord|coimisi|plean[aá]la|\babp\b|\bacp\b|inspector|\bappeal/i;
+// Not the planning decision order: forms, Part V / social-housing exemption
+// certs (s.96/97), maps/drawings, notices, correspondence, submissions.
+const NON_DECISION_DOC_RE =
+  /application form|part\s*v\b|exemption|section\s*9[67]\b|social housing|site (notice|location)|\bmaps?\b|drawing|\bplans?\b|elevation|photograph|receipt|\bfees?\b|cover(ing)? letter|acknowledg|further information|\bf\.?i\.?\b|submission|observation|objection|correspond/i;
+// Pick the council's own decision order: exclude appeal/non-decision docs, then
+// score by how decision-order-like the title is, preferring one consistent with
+// the recorded outcome. -1 when none, so the box shows its empty state.
+function findDecisionDocIndex(files, decision) {
+  const wantRefusal = /refus|reject/i.test(decision ?? "");
+  const wantGrant = /grant|approv|conditional/i.test(decision ?? "");
+  let best = -1;
+  let bestScore = 0;
+  files.forEach((f, i) => {
+    const t = f.title;
+    if (APPEAL_DOC_RE.test(t) || NON_DECISION_DOC_RE.test(t)) return;
+    let score = 0;
+    if (/notification of decision/i.test(t)) score += 5;
+    if (/order to (grant|refuse)/i.test(t)) score += 5;
+    if (/decision order|\bdecision\b/i.test(t)) score += 3;
+    if (/manager.?s order|chief executive.?s order/i.test(t)) score += 2;
+    if (/\border\b/i.test(t)) score += 1;
+    if (score === 0) return;
+    if (wantRefusal && /refus|reject/i.test(t)) score += 2;
+    if (wantGrant && /\bgrant/i.test(t)) score += 2;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  });
+  return best;
 }
 
 const DECISION_DOC_RE = /board\s*(order|direction)|inspector|decision|determination/i;
@@ -2428,7 +2456,7 @@ export default async function handler(req, res) {
     const debug = p.get("debug") === "1";
     const trace = debug ? [] : undefined;
     const files = await fetchScannedFileList(listUrl, trace);
-    const index = files ? findDecisionDocIndex(files) : -1;
+    const index = files ? findDecisionDocIndex(files, app.decision) : -1;
     if (debug) {
       const d = index >= 0 ? await fetchScannedDocument(listUrl, index, 10_000_000, trace) : null;
       return send(res, 200, {

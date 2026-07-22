@@ -213,6 +213,15 @@ only in the detail timeline ("Work commenced/ due to commence / completed").
 only in the scanned decision PDF, AI-extracted on demand and **not** written to
 `status`. No live status, no structured conditions.
 
+The council decision summary (`/decision-summary`) picks that PDF from a noisy
+file list via `findDecisionDocIndex`: it **excludes** appeal documents (ABP/ACP
+board order, inspector's report — those are the *appeal* reasons, shown in the
+appeal section) and non-decision docs (forms, Part V / s.96–97 exemption
+certificates, maps, notices), then scores the rest and prefers one matching the
+recorded outcome. Without this an appealed case summarised the board order in
+*both* the council and appeal boxes, and a Part V "Managers Order" could be
+mistaken for the refusal (Kildare 211277).
+
 ---
 
 ## 6. Known gaps & consistency issues
