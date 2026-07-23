@@ -1,11 +1,4 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type TouchEvent as RTouchEvent,
-} from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "./MapView";
@@ -1078,14 +1071,18 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
   }, [onClose]);
 
   // On mobile the sheet is a bottom sheet that peeks over the map: it opens to a
-  // peek height, the grabber drags it up (expand) or down (dismiss), and it
-  // snaps to peek / full / closed on release. Driven imperatively for smoothness.
-  // Desktop is unchanged (a side panel).
+  // peek height and drags up (expand) / down (dismiss), snapping to peek / full
+  // / closed. Desktop is unchanged (a side panel).
   const sheetRef = useRef<HTMLElement>(null);
   const [expanded, setExpanded] = useState(false);
-  const dragRef = useRef<{ y: number; base: number } | null>(null);
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const peekOffset = () => Math.round(window.innerHeight * 0.44);
 
+  // Entry + snap: animate to the peek/full position when it opens or `expanded`
+  // changes (drags set the transform imperatively in the listener below).
   useEffect(() => {
     const el = sheetRef.current;
     if (!el || !isMobile) return;
@@ -1093,34 +1090,83 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
     el.style.transform = `translateY(${expanded ? 0 : peekOffset()}px)`;
   }, [isMobile, expanded]);
 
-  const onGrabStart = (e: RTouchEvent) => {
-    dragRef.current = { y: e.touches[0].clientY, base: expanded ? 0 : peekOffset() };
-    if (sheetRef.current) sheetRef.current.style.transition = "none";
-  };
-  const onGrabMove = (e: RTouchEvent) => {
+  // Drag gesture. Native listeners (not React's passive ones) so we can
+  // preventDefault and stop the content from scrolling while dragging the sheet.
+  // Arbitration: at peek every drag moves the sheet; at full it moves only on a
+  // downward drag from the top (otherwise the content scrolls normally).
+  useEffect(() => {
     const el = sheetRef.current;
-    if (!dragRef.current || !el) return;
-    const dy = e.touches[0].clientY - dragRef.current.y;
-    el.style.transform = `translateY(${Math.max(0, dragRef.current.base + dy)}px)`;
-  };
-  const onGrabEnd = () => {
-    const el = sheetRef.current;
-    if (!dragRef.current || !el) return;
-    const y = parseFloat(el.style.transform.replace(/[^0-9.-]/g, "")) || 0;
-    const peek = peekOffset();
-    el.style.transition = "transform 260ms cubic-bezier(0.32, 0.72, 0, 1)";
-    if (y > peek + window.innerHeight * 0.12) {
-      el.style.transform = "translateY(100%)";
-      window.setTimeout(onClose, 240);
-    } else if (y < peek * 0.5) {
-      el.style.transform = "translateY(0px)";
-      setExpanded(true);
-    } else {
-      el.style.transform = `translateY(${peek}px)`;
-      setExpanded(false);
-    }
-    dragRef.current = null;
-  };
+    if (!el || !isMobile) return;
+    let startY = 0;
+    let base = 0;
+    let lastY = 0;
+    let lastT = 0;
+    let vy = 0;
+    let mode: null | "drag" | "scroll" = null;
+
+    const start = (e: TouchEvent) => {
+      startY = lastY = e.touches[0].clientY;
+      lastT = e.timeStamp;
+      vy = 0;
+      base = expandedRef.current ? 0 : peekOffset();
+      mode = null;
+      el.style.transition = "none";
+    };
+    const move = (e: TouchEvent) => {
+      const y0 = e.touches[0].clientY;
+      const dy = y0 - startY;
+      if (mode === null) {
+        if (Math.abs(dy) < 6) return;
+        mode = !expandedRef.current || (dy > 0 && el.scrollTop <= 0) ? "drag" : "scroll";
+      }
+      if (mode !== "drag") return;
+      e.preventDefault();
+      const dt = e.timeStamp - lastT;
+      if (dt > 0) vy = (y0 - lastY) / dt;
+      lastY = y0;
+      lastT = e.timeStamp;
+      el.style.transform = `translateY(${Math.max(0, base + dy)}px)`;
+    };
+    const end = () => {
+      if (mode !== "drag") {
+        mode = null;
+        return;
+      }
+      mode = null;
+      const y = parseFloat(el.style.transform.replace(/[^0-9.-]/g, "")) || 0;
+      const peek = peekOffset();
+      const innerH = window.innerHeight;
+      let target: "full" | "peek" | "dismiss";
+      if (vy > 0.5) target = expandedRef.current ? "peek" : "dismiss";
+      else if (vy < -0.5) target = "full";
+      else if (y > peek + innerH * 0.12) target = "dismiss";
+      else if (y < peek * 0.5) target = "full";
+      else target = "peek";
+
+      el.style.transition = "transform 260ms cubic-bezier(0.32, 0.72, 0, 1)";
+      if (target === "dismiss") {
+        el.style.transform = "translateY(100%)";
+        window.setTimeout(() => onCloseRef.current(), 240);
+      } else if (target === "full") {
+        el.style.transform = "translateY(0px)";
+        setExpanded(true);
+      } else {
+        el.style.transform = `translateY(${peek}px)`;
+        setExpanded(false);
+      }
+    };
+
+    el.addEventListener("touchstart", start, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    el.addEventListener("touchend", end);
+    el.addEventListener("touchcancel", end);
+    return () => {
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", end);
+      el.removeEventListener("touchcancel", end);
+    };
+  }, [isMobile]);
 
   return (
     <aside
@@ -1130,12 +1176,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
       role="dialog"
     >
       {isMobile && (
-        <div
-          className="sheet-grabber"
-          onTouchStart={onGrabStart}
-          onTouchMove={onGrabMove}
-          onTouchEnd={onGrabEnd}
-          aria-hidden="true"
+        <div className="sheet-grabber" aria-hidden="true"
         >
           <span className="grabber-bar" />
         </div>
