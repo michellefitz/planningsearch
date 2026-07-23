@@ -843,6 +843,21 @@ body {
   padding: 0.2rem 0.55rem;
 }
 
+/* When a static image fails to load, the tile becomes a plain labelled link. */
+.media-tile-failed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.media-tile-failed .media-label {
+  position: static;
+  color: var(--ink-2);
+  background: none;
+  backdrop-filter: none;
+  text-transform: none;
+  font-size: 0.8rem;
+}
+
 .action-row {
   display: flex;
   flex-wrap: wrap;

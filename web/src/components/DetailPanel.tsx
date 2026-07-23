@@ -153,6 +153,12 @@ function withGlossary(text: string, glossary: Record<string, string>): JSX.Eleme
   );
 }
 
+/** Google Maps satellite view centred on the property, via the documented Maps
+ *  URLs API (basemap=satellite) — the legacy `?q=…&t=k` hack no longer switches
+ *  to aerial, so it opened a plain map instead. */
+const aerialUrl = (lat: number, lng: number): string =>
+  `https://www.google.com/maps/@?api=1&map_action=map&center=${lat},${lng}&zoom=19&basemap=satellite`;
+
 /** Open the property in Google Maps — Street View and satellite when we have
  *  coordinates, otherwise an address search (official Maps URLs API, no key). */
 function MapLinks({ detail: d }: { detail: AppDetail }) {
@@ -170,11 +176,9 @@ function MapLinks({ detail: d }: { detail: AppDetail }) {
           >
             Street View ↗
           </a>
-          {/* q drops a pin; t=k is the satellite basemap — the documented
-              URLs API can't do both at once. */}
           <a
             className="btn"
-            href={`https://maps.google.com/?q=${d.lat},${d.lng}&t=k&z=19`}
+            href={aerialUrl(d.lat!, d.lng!)}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -234,6 +238,13 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
     return () => ctrl.abort();
   }, [d.id, d.lat, d.lng, hasCoords]);
 
+  // If a static image fails (e.g. the Maps Static API isn't enabled on the key),
+  // hide the broken image and leave the tile as a labelled link to the map.
+  const onImgError = (e: { currentTarget: HTMLImageElement }) => {
+    e.currentTarget.style.display = "none";
+    e.currentTarget.parentElement?.classList.add("media-tile-failed");
+  };
+
   if (!GMAPS_KEY || !hasCoords) return null;
   const loc = `${d.lat},${d.lng}`;
   return (
@@ -249,24 +260,21 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
             src={`https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${loc}&key=${GMAPS_KEY}`}
             alt={`Street View of ${d.address_text ?? "the property"}`}
             loading="lazy"
+            onError={onImgError}
           />
           <span className="media-label">
             Street View{pano.date ? ` · ${formatPanoDate(pano.date)}` : ""}
           </span>
         </a>
       )}
-      <a
-        href={`https://maps.google.com/?q=${loc}&t=k&z=19`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="media-tile"
-      >
+      <a href={aerialUrl(d.lat!, d.lng!)} target="_blank" rel="noopener noreferrer" className="media-tile">
         <img
           src={`https://maps.googleapis.com/maps/api/staticmap?center=${loc}&zoom=18&maptype=satellite&size=640x360&markers=color:red%7C${loc}&key=${GMAPS_KEY}`}
           alt={`Aerial view of ${d.address_text ?? "the property"}`}
           loading="lazy"
+          onError={onImgError}
         />
-        <span className="media-label">Aerial</span>
+        <span className="media-label">Aerial ↗</span>
       </a>
     </div>
   );
