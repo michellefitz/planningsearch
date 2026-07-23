@@ -19,6 +19,7 @@ import {
   guessIsDomestic,
   normalizeStatus,
 } from "../normalize.js";
+import { extractEircode } from "./ppr.js";
 import type { ApplicationRecord } from "../db.js";
 
 export const SERVICE_URL =
@@ -193,7 +194,13 @@ export function featureToRecord(
     applicant_name: buildApplicantName(attrs),
     agent_name: null,
     address_text: str(attrs, FIELD_MAP.address),
-    eircode: str(attrs, FIELD_MAP.eircode),
+    // The national DevelopmentPostcode is ~2% filled (and sometimes junk like
+    // "2."), but many addresses embed the Eircode — pull a validated one from
+    // the postcode field, else the address, else the description.
+    eircode:
+      extractEircode(str(attrs, FIELD_MAP.eircode)) ??
+      extractEircode(str(attrs, FIELD_MAP.address)) ??
+      extractEircode(description),
     num_residential_units: num(attrs, FIELD_MAP.numResidentialUnits),
     floor_area_sqm: num(attrs, FIELD_MAP.floorArea),
     site_area_ha: num(attrs, FIELD_MAP.siteArea),

@@ -165,7 +165,7 @@ describe("featureToRecord", () => {
     expect(rec.decision_date).toBe("2020-08-05");
     expect(rec.final_grant_date).toBe("2020-09-07");
     expect(rec.further_info_requested_date).toBe("2019-11-19");
-    expect(rec.eircode).toBe("K67X2Y8"); // DevelopmentPostcode
+    expect(rec.eircode).toBe("K67 X2Y8"); // DevelopmentPostcode, formatted
     expect(rec.is_domestic_guess).toBe(1); // OneOffHouse=Yes
     // Fingal is Agile-hosted: a LinkAppDetails pointing anywhere else is
     // stale and gets replaced with the Agile portal fallback.

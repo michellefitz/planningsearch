@@ -35,10 +35,24 @@ export function eircodeKey(raw: string | null | undefined): string | null {
 const PPR_BASE =
   "https://www.propertypriceregister.ie/website/npsra/ppr/npsra-ppr.nsf/Downloads";
 
+/** Eircode as it appears embedded in free text: routing key (D6W or letter+2
+ *  digits) then the 4-char unique identifier, optionally space-separated. */
+const EIRCODE_IN_TEXT = /\b(D6W|[A-Z]\d{2}) ?([A-Z0-9]{4})\b/;
+
+/** Pull a formatted Eircode ("D03 WP89") out of free text — e.g. a planning
+ *  address that embeds it — or null. */
+export function extractEircode(text: string | null | undefined): string | null {
+  const m = `${text ?? ""}`.toUpperCase().match(EIRCODE_IN_TEXT);
+  return m ? `${m[1]} ${m[2]}` : null;
+}
+
 /** Same normalization must be applied to both PPR and planning addresses. */
 export function normalizeAddress(s: string): string {
   let n = s.toUpperCase();
   n = n.replace(/[^A-Z0-9 ]/g, " ");
+  // Drop an embedded Eircode so it doesn't defeat the address match (planning
+  // addresses carry it, PPR's address column doesn't). Applied to both sides.
+  n = n.replace(new RegExp(EIRCODE_IN_TEXT.source, "g"), " ");
   n = n.replace(/\b(CO|COUNTY)\s+(KILDARE|DUBLIN|WICKLOW|MEATH)\b/g, " ");
   n = n.replace(/\s+/g, " ").trim();
   // A trailing bare county name adds nothing ("... NAAS KILDARE").
@@ -191,7 +205,9 @@ export function lookupPpr(
   index: PprIndex,
   app: { address_text?: string | null; eircode?: string | null }
 ): PprSale[] | null {
-  const ek = eircodeKey(app.eircode);
+  // Prefer the eircode field, but recover one embedded in the address too —
+  // Dublin addresses routinely carry the Eircode while the field is blank.
+  const ek = eircodeKey(app.eircode) ?? eircodeKey(extractEircode(app.address_text));
   if (ek) {
     const hit = index.byEircode.get(ek);
     if (hit?.length) return hit;

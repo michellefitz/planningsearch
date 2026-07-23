@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   eircodeKey,
+  extractEircode,
   isSpecificAddress,
   lookupPpr,
   normalizeAddress,
@@ -22,6 +23,21 @@ describe("normalizeAddress", () => {
 
   it("keeps Dublin postal districts (they distinguish addresses)", () => {
     expect(normalizeAddress("12 Griffith Road, Dublin 11")).toBe("12 GRIFFITH ROAD DUBLIN 11");
+  });
+
+  it("strips an embedded Eircode so it doesn't defeat the address match", () => {
+    expect(normalizeAddress("31 Mount Prospect Drive, Dublin 3, D03 WP89")).toBe(
+      "31 MOUNT PROSPECT DRIVE DUBLIN 3"
+    );
+  });
+});
+
+describe("extractEircode", () => {
+  it("pulls an Eircode out of an address, or returns null", () => {
+    expect(extractEircode("31 Mount Prospect Drive, Dublin 3, D03 WP89")).toBe("D03 WP89");
+    expect(extractEircode("Apt 4, The Mill, D6W1234")).toBe("D6W 1234");
+    expect(extractEircode("31 Mount Prospect Drive, Dublin 3")).toBeNull();
+    expect(extractEircode(null)).toBeNull();
   });
 });
 
@@ -92,6 +108,14 @@ describe("lookupPpr", () => {
 
   it("falls back to a specific address when there is no Eircode", () => {
     expect(lookupPpr(index, { address_text: "12 Caragh Meadows, Naas", eircode: null })).toHaveLength(1);
+  });
+
+  it("recovers an Eircode embedded in the address when the field is blank (WEB2898/25)", () => {
+    const hit = lookupPpr(index, {
+      address_text: "31 Mount Prospect Drive, Dublin 3, W91 A1B2",
+      eircode: null,
+    });
+    expect(hit?.[0].eircode).toBe("W91A1B2");
   });
 
   it("returns null for a townland-only address with no Eircode", () => {
