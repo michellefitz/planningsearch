@@ -11,7 +11,7 @@ import { AUTHORITIES } from "./config/authorities.js";
 import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
 import { generateSeedRecords } from "./seed.js";
 import { featureToRecord, fetchAllSince, SERVICE_URL } from "./ingest/arcgis.js";
-import { buildPprIndex, isSpecificAddress, normalizeAddress } from "./ingest/ppr.js";
+import { buildPprIndex, lookupPpr } from "./ingest/ppr.js";
 import { buildCommencementIndex, lookupCommencement } from "./ingest/bcms.js";
 import type { ApplicationRecord } from "./db.js";
 
@@ -99,18 +99,20 @@ async function main() {
   // addresses with a house/unit number (townland-only addresses are shared
   // by many properties). Live data only; the fictional seed won't match.
   if (dataSource === "live") {
-    const days = Number(process.env.PLANVIEW_EXPORT_DAYS ?? 1825);
-    const fromYear = new Date(Date.now() - days * 86400_000).getFullYear();
+    // PPR spans its own (wider) window, independent of the applications window:
+    // a property's sale history is worth showing however old the applications
+    // are. The register starts in 2010.
+    const sinceYear = Number(process.env.PLANVIEW_PPR_SINCE_YEAR ?? 2010);
+    const nowYear = new Date().getFullYear();
     const years = [];
-    for (let y = fromYear; y <= new Date().getFullYear(); y++) years.push(y);
-    console.log(`Fetching Property Price Register (Dublin, Kildare; ${fromYear}–now) …`);
+    for (let y = sinceYear; y <= nowYear; y++) years.push(y);
+    console.log(`Fetching Property Price Register (Dublin, Kildare; ${sinceYear}–now) …`);
     const ppr = await buildPprIndex(["Dublin", "Kildare"], years, console.log);
     let matched = 0;
     for (const app of apps) {
-      if (!app.address_text) continue;
-      const key = normalizeAddress(app.address_text);
-      if (!isSpecificAddress(key)) continue;
-      const sales = ppr.get(key);
+      // Eircode first (unique per property, works for apartments), then a
+      // specific-address match.
+      const sales = lookupPpr(ppr, app);
       if (!sales?.length) continue;
       app.ppr_sales = sales.map((s) => ({
         date: s.date,

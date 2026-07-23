@@ -15,6 +15,21 @@ export interface PprSale {
   description: string | null;
   vatExclusive: boolean;
   notFullMarket: boolean;
+  /** Normalised Eircode key (no space), when the register carries one. */
+  eircode: string | null;
+}
+
+/**
+ * Normalised Eircode match key (uppercase, no space), or null if it isn't a real
+ * Eircode. Both the register and our applications leave the field blank or put
+ * junk in it (Dublin tenants use "2." etc.), so validate the shape — routing key
+ * (D6W or letter+2 digits) plus the 4-char unique identifier.
+ */
+export function eircodeKey(raw: string | null | undefined): string | null {
+  const s = String(raw ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  return /^(D6W|[A-Z]\d{2})[A-Z0-9]{4}$/.test(s) ? s : null;
 }
 
 const PPR_BASE =
@@ -98,6 +113,8 @@ export function parsePprCsv(text: string): PprSale[] {
         description: row[7]?.trim() || null,
         vatExclusive: /^yes$/i.test(row[6]?.trim() ?? ""),
         notFullMarket: /^yes$/i.test(row[5]?.trim() ?? ""),
+        // Column 3 is the Eircode (sparsely filled in the register).
+        eircode: eircodeKey(row[3]),
       });
     }
   }
@@ -123,13 +140,26 @@ async function fetchPprCsv(county: string, year: number): Promise<PprSale[] | nu
   }
 }
 
-/** normalized address → sales, newest first. */
+export interface PprIndex {
+  /** Normalised specific-address → sales, newest first. */
+  byAddress: Map<string, PprSale[]>;
+  /** Normalised Eircode → sales, newest first. */
+  byEircode: Map<string, PprSale[]>;
+}
+
+/** Fetch the county/year CSVs and index sales by both address and Eircode. */
 export async function buildPprIndex(
   counties: string[],
   years: number[],
   log: (msg: string) => void = () => {}
-): Promise<Map<string, PprSale[]>> {
-  const index = new Map<string, PprSale[]>();
+): Promise<PprIndex> {
+  const byAddress = new Map<string, PprSale[]>();
+  const byEircode = new Map<string, PprSale[]>();
+  const push = (m: Map<string, PprSale[]>, key: string, sale: PprSale) => {
+    const list = m.get(key);
+    if (list) list.push(sale);
+    else m.set(key, [sale]);
+  };
   for (const county of counties) {
     for (const year of years) {
       const sales = await fetchPprCsv(county, year);
@@ -138,16 +168,40 @@ export async function buildPprIndex(
         continue;
       }
       for (const sale of sales) {
-        const key = normalizeAddress(sale.address);
-        if (!isSpecificAddress(key)) continue;
-        const list = index.get(key);
-        if (list) list.push(sale);
-        else index.set(key, [sale]);
+        const addrKey = normalizeAddress(sale.address);
+        if (isSpecificAddress(addrKey)) push(byAddress, addrKey, sale);
+        if (sale.eircode) push(byEircode, sale.eircode, sale);
       }
       log(`  PPR ${county} ${year}: ${sales.length} sales`);
       await new Promise((r) => setTimeout(r, 200)); // be polite
     }
   }
-  for (const list of index.values()) list.sort((a, b) => b.date.localeCompare(a.date));
-  return index;
+  for (const m of [byAddress, byEircode]) {
+    for (const list of m.values()) list.sort((a, b) => b.date.localeCompare(a.date));
+  }
+  return { byAddress, byEircode };
+}
+
+/**
+ * Sales for one application: Eircode match first — a unique property identifier,
+ * so it works even for apartments where many units share a street address — then
+ * a specific (number-bearing) address match. Null when neither hits.
+ */
+export function lookupPpr(
+  index: PprIndex,
+  app: { address_text?: string | null; eircode?: string | null }
+): PprSale[] | null {
+  const ek = eircodeKey(app.eircode);
+  if (ek) {
+    const hit = index.byEircode.get(ek);
+    if (hit?.length) return hit;
+  }
+  if (app.address_text) {
+    const key = normalizeAddress(app.address_text);
+    if (isSpecificAddress(key)) {
+      const hit = index.byAddress.get(key);
+      if (hit?.length) return hit;
+    }
+  }
+  return null;
 }
