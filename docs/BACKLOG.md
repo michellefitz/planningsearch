@@ -1,5 +1,17 @@
 # Backlog
 
+- **Split decisions — verify + AI summary (parked 2026-07-22).** A `split`
+  canonical status (pink **S**) now exists and is detected from decision text
+  containing both grant and refuse, or a "Split Decision" status
+  (`server/src/normalize.ts`). To finish: (1) confirm detection on real data —
+  e.g. REF2124, via the `/api/applications/<id>` JSON (`status_raw`, `decision`,
+  `decision_raw`) — widen the pattern if the wording differs; (2) an **AI
+  summary of the split** spelling out what was granted vs refused — agile from
+  the `/conditions` items (C = granted-part conditions, R = refused-part
+  reasons), Kildare from the scanned decision-order PDF; (3) the detail panel's
+  `isRefusal` check is `refused`-only, so a split won't surface refusal reasons
+  yet — generalise it.
+
 - **Google Maps API key for inline property imagery.** The detail sheet
   already renders Street View + aerial thumbnails when `VITE_GOOGLE_MAPS_KEY`
   is set at build time. To activate: Google Cloud project with billing →

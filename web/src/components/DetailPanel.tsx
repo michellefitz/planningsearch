@@ -1,4 +1,11 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type TouchEvent as RTouchEvent,
+} from "react";
 import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "./MapView";
@@ -1056,8 +1063,64 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Swipe-right-to-dismiss. The sheet is full-screen on mobile, so a rightward
+  // swipe (iOS "back" gesture) reads more naturally than hunting for the ✕. We
+  // drive the transform imperatively during the drag to keep it smooth and to
+  // leave the CSS entry animation untouched.
+  const sheetRef = useRef<HTMLElement>(null);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  const swiping = useRef(false);
+
+  const onTouchStart = (e: RTouchEvent) => {
+    const t = e.touches[0];
+    swipeStart.current = { x: t.clientX, y: t.clientY };
+    swiping.current = false;
+  };
+  const onTouchMove = (e: RTouchEvent) => {
+    const el = sheetRef.current;
+    if (!swipeStart.current || !el) return;
+    const t = e.touches[0];
+    const dx = t.clientX - swipeStart.current.x;
+    const dy = t.clientY - swipeStart.current.y;
+    if (!swiping.current) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      // Only a mostly-horizontal rightward drag starts a swipe; otherwise it's
+      // a normal vertical scroll, so bail out and leave it alone.
+      if (dx <= 0 || Math.abs(dx) < Math.abs(dy)) {
+        swipeStart.current = null;
+        return;
+      }
+      swiping.current = true;
+      el.style.transition = "none";
+    }
+    el.style.transform = `translateX(${Math.max(0, dx)}px)`;
+  };
+  const onTouchEnd = () => {
+    const el = sheetRef.current;
+    if (swiping.current && el) {
+      const dx = parseFloat(el.style.transform.replace(/[^0-9.-]/g, "")) || 0;
+      el.style.transition = "transform 220ms cubic-bezier(0.32, 0.72, 0, 1)";
+      if (dx > Math.min(130, window.innerWidth * 0.3)) {
+        el.style.transform = "translateX(100%)";
+        window.setTimeout(onClose, 200);
+      } else {
+        el.style.transform = "";
+      }
+    }
+    swipeStart.current = null;
+    swiping.current = false;
+  };
+
   return (
-    <aside className="detail-sheet" aria-label={`Application ${d.planning_reference}`} role="dialog">
+    <aside
+      ref={sheetRef}
+      className="detail-sheet"
+      aria-label={`Application ${d.planning_reference}`}
+      role="dialog"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
       <div className="sheet-top">
         <div className="sheet-status">
           {/* The national dataset lags the council portal, so a baked "unknown"

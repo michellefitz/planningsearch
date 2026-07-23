@@ -31,6 +31,9 @@ export default function App() {
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"search" | "ask">("search");
+  // Mobile only: the layout shows one of map / list at a time (a toggle),
+  // rather than squishing both. Ignored at ≥768px, where they sit side by side.
+  const [mobileView, setMobileView] = useState<"map" | "list">("map");
 
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const nearRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -136,7 +139,7 @@ export default function App() {
         </p>
       </header>
 
-      <div className="layout">
+      <div className={`layout ${mode === "search" && mobileView === "map" ? "m-map" : "m-panel"}`}>
         <div className="side-panel">
           <div className="mode-tabs" role="tablist" aria-label="Panel mode">
             <button
@@ -163,7 +166,11 @@ export default function App() {
             <SearchBar
               value={state.q}
               onChange={(q) => setState((s) => ({ ...s, q }))}
-              onSubmit={(q) => applyState({ ...state, q })}
+              onSubmit={(q) => {
+                applyState({ ...state, q });
+                // On mobile, a keyword search wants results — switch to the list.
+                if (q.trim()) setMobileView("list");
+              }}
               onNearMe={nearMe}
             />
             <FiltersBar meta={meta} state={state} onChange={applyState} />
@@ -172,15 +179,41 @@ export default function App() {
                 {error}
               </p>
             )}
-            <ResultsList
-              results={results}
-              total={total}
-              fuzzy={fuzzy}
-              loading={loading}
-              selectedId={selectedId}
-              onSelect={select}
-              onHover={setHoveredId}
-            />
+            {/* Mobile map/list toggle — hidden at ≥768px, where both show. */}
+            <div className="view-toggle" role="group" aria-label="View">
+              <span className="vt-count" role="status">
+                {total.toLocaleString()} result{total === 1 ? "" : "s"}
+              </span>
+              <div className="vt-seg">
+                <button
+                  type="button"
+                  className={mobileView === "map" ? "on" : ""}
+                  aria-pressed={mobileView === "map"}
+                  onClick={() => setMobileView("map")}
+                >
+                  Map
+                </button>
+                <button
+                  type="button"
+                  className={mobileView === "list" ? "on" : ""}
+                  aria-pressed={mobileView === "list"}
+                  onClick={() => setMobileView("list")}
+                >
+                  List
+                </button>
+              </div>
+            </div>
+            <div className="results-scroll">
+              <ResultsList
+                results={results}
+                total={total}
+                fuzzy={fuzzy}
+                loading={loading}
+                selectedId={selectedId}
+                onSelect={select}
+                onHover={setHoveredId}
+              />
+            </div>
           </div>
 
           <div hidden={mode !== "ask"} className="chat-wrap">

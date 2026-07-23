@@ -141,6 +141,115 @@ body {
   }
 }
 
+/* The map/list toggle is a mobile affordance; both panes show at ≥768px. */
+.view-toggle {
+  display: none;
+}
+
+/* ---------- Mobile: one pane at a time, denser chrome ---------- */
+@media (max-width: 767px) {
+  .app-header {
+    padding: 0.5rem 1rem;
+  }
+  /* Header collapses to just the app name + beta; the strapline and the
+     data-source footer are dropped to reclaim vertical space (attribution
+     still shows on every application's detail sheet). */
+  .tagline,
+  .app-footer {
+    display: none;
+  }
+
+  .layout {
+    flex-direction: column;
+  }
+
+  .side-panel {
+    max-height: none;
+    border-top: none;
+    border-bottom: 1px solid var(--line);
+    padding: 0.7rem 1rem;
+  }
+
+  .view-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-top: 0.7rem;
+  }
+
+  .vt-count {
+    font-size: 0.78rem;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .vt-seg {
+    display: inline-flex;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  .vt-seg button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--ink-2);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 550;
+    padding: 0.32rem 0.95rem;
+    cursor: pointer;
+  }
+
+  .vt-seg button.on {
+    background: var(--action);
+    color: #fff;
+  }
+
+  /* Map view: the controls stay compact up top, the map fills the rest. */
+  .layout.m-map .side-panel {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+  .layout.m-map .results-scroll {
+    display: none;
+  }
+  .layout.m-map .map-wrap {
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* List view: the results fill the screen, the map is hidden. The search
+     controls stay pinned at the top and only the results scroll. */
+  .layout.m-panel .side-panel {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .layout.m-panel .search-wrap:not([hidden]),
+  .layout.m-panel .chat-wrap:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .layout.m-panel .results-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .layout.m-panel .map-wrap {
+    display: none;
+  }
+  /* The count already shows in the toggle bar, so drop the list's own tally. */
+  .results-scroll .results > .list-note {
+    display: none;
+  }
+}
+
 /* ---------- Search ---------- */
 
 .search-bar {
@@ -1106,6 +1215,21 @@ body {
   font-size: 0.52rem;
   font-weight: 600;
   flex: none;
+}
+
+@media (max-width: 767px) {
+  .legend {
+    font-size: 0.62rem;
+    padding: 0.35rem 0.5rem;
+    gap: 0.25rem 0.55rem;
+    max-height: 4.4rem;
+    overflow-y: auto;
+  }
+  .legend-pin {
+    width: 0.75rem;
+    height: 0.75rem;
+    font-size: 0.46rem;
+  }
 }
 
 /* ---------- Footer ---------- */
