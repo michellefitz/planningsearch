@@ -34,6 +34,9 @@ export default function App() {
   // Mobile only: the layout shows one of map / list at a time (a toggle),
   // rather than squishing both. Ignored at ≥768px, where they sit side by side.
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
+  const [legendOpen, setLegendOpen] = useState(false);
+  // Shown after the user pans/zooms the map: a one-tap "search this area".
+  const [canSearchArea, setCanSearchArea] = useState(false);
 
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const nearRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -72,7 +75,15 @@ export default function App() {
 
   const applyState = (next: SearchState) => {
     setState(next);
+    setCanSearchArea(false);
     runSearch(next);
+  };
+
+  // One-shot search of the current map viewport (the floating map button). Uses
+  // the live bbox the map keeps in bboxRef; doesn't latch the "map area" filter.
+  const searchThisArea = () => {
+    setCanSearchArea(false);
+    runSearch({ ...state, useMapArea: true });
   };
 
   const select = useCallback(async (id: number) => {
@@ -231,19 +242,37 @@ export default function App() {
               bboxRef.current = bbox;
               if (state.useMapArea) runSearch(state);
             }}
+            onUserMove={() => {
+              if (!state.useMapArea) setCanSearchArea(true);
+            }}
             flyTo={flyTo}
           />
-          <div className="legend" aria-label="Map legend">
-            {Object.entries(STATUS_STYLE)
-              .filter(([k]) => k !== "unknown")
-              .map(([key, s]) => (
-                <span key={key} className="legend-item">
-                  <span className="legend-pin" style={{ background: s.color }} aria-hidden="true">
-                    {s.letter}
+          {canSearchArea && (
+            <button type="button" className="search-area-btn" onClick={searchThisArea}>
+              Search this area
+            </button>
+          )}
+          <div className={`legend ${legendOpen ? "legend-open" : ""}`} aria-label="Map legend">
+            <button
+              type="button"
+              className="legend-toggle"
+              aria-expanded={legendOpen}
+              onClick={() => setLegendOpen((o) => !o)}
+            >
+              Key
+            </button>
+            <div className="legend-items">
+              {Object.entries(STATUS_STYLE)
+                .filter(([k]) => k !== "unknown")
+                .map(([key, s]) => (
+                  <span key={key} className="legend-item">
+                    <span className="legend-pin" style={{ background: s.color }} aria-hidden="true">
+                      {s.letter}
+                    </span>
+                    {s.label}
                   </span>
-                  {s.label}
-                </span>
-              ))}
+                ))}
+            </div>
           </div>
         </div>
       </div>

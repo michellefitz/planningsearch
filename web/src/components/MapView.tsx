@@ -55,13 +55,26 @@ interface Props {
   hoveredId: number | null;
   onSelect: (id: number) => void;
   onBoundsChange: (bbox: [number, number, number, number]) => void;
+  /** Fired only on a user-driven pan/zoom (not programmatic flyTo). */
+  onUserMove?: () => void;
   flyTo?: { lat: number; lng: number } | null;
 }
 
-export default function MapView({ data, selectedId, hoveredId, onSelect, onBoundsChange, flyTo }: Props) {
+export default function MapView({
+  data,
+  selectedId,
+  hoveredId,
+  onSelect,
+  onBoundsChange,
+  onUserMove,
+  flyTo,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const loadedRef = useRef(false);
+  // Kept in a ref so the mount-time moveend handler always calls the latest.
+  const onUserMoveRef = useRef(onUserMove);
+  onUserMoveRef.current = onUserMove;
 
   const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ flood: false, zoning: false });
   const [mapZoom, setMapZoom] = useState(7);
@@ -305,6 +318,12 @@ export default function MapView({ data, selectedId, hoveredId, onSelect, onBound
       onBoundsChange(bboxRef.current);
     };
     map.on("moveend", emitBounds);
+    // A user gesture (pan/zoom) carries an originalEvent; programmatic moves
+    // (flyTo/easeTo) don't — so this only fires the "search this area" prompt
+    // when the user actually moved the map.
+    map.on("moveend", (e) => {
+      if ((e as { originalEvent?: unknown }).originalEvent) onUserMoveRef.current?.();
+    });
     // Re-fetch any enabled overlay for the new viewport, debounced.
     let overlayTimer: ReturnType<typeof setTimeout> | undefined;
     map.on("moveend", () => {

@@ -916,8 +916,22 @@ function EplanningRelated({
   );
 }
 
+function useIsMobile(): boolean {
+  const [m, setM] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const on = () => setM(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return m;
+}
+
 export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated }: Props) {
   const glossary = meta?.glossary ?? {};
+  const isMobile = useIsMobile();
   const isEplanning =
     meta?.authorities.find((a) => a.id === d.authority_id)?.source_system === "eplanning";
   const timeline = buildTimeline(d);
@@ -1063,64 +1077,69 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Swipe-right-to-dismiss. The sheet is full-screen on mobile, so a rightward
-  // swipe (iOS "back" gesture) reads more naturally than hunting for the ✕. We
-  // drive the transform imperatively during the drag to keep it smooth and to
-  // leave the CSS entry animation untouched.
+  // On mobile the sheet is a bottom sheet that peeks over the map: it opens to a
+  // peek height, the grabber drags it up (expand) or down (dismiss), and it
+  // snaps to peek / full / closed on release. Driven imperatively for smoothness.
+  // Desktop is unchanged (a side panel).
   const sheetRef = useRef<HTMLElement>(null);
-  const swipeStart = useRef<{ x: number; y: number } | null>(null);
-  const swiping = useRef(false);
+  const [expanded, setExpanded] = useState(false);
+  const dragRef = useRef<{ y: number; base: number } | null>(null);
+  const peekOffset = () => Math.round(window.innerHeight * 0.44);
 
-  const onTouchStart = (e: RTouchEvent) => {
-    const t = e.touches[0];
-    swipeStart.current = { x: t.clientX, y: t.clientY };
-    swiping.current = false;
-  };
-  const onTouchMove = (e: RTouchEvent) => {
+  useEffect(() => {
     const el = sheetRef.current;
-    if (!swipeStart.current || !el) return;
-    const t = e.touches[0];
-    const dx = t.clientX - swipeStart.current.x;
-    const dy = t.clientY - swipeStart.current.y;
-    if (!swiping.current) {
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      // Only a mostly-horizontal rightward drag starts a swipe; otherwise it's
-      // a normal vertical scroll, so bail out and leave it alone.
-      if (dx <= 0 || Math.abs(dx) < Math.abs(dy)) {
-        swipeStart.current = null;
-        return;
-      }
-      swiping.current = true;
-      el.style.transition = "none";
-    }
-    el.style.transform = `translateX(${Math.max(0, dx)}px)`;
+    if (!el || !isMobile) return;
+    el.style.transition = "transform 300ms cubic-bezier(0.32, 0.72, 0, 1)";
+    el.style.transform = `translateY(${expanded ? 0 : peekOffset()}px)`;
+  }, [isMobile, expanded]);
+
+  const onGrabStart = (e: RTouchEvent) => {
+    dragRef.current = { y: e.touches[0].clientY, base: expanded ? 0 : peekOffset() };
+    if (sheetRef.current) sheetRef.current.style.transition = "none";
   };
-  const onTouchEnd = () => {
+  const onGrabMove = (e: RTouchEvent) => {
     const el = sheetRef.current;
-    if (swiping.current && el) {
-      const dx = parseFloat(el.style.transform.replace(/[^0-9.-]/g, "")) || 0;
-      el.style.transition = "transform 220ms cubic-bezier(0.32, 0.72, 0, 1)";
-      if (dx > Math.min(130, window.innerWidth * 0.3)) {
-        el.style.transform = "translateX(100%)";
-        window.setTimeout(onClose, 200);
-      } else {
-        el.style.transform = "";
-      }
+    if (!dragRef.current || !el) return;
+    const dy = e.touches[0].clientY - dragRef.current.y;
+    el.style.transform = `translateY(${Math.max(0, dragRef.current.base + dy)}px)`;
+  };
+  const onGrabEnd = () => {
+    const el = sheetRef.current;
+    if (!dragRef.current || !el) return;
+    const y = parseFloat(el.style.transform.replace(/[^0-9.-]/g, "")) || 0;
+    const peek = peekOffset();
+    el.style.transition = "transform 260ms cubic-bezier(0.32, 0.72, 0, 1)";
+    if (y > peek + window.innerHeight * 0.12) {
+      el.style.transform = "translateY(100%)";
+      window.setTimeout(onClose, 240);
+    } else if (y < peek * 0.5) {
+      el.style.transform = "translateY(0px)";
+      setExpanded(true);
+    } else {
+      el.style.transform = `translateY(${peek}px)`;
+      setExpanded(false);
     }
-    swipeStart.current = null;
-    swiping.current = false;
+    dragRef.current = null;
   };
 
   return (
     <aside
       ref={sheetRef}
-      className="detail-sheet"
+      className={`detail-sheet ${isMobile ? "sheet-mobile" : ""}`}
       aria-label={`Application ${d.planning_reference}`}
       role="dialog"
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
     >
+      {isMobile && (
+        <div
+          className="sheet-grabber"
+          onTouchStart={onGrabStart}
+          onTouchMove={onGrabMove}
+          onTouchEnd={onGrabEnd}
+          aria-hidden="true"
+        >
+          <span className="grabber-bar" />
+        </div>
+      )}
       <div className="sheet-top">
         <div className="sheet-status">
           {/* The national dataset lags the council portal, so a baked "unknown"
