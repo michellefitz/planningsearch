@@ -57,12 +57,12 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
         </button>
         <button
           type="button"
-          className="btn"
+          className="btn btn-icon"
           onClick={onNearMe}
           title="Search near my location"
           aria-label="Search near my location"
         >
-          📍 Near me
+          <span aria-hidden="true">📍</span>
         </button>
       </form>
       {open && (

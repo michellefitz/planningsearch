@@ -120,7 +120,7 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
           />
           Limit to current map area
         </label>
-        <label className="toggle-row">
+        <label className="toggle-row sort-row">
           Sort by{" "}
           <select
             value={state.sort}

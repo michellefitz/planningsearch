@@ -258,20 +258,38 @@ body {
 
 .search-bar form {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
 }
 
 .search-input {
-  flex: 1 1 100%;
-  padding: 0.6rem 0.85rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.8rem;
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   color: var(--ink);
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: 999px;
   background: var(--surface);
   transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+/* Compact round buttons sit on the same row as the input. */
+.search-bar .btn {
+  flex: none;
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+}
+
+/* Icon-only "near me" — the label lives in the tooltip/aria-label. */
+.search-bar .btn-icon {
+  padding: 0.45rem;
+  width: 2.1rem;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
 .search-input::placeholder {
@@ -349,9 +367,17 @@ body {
 /* ---------- Filters ---------- */
 
 .filters {
-  margin: 0.75rem 0 0.25rem;
+  margin: 0.6rem 0 0.2rem;
   border-bottom: 1px solid var(--line);
-  padding-bottom: 0.35rem;
+  padding-bottom: 0.3rem;
+}
+
+/* Separate the filter groups with hairlines rather than whitespace — reads as
+   a tidy panel instead of a tall stack. */
+.filters[open] fieldset + fieldset {
+  border-top: 1px solid var(--line);
+  margin-top: 0.45rem;
+  padding-top: 0.5rem;
 }
 
 .filters summary {
@@ -400,34 +426,34 @@ body {
 
 .filters fieldset {
   border: 0;
-  padding: 0.55rem 0 0.2rem;
+  padding: 0.45rem 0 0;
   margin: 0;
 }
 
 .filters legend {
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   color: var(--ink-3);
   padding: 0;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.3rem;
 }
 
 .chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.28rem;
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
   border: 1px solid transparent;
   border-radius: 999px;
-  padding: 0.28rem 0.7rem;
-  font-size: 0.78rem;
+  padding: 0.22rem 0.62rem;
+  font-size: 0.755rem;
   font-weight: 450;
   color: var(--ink-2);
   background: var(--surface-2);
@@ -466,41 +492,58 @@ body {
 .date-row {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   color: var(--ink-3);
 }
 
 .date-row input {
-  padding: 0.35rem 0.5rem;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0.3rem 0.45rem;
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--ink);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
 }
 
+/* The checkbox stays pinned top-left while the label + hint wrap as one
+   flowing block — otherwise long labels form ragged two-column text. */
 .toggle-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.45rem;
-  font-size: 0.82rem;
+  font-size: 0.79rem;
+  line-height: 1.45;
   color: var(--ink-2);
-  padding: 0.22rem 0;
+  padding: 0.16rem 0;
+}
+
+.toggle-row input[type="checkbox"] {
+  flex: none;
+  margin-top: 0.18rem;
 }
 
 .toggle-row select {
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.79rem;
   color: var(--ink);
-  padding: 0.3rem 0.45rem;
+  padding: 0.25rem 0.4rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface);
 }
 
+/* Sort sits on one line with its control, not wrapped like the checkboxes. */
+.toggle-row.sort-row {
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
 .hint {
   color: var(--ink-3);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-style: normal;
 }
 
@@ -711,6 +754,11 @@ body {
   }
   .search-bar .btn {
     padding: 0.55rem 0.9rem;
+  }
+  /* Keep the icon button square and thumb-sized (the rule above would stretch it). */
+  .search-bar .btn-icon {
+    width: 2.6rem;
+    padding: 0.55rem;
   }
   .filters summary {
     padding: 0.5rem 0;
@@ -1750,24 +1798,35 @@ a.pill:hover {
 }
 
 /* ---- Agent chat ---- */
+/* Segmented control: one inset track, the active segment lifted out of it. */
 .mode-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 10px;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 0.6rem;
+  background: var(--surface-2);
+  border-radius: 999px;
 }
 .mode-tabs button {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
-  font: inherit;
+  padding: 0.3rem 1.15rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--ink-2);
   cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.mode-tabs button:hover {
+  color: var(--ink);
 }
 .mode-tabs .tab-active {
-  background: var(--action);
-  border-color: var(--action);
-  color: #fff;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.09);
 }
 .chat-wrap {
   display: flex;
