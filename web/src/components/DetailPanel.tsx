@@ -317,7 +317,10 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
         >
           <img
             src={
-              `https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${loc}&source=outdoor` +
+              // fov=110 (default 90): our coordinate is the *site centroid*, not
+              // the building frontage, so a narrow cone aimed at it can leave the
+              // house at the edge of frame. A wider shot keeps the frontage in view.
+              `https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${loc}&source=outdoor&fov=110` +
               (pano.heading != null ? `&heading=${pano.heading}` : "") +
               `&key=${GMAPS_KEY}`
             }
