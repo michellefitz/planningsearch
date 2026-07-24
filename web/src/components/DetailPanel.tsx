@@ -155,9 +155,47 @@ function withGlossary(text: string, glossary: Record<string, string>): JSX.Eleme
 
 /** Google Maps satellite view centred on the property, via the documented Maps
  *  URLs API (basemap=satellite) — the legacy `?q=…&t=k` hack no longer switches
- *  to aerial, so it opened a plain map instead. */
+ *  to aerial, so it opened a plain map instead. This opens *consumer* Google
+ *  Maps (google.com/maps), which is unaffected by the EEA Platform terms. */
 const aerialUrl = (lat: number, lng: number): string =>
   `https://www.google.com/maps/@?api=1&map_action=map&center=${lat},${lng}&zoom=19&basemap=satellite`;
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+
+/**
+ * Static aerial thumbnail for the inline preview.
+ *
+ * Google's Maps Static API can't be used here: as of the EEA Platform terms
+ * (8 Jul 2025), Satellite/Hybrid map types are no longer served to projects on
+ * an EEA billing account, and Google Maps Content may not be shown "with or near
+ * a non-Google map" — and our base map is OpenStreetMap/MapLibre. So the inline
+ * thumbnail comes from a non-Google source.
+ *
+ * Preferred: Mapbox Satellite (freshest imagery) when VITE_MAPBOX_TOKEN is set.
+ * Fallback: Esri World Imagery (keyless, same ArcGIS family as our zoning/flood
+ * layers), a ~230m-wide 16:9 Web-Mercator export around the point.
+ */
+const esriAerial = (lat: number, lng: number): string => {
+  const R = 20037508.342789244;
+  const x = (lng * R) / 180;
+  const y = (R * Math.log(Math.tan(((90 + lat) * Math.PI) / 360))) / Math.PI;
+  const halfW = 190;
+  const halfH = (halfW * 360) / 640;
+  const bbox = `${x - halfW},${y - halfH},${x + halfW},${y + halfH}`;
+  return (
+    "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export" +
+    `?bbox=${bbox}&bboxSR=3857&imageSR=3857&size=640,360&format=jpg&f=image`
+  );
+};
+
+const mapboxAerial = (lat: number, lng: number): string =>
+  `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
+  `pin-s+e11d48(${lng},${lat})/${lng},${lat},16.5,0/640x360@2x` +
+  `?access_token=${MAPBOX_TOKEN}`;
+
+/** Non-Google satellite thumbnail: Mapbox when a token is configured, else Esri. */
+const aerialThumb = (lat: number, lng: number): string =>
+  MAPBOX_TOKEN ? mapboxAerial(lat, lng) : esriAerial(lat, lng);
 
 /** Open the property in Google Maps — Street View and satellite when we have
  *  coordinates, otherwise an address search (official Maps URLs API, no key). */
@@ -269,7 +307,7 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
       )}
       <a href={aerialUrl(d.lat!, d.lng!)} target="_blank" rel="noopener noreferrer" className="media-tile">
         <img
-          src={`https://maps.googleapis.com/maps/api/staticmap?center=${loc}&zoom=18&maptype=satellite&size=640x360&markers=color:red%7C${loc}&key=${GMAPS_KEY}`}
+          src={aerialThumb(d.lat!, d.lng!)}
           alt={`Aerial view of ${d.address_text ?? "the property"}`}
           loading="lazy"
           onError={onImgError}
