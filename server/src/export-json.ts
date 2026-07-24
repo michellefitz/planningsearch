@@ -12,6 +12,7 @@ import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js
 import { generateSeedRecords } from "./seed.js";
 import { featureToRecord, fetchAllSince, SERVICE_URL } from "./ingest/arcgis.js";
 import { buildPprIndex, lookupPpr } from "./ingest/ppr.js";
+import { fetchKildareRecent, eplanningItemToRecord } from "./ingest/eplanning-list.js";
 import { buildCommencementIndex, lookupCommencement } from "./ingest/bcms.js";
 import type { ApplicationRecord } from "./db.js";
 
@@ -92,8 +93,33 @@ async function main() {
     commencement_units?: number | null;
     commencement_count?: number | null;
   };
-  const apps: BundledApp[] = records.map((r, i) => ({ id: i + 1, ...r }));
   const now = new Date().toISOString();
+
+  // Kildare live top-up: the national DHLGH feed trails Kildare by ~months, so
+  // pull the last 42 days straight off the council register (eplanning list
+  // search) and add any not yet in the feed. Best-effort — a failure must not
+  // sink the deploy. These carry no coordinates (map pins come later).
+  if (dataSource === "live") {
+    try {
+      console.log("Fetching recent Kildare applications from eplanning (list search) …");
+      const items = await fetchKildareRecent(42, console.log);
+      const have = new Set(
+        records.filter((r) => r.authority_id === "kildare").map((r) => r.planning_reference)
+      );
+      let added = 0;
+      for (const item of items) {
+        if (have.has(item.reference)) continue;
+        have.add(item.reference);
+        records.push(eplanningItemToRecord(item, now));
+        added++;
+      }
+      console.log(`Kildare live: added ${added} recent applications ahead of the national feed.`);
+    } catch (err) {
+      console.error("Kildare live top-up failed (national data unaffected):", err);
+    }
+  }
+
+  const apps: BundledApp[] = records.map((r, i) => ({ id: i + 1, ...r }));
 
   // Join Property Price Register sales by normalized address — only for
   // addresses with a house/unit number (townland-only addresses are shared

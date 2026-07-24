@@ -109,6 +109,102 @@ export function parseTotalPages(html: string): number {
   return m ? Math.max(1, Number(m[1])) : 1;
 }
 
+const EPLAN_BASE = "https://www.eplanning.ie/KildareCC";
+const UA_HEADERS = {
+  "User-Agent": "PlanView/0.1 (planning register viewer; respectful build-time fetch)",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+};
+const TIMEOUT_MS = 20_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Session/antiforgery cookies from a response, joined into a Cookie header. */
+function cookieHeader(res: Response, extra: string[] = []): string {
+  const h = res.headers as unknown as {
+    getSetCookie?: () => string[];
+    get: (k: string) => string | null;
+  };
+  const set = typeof h.getSetCookie === "function" ? h.getSetCookie() : [];
+  // Fallback for runtimes without getSetCookie: the combined header.
+  const raw = set.length ? set : h.get("set-cookie") ? [h.get("set-cookie") as string] : [];
+  const pairs = raw.map((c) => c.split(";")[0].trim()).filter(Boolean);
+  return [...pairs, ...extra].join("; ");
+}
+
+/**
+ * Fetch recent Kildare applications from the eplanning "Applications Received"
+ * list search (max window 42 days). Loads the form for a session cookie + a
+ * matching antiforgery token, POSTs the list search, then walks the result
+ * pages (held in session). Never throws for the caller to guard the build.
+ */
+export async function fetchKildareRecent(
+  days = 42,
+  log: (msg: string) => void = () => {}
+): Promise<EplanningListItem[]> {
+  const formRes = await fetchWithTimeout(`${EPLAN_BASE}/SearchListing/RECEIVED`, {
+    headers: { ...UA_HEADERS, Cookie: "eplancomplianceCookie=on" },
+  });
+  const formHtml = await formRes.text();
+  const token = formHtml.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/i)?.[1];
+  if (!token) throw new Error("eplanning: no antiforgery token on the search form");
+  const cookies = cookieHeader(formRes, ["eplancomplianceCookie=on"]);
+
+  // Mirror the browser's POST body exactly (captured form fields).
+  const body = new URLSearchParams();
+  body.append("__RequestVerificationToken", token);
+  body.append("AppStatus", "0"); // Applications Received
+  body.append("CheckBoxList[0].Id", "0");
+  body.append("CheckBoxList[0].Name", "Kildare County Council");
+  body.append("CheckBoxList[0].IsSelected", "true");
+  body.append("CheckBoxList[0].IsSelected", "false"); // ASP.NET checkbox true/false pair
+  body.append("RdoTimeLimit", String(days));
+  body.append("SearchType", "Listing");
+  body.append("CountyTownCount", "1");
+  body.append("CountyTownCouncilNames", "Kildare County Council:0,");
+
+  const first = await fetchWithTimeout(`${EPLAN_BASE}/searchresults`, {
+    method: "POST",
+    headers: {
+      ...UA_HEADERS,
+      "Content-Type": "application/x-www-form-urlencoded",
+      Cookie: cookies,
+      Origin: "https://www.eplanning.ie",
+      Referer: `${EPLAN_BASE}/SearchListing/RECEIVED`,
+    },
+    body: body.toString(),
+  });
+  const firstHtml = await first.text();
+  const items = parseEplanningList(firstHtml);
+  const seen = new Set(items.map((i) => i.eplanningId));
+  const pages = parseTotalPages(firstHtml);
+  log(`  eplanning Kildare received (${days}d): page 1/${pages}, ${items.length} rows`);
+
+  // Later pages are plain GETs against the session-held search.
+  for (let p = 2; p <= pages; p++) {
+    const res = await fetchWithTimeout(`${EPLAN_BASE}/searchresults/Default/${p}`, {
+      headers: { ...UA_HEADERS, Cookie: cookies },
+    });
+    let n = 0;
+    for (const row of parseEplanningList(await res.text())) {
+      if (seen.has(row.eplanningId)) continue;
+      seen.add(row.eplanningId);
+      items.push(row);
+      n++;
+    }
+    log(`  eplanning Kildare received: page ${p}/${pages}, +${n} rows`);
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return items;
+}
+
 /** Map one list row onto the canonical record (Kildare, no coordinates). */
 export function eplanningItemToRecord(item: EplanningListItem, now: string): ApplicationRecord {
   return {
