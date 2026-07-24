@@ -96,10 +96,14 @@ export default function App() {
       const d = await api.detail(id);
       setDetail(d);
       if (d.lat != null && d.lng != null) setFlyTo({ lat: d.lat, lng: d.lng });
+      const save = savedByKey.get(saveKey(d.authority_id, d.planning_reference));
+      if (save?.has_update) {
+        accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
+      }
     } catch {
       setError("Could not load that application.");
     }
-  }, []);
+  }, [savedByKey, refreshMe]);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -296,6 +300,8 @@ export default function App() {
                 selectedId={selectedId}
                 onSelect={select}
                 onHover={setHoveredId}
+                savedByKey={savedByKey}
+                onToggleSave={toggleSave}
               />
             </div>
           </div>
@@ -393,6 +399,8 @@ export default function App() {
               setSelectedId(null);
             }}
             onSelectRelated={select}
+            saved={savedByKey.has(saveKey(detail.authority_id, detail.planning_reference))}
+            onToggleSave={() => toggleSave(detail.authority_id, detail.planning_reference)}
           />
         </>
       )}

@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "./MapView";
+import SaveStar from "./SaveStar";
 
 /**
  * Application detail (PRD F3) presented as a right-hand overlay sheet.
@@ -20,6 +21,8 @@ interface Props {
   meta: Meta | null;
   onClose: () => void;
   onSelectRelated: (id: number) => void;
+  saved: boolean;
+  onToggleSave: () => void;
 }
 
 interface TimelineStep {
@@ -1088,7 +1091,7 @@ function useIsMobile(): boolean {
   return m;
 }
 
-export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated }: Props) {
+export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated, saved, onToggleSave }: Props) {
   const glossary = meta?.glossary ?? {};
   const isMobile = useIsMobile();
   const isEplanning =
@@ -1409,8 +1412,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
           {d.portal_url && (
             <a
               className="btn btn-primary"
-              // Agile portals need a click-time internal-id lookup for a
-              // working deep link; the resolver 302s to the right page.
               href={d.portal_resolver ? `/api/applications/${d.id}/portal` : d.portal_url}
               target="_blank"
               rel="noopener noreferrer"
@@ -1418,6 +1419,13 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated 
               Official {d.authority_short_name} portal ↗
             </a>
           )}
+          <button
+            type="button"
+            className={`save-action ${saved ? "save-action-on" : ""}`}
+            onClick={onToggleSave}
+          >
+            <SaveStar saved={saved} onToggle={onToggleSave} label inline />
+          </button>
         </div>
       </header>
 

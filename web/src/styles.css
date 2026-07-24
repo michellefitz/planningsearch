@@ -1893,3 +1893,11 @@ a.pill:hover {
 .account-saves button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; cursor: pointer; font-size: 14px; }
 .badge-updated { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--action-tint); color: var(--action); font-size: 11px; font-weight: 600; }
 .tab-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--action); margin-left: 6px; vertical-align: middle; }
+.save-star { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); cursor: pointer; padding: 2px; border-radius: 6px; }
+.save-star:hover { color: var(--action); background: var(--action-tint); }
+.save-star-on { color: #e8a13a; }
+.save-star em { font-style: normal; font-size: 13px; font-weight: 600; }
+.save-action { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: var(--radius); padding: 8px 12px; cursor: pointer; color: var(--ink-3); }
+.save-action:hover { color: var(--action); border-color: var(--action); background: var(--action-tint); }
+.save-action-on { color: #e8a13a; border-color: #e8a13a; }
+.save-action em { font-style: normal; font-size: 13px; font-weight: 600; }
