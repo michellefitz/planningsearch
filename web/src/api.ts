@@ -300,6 +300,10 @@ export const api = {
     }>(`/api/applications/${id}/decision-summary`),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
+  resolve: (authority: string, reference: string) =>
+    getJson<{ id: number }>(
+      `/api/resolve?authority=${encodeURIComponent(authority)}&reference=${encodeURIComponent(reference)}`
+    ),
   overlay: (layer: "zoning" | "flood", bbox: [number, number, number, number]) =>
     getJson<GeoJSON.FeatureCollection>(`/api/overlays/${layer}?bbox=${bbox.join(",")}`),
 };
