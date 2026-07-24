@@ -190,7 +190,7 @@ const esriAerial = (lat: number, lng: number): string => {
 
 const mapboxAerial = (lat: number, lng: number): string =>
   `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-  `pin-s+e11d48(${lng},${lat})/${lng},${lat},16.5,0/640x360@2x` +
+  `pin-s+e11d48(${lng},${lat})/${lng},${lat},17.5,0/640x360@2x` +
   `?access_token=${MAPBOX_TOKEN}`;
 
 /** Non-Google satellite thumbnail: Mapbox when a token is configured, else Esri. */
