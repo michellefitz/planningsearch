@@ -1,4 +1,4 @@
-import type { Meta, SearchState } from "../api";
+import { DEFAULT_STATUSES, type Meta, type SearchState } from "../api";
 import { STATUS_STYLE } from "./MapView";
 
 interface Props {
@@ -138,10 +138,19 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
   );
 }
 
+/** The Status filter counts toward the badge only when narrowed from its
+ *  default (everything except invalid/incomplete) — the default view is "clean",
+ *  not a filtered state the user set. */
+function statusesCustomised(s: SearchState): boolean {
+  if (s.statuses.length !== DEFAULT_STATUSES.length) return true;
+  const set = new Set(s.statuses);
+  return DEFAULT_STATUSES.some((k) => !set.has(k));
+}
+
 function countActive(s: SearchState): number {
   return (
     s.authorities.length +
-    s.statuses.length +
+    (statusesCustomised(s) ? 1 : 0) +
     s.types.length +
     (s.domesticOnly ? 1 : 0) +
     (s.appealedOnly ? 1 : 0) +

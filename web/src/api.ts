@@ -145,10 +145,27 @@ export interface SearchState {
   sort: string;
 }
 
+// Canonical status keys, kept in step with STATUS_STYLE (MapView). "invalid"
+// and "incomplete" are noise for most users (applications that never proceeded),
+// so they're hidden by default — but they stay as toggleable Status chips, so
+// the default selection is every status except those two.
+export const HIDDEN_BY_DEFAULT_STATUSES = ["invalid", "incomplete"];
+export const DEFAULT_STATUSES = [
+  "pending",
+  "further_info",
+  "granted",
+  "refused",
+  "withdrawn",
+  "appealed",
+  "split",
+  "decided",
+  "unknown",
+];
+
 export const EMPTY_SEARCH: SearchState = {
   q: "",
   authorities: [],
-  statuses: [],
+  statuses: [...DEFAULT_STATUSES],
   types: [],
   domesticOnly: false,
   appealedOnly: false,
