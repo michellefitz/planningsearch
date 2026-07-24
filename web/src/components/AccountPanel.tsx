@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { accountApi, type Me, type SavedApp, type SavedList } from "../accountApi";
+import type { PointFeatureCollection } from "../api";
 import { StatusBadge } from "./ResultsList";
+import MapView from "./MapView";
 
 interface Props {
   me: Me | null;
@@ -171,7 +173,7 @@ function CompactRow({
 export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSearch }: Props) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [view, setView] = useState<"cards" | "list">("cards");
+  const [view, setView] = useState<"cards" | "list" | "map">("cards");
   const [activeList, setActiveList] = useState<number | "all">("all");
   const [newListName, setNewListName] = useState("");
   const [creatingList, setCreatingList] = useState(false);
@@ -240,6 +242,33 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
   const activeIds = activeListObj ? new Set(activeListObj.item_ids) : null;
   const filtered = activeIds ? saves.filter((s) => activeIds.has(s.id)) : saves;
   const sorted = sortSaves(filtered);
+
+  const mappable = sorted.filter((s) => s.app && s.app.lat != null && s.app.lng != null);
+  const unmappedCount = sorted.length - mappable.length;
+
+  const mapGeoJson: PointFeatureCollection = {
+    type: "FeatureCollection",
+    features: mappable.map((s) => ({
+      type: "Feature" as const,
+      geometry: {
+        type: "Point" as const,
+        coordinates: [s.app!.lng!, s.app!.lat!] as [number, number],
+      },
+      properties: {
+        id: s.app!.id,
+        reference: s.app!.planning_reference,
+        status: s.app!.status,
+        authority_id: s.app!.authority_id,
+        address: s.app!.address_text,
+        is_domestic_guess: s.app!.is_domestic_guess,
+      },
+    })),
+  };
+
+  const handleMapSelect = (id: number) => {
+    const match = saves.find((s) => s.app?.id === id);
+    if (match) void onOpenApp(match.authority_id, match.planning_reference);
+  };
 
   return (
     <div className="account-panel">
@@ -415,6 +444,13 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                   >
                     List
                   </button>
+                  <button
+                    type="button"
+                    className={view === "map" ? "on" : ""}
+                    onClick={() => setView("map")}
+                  >
+                    Map
+                  </button>
                 </div>
               </div>
 
@@ -423,6 +459,30 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                   <strong>Nothing in this list yet</strong>
                   <p>Add saved applications to it from their cards.</p>
                 </div>
+              ) : view === "map" ? (
+                mappable.length === 0 ? (
+                  <div className="account-empty">
+                    <strong>No mapped locations</strong>
+                    <p>None of these applications have coordinates to show on a map.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="account-map-wrap">
+                      <MapView
+                        data={mapGeoJson}
+                        selectedId={null}
+                        hoveredId={null}
+                        onSelect={handleMapSelect}
+                        onBoundsChange={() => {}}
+                      />
+                    </div>
+                    {unmappedCount > 0 && (
+                      <p className="account-map-note">
+                        {unmappedCount} without map location{unmappedCount === 1 ? "" : "s"}
+                      </p>
+                    )}
+                  </>
+                )
               ) : view === "cards" ? (
                 <div className="saved-grid">
                   {sorted.map((s) => (
