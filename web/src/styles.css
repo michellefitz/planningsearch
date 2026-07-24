@@ -489,6 +489,135 @@ body {
   flex: none;
 }
 
+/* ---------- Dropdown multi-select (council filter) ---------- */
+
+.ms {
+  position: relative;
+}
+
+.ms-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.36rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.79rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.ms-trigger:hover {
+  background: var(--surface-2);
+}
+
+.ms-trigger-on {
+  border-color: var(--action);
+  color: var(--action);
+  background: var(--action-tint);
+  font-weight: 550;
+}
+
+.ms-trigger:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 1px;
+}
+
+.ms-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-caret {
+  flex: none;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -2px);
+  opacity: 0.65;
+}
+
+.ms-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  right: 0;
+  padding: 0.3rem;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12);
+}
+
+.ms-filter {
+  width: 100%;
+  margin-bottom: 0.25rem;
+  padding: 0.32rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.ms-options {
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.ms-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.79rem;
+  color: var(--ink-2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ms-option:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.ms-option input {
+  flex: none;
+}
+
+.ms-empty {
+  margin: 0;
+  padding: 0.45rem;
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+
+.ms-clear {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.32rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+  cursor: pointer;
+}
+
+.ms-clear:hover {
+  color: var(--action);
+}
+
 .date-row {
   display: flex;
   align-items: center;
@@ -762,6 +891,18 @@ body {
   }
   .filters summary {
     padding: 0.5rem 0;
+  }
+  /* Dropdown rows need thumb-sized targets too. */
+  .ms-trigger {
+    padding: 0.5rem 0.8rem;
+    font-size: 0.85rem;
+  }
+  .ms-option {
+    padding: 0.55rem 0.5rem;
+    font-size: 0.85rem;
+  }
+  .ms-options {
+    max-height: 50vh;
   }
 
   /* Map zoom / locate controls — 40px targets instead of the default 29px. */
