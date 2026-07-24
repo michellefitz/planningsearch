@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { accountApi, type Me, type SavedApp, type SavedList } from "../accountApi";
 import { StatusBadge } from "./ResultsList";
 
@@ -32,6 +32,9 @@ function SavedCard({
   onRefresh: () => Promise<void>;
 }) {
   const [alertsOn, setAlertsOn] = useState(s.alerts_enabled);
+  useEffect(() => {
+    setAlertsOn(s.alerts_enabled);
+  }, [s.alerts_enabled]);
   const [busy, setBusy] = useState(false);
 
   const handleClick = () => {
