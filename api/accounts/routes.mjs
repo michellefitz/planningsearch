@@ -85,7 +85,14 @@ async function loadSaves(userId, ctx) {
 
 async function loadLists(userId) {
   const lists = await sql(
-    `select id, name, position from lists where user_id = $1 order by position, id`,
+    `select l.id, l.name, l.position,
+            coalesce(bool_and(s.alerts_enabled), true) as alerts_enabled
+     from lists l
+     left join list_items li on li.list_id = l.id
+     left join saved_apps s on s.id = li.saved_app_id
+     where l.user_id = $1
+     group by l.id, l.name, l.position
+     order by l.position, l.id`,
     [userId]
   );
   const items = await sql(
@@ -248,7 +255,7 @@ async function dispatch(req, res, route, url, ctx) {
        returning id, name, position`,
       [user.id, name]
     );
-    return sendPrivate(res, 200, { ...rows[0], item_ids: [] });
+    return sendPrivate(res, 200, { ...rows[0], alerts_enabled: true, item_ids: [] });
   }
 
   const itemDelMatch = route.match(/^\/api\/lists\/(\d+)\/items\/(\d+)$/);
