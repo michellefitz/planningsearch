@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { handleAccountRoute, isAccountRoute } from "./accounts/routes.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));
@@ -2252,6 +2253,18 @@ export default async function handler(req, res) {
 
   if (route === "/api/agent") {
     return handleAgentRoute(req, res);
+  }
+
+  if (isAccountRoute(route)) {
+    return handleAccountRoute(req, res, route, url, {
+      findApp: (authorityId, reference) =>
+        BUNDLE.applications.find(
+          (a) => a.authority_id === authorityId && a.planning_reference === reference
+        ) ?? null,
+      appSummary: (app) => publicApp(app),
+      fetchAgileDetail,
+      mapLiveStatus: (detail) => mapLiveStatus(detail?.status, detail?.decision),
+    });
   }
 
   if (route === "/api/meta") {
