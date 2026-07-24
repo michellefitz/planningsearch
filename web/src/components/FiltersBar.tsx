@@ -1,5 +1,6 @@
 import { DEFAULT_STATUSES, type Meta, type SearchState } from "../api";
 import { STATUS_STYLE } from "./MapView";
+import MultiSelect from "./MultiSelect";
 
 interface Props {
   meta: Meta | null;
@@ -19,19 +20,15 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
         {countActive(state) > 0 && <span className="filter-badge">{countActive(state)}</span>}
       </summary>
       <fieldset>
-        <legend>Authority</legend>
-        <div className="chip-row">
-          {meta?.authorities.map((a) => (
-            <label key={a.id} className={`chip ${state.authorities.includes(a.id) ? "chip-on" : ""}`}>
-              <input
-                type="checkbox"
-                checked={state.authorities.includes(a.id)}
-                onChange={() => onChange({ ...state, authorities: toggle(state.authorities, a.id) })}
-              />
-              {a.short_name}
-            </label>
-          ))}
-        </div>
+        {/* A dropdown, not chips: this list grows toward all 31 local authorities. */}
+        <legend>Council</legend>
+        <MultiSelect
+          allLabel="All councils"
+          ariaLabel="Filter by council"
+          options={(meta?.authorities ?? []).map((a) => ({ id: a.id, label: a.short_name }))}
+          selected={state.authorities}
+          onChange={(authorities) => onChange({ ...state, authorities })}
+        />
       </fieldset>
       <fieldset>
         <legend>Status</legend>
@@ -120,7 +117,7 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
           />
           Limit to current map area
         </label>
-        <label className="toggle-row">
+        <label className="toggle-row sort-row">
           Sort by{" "}
           <select
             value={state.sort}

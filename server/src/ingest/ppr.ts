@@ -6,6 +6,8 @@
  * only addresses are shared by many properties, and a wrong price is worse
  * than no price.
  */
+import { mapPool } from "./pool.js";
+import { cacheRead, cacheWrite } from "./cache.js";
 
 export interface PprSale {
   date: string; // ISO yyyy-mm-dd
@@ -34,6 +36,9 @@ export function eircodeKey(raw: string | null | undefined): string | null {
 
 const PPR_BASE =
   "https://www.propertypriceregister.ie/website/npsra/ppr/npsra-ppr.nsf/Downloads";
+
+/** County/year CSVs fetched in parallel — modest load, minutes off the build. */
+const CSV_CONCURRENCY = 5;
 
 /** Eircode as it appears embedded in free text: routing key (D6W or letter+2
  *  digits) then the 4-char unique identifier, optionally space-separated. */
@@ -174,22 +179,44 @@ export async function buildPprIndex(
     if (list) list.push(sale);
     else m.set(key, [sale]);
   };
-  for (const county of counties) {
-    for (const year of years) {
-      const sales = await fetchPprCsv(county, year);
-      if (!sales) {
-        log(`  PPR ${county} ${year}: unavailable, skipping`);
-        continue;
+  // The register spans many county/year CSVs (2010→now for two counties is 30+
+  // downloads). Fetched one at a time this was minutes of the build sitting
+  // idle on network latency, so pull a few at a time and index the results in
+  // order once they land.
+  const wanted = counties.flatMap((county) => years.map((year) => ({ county, year })));
+  // A closed year of the register never changes, so it only has to be
+  // downloaded once — later builds read it back from the build cache. The
+  // current year is always fetched fresh.
+  const thisYear = new Date().getFullYear();
+  let cached = 0;
+  const fetched = await mapPool(wanted, CSV_CONCURRENCY, async ({ county, year }) => {
+    const key = `ppr-${county}-${year}`;
+    const immutable = year < thisYear;
+    if (immutable) {
+      const hit = cacheRead<PprSale[]>(key);
+      if (hit) {
+        cached++;
+        return hit;
       }
-      for (const sale of sales) {
-        const addrKey = normalizeAddress(sale.address);
-        if (isSpecificAddress(addrKey)) push(byAddress, addrKey, sale);
-        if (sale.eircode) push(byEircode, sale.eircode, sale);
-      }
-      log(`  PPR ${county} ${year}: ${sales.length} sales`);
-      await new Promise((r) => setTimeout(r, 200)); // be polite
     }
-  }
+    const sales = await fetchPprCsv(county, year);
+    if (sales && immutable) cacheWrite(key, sales);
+    return sales;
+  });
+  if (cached) log(`  PPR: ${cached}/${wanted.length} county-years read from build cache`);
+  wanted.forEach(({ county, year }, i) => {
+    const sales = fetched[i];
+    if (!sales) {
+      log(`  PPR ${county} ${year}: unavailable, skipping`);
+      return;
+    }
+    for (const sale of sales) {
+      const addrKey = normalizeAddress(sale.address);
+      if (isSpecificAddress(addrKey)) push(byAddress, addrKey, sale);
+      if (sale.eircode) push(byEircode, sale.eircode, sale);
+    }
+    log(`  PPR ${county} ${year}: ${sales.length} sales`);
+  });
   for (const m of [byAddress, byEircode]) {
     for (const list of m.values()) list.sort((a, b) => b.date.localeCompare(a.date));
   }

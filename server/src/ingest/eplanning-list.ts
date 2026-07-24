@@ -22,6 +22,10 @@ import {
 } from "../normalize.js";
 import { extractEircode } from "./ppr.js";
 import { itmToLatLng } from "./itm.js";
+import { mapPool } from "./pool.js";
+
+/** Detail pages fetched in parallel — modest load, minutes off the build. */
+const DETAIL_CONCURRENCY = 6;
 
 const stripTags = (h: string): string => h.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 
@@ -281,12 +285,16 @@ export async function fetchKildareRecent(
 
   // Enrich each record from its detail page: exact Site Location coordinates
   // (ITM grid → WGS84) for the map pin, and the full development description
-  // (the list one is truncated). One detail fetch per record, gently paced;
-  // any failure just leaves that record with what the list gave us.
+  // (the list one is truncated). One detail fetch per record, run a few at a
+  // time — serially this dominated the build. Any failure just leaves that
+  // record with what the list gave us.
   let located = 0;
   let described = 0;
-  for (const item of items) {
-    const detail = await fetchDetail(item.eplanningId, cookies);
+  const details = await mapPool(items, DETAIL_CONCURRENCY, (item) =>
+    fetchDetail(item.eplanningId, cookies)
+  );
+  items.forEach((item, i) => {
+    const detail = details[i];
     if (detail.coords) {
       item.lat = detail.coords.lat;
       item.lng = detail.coords.lng;
@@ -297,8 +305,7 @@ export async function fetchKildareRecent(
       item.description = detail.description;
       described++;
     }
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  });
   log(
     `  eplanning Kildare received: located ${located}/${items.length} on the map, ` +
       `${described} full descriptions`

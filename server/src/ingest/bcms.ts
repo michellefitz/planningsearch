@@ -11,10 +11,15 @@
  * An Bord Pleanála reference instead of the council's.
  */
 
+import { mapPool } from "./pool.js";
+
 const DATASTORE_URL = "https://data.nbco.gov.ie/api/3/action/datastore_search";
 export const BCMS_RESOURCE_ID = "0774e781-7af8-46da-b623-872e74cf541e";
 const PAGE_SIZE = 10_000;
 const TIMEOUT_MS = 90_000;
+/** Pages pulled in parallel once the first page reports the total. The portal
+ *  can be flaky, so keep this modest. */
+const PAGE_CONCURRENCY = 4;
 
 /** LocalAuthority strings as they appear in the BCMS dataset. */
 export const BCMS_AUTHORITY_NAMES: Record<string, string> = {
@@ -143,9 +148,13 @@ export async function buildCommencementIndex(
     if (!laName) continue;
     // Dedupe per-building rows into one record per notice.
     const notices = new Map<string, { ref: string; commenced: string | null; ccc: string | null; units: number | null }>();
-    let offset = 0;
-    for (;;) {
-      const { records, total } = await fetchPage(laName, offset);
+    // The first page reports the total, so the rest can be pulled a few at a
+    // time instead of discovered one page after another.
+    const first = await fetchPage(laName, 0);
+    const offsets: number[] = [];
+    for (let o = PAGE_SIZE; o < first.total; o += PAGE_SIZE) offsets.push(o);
+    const rest = await mapPool(offsets, PAGE_CONCURRENCY, (o) => fetchPage(laName, o));
+    for (const { records } of [first, ...rest]) {
       for (const r of records) {
         const cn = String(r.CN_Number ?? "").trim();
         const ref = String(r.CN_Planning_Permission_Number ?? "").trim();
@@ -156,8 +165,6 @@ export async function buildCommencementIndex(
         const units = Math.max(num(r.CN_Total_Number_of_Dwelling_Units) ?? 0, prev?.units ?? 0) || null;
         notices.set(cn, { ref, commenced, ccc, units });
       }
-      offset += PAGE_SIZE;
-      if (offset >= total || records.length === 0) break;
     }
     log(`  BCMS ${laName}: ${notices.size} notices`);
     for (const [cn, n] of notices) {
