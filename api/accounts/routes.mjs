@@ -316,44 +316,48 @@ async function handleCron(req, res, ctx) {
 
   let eventsWritten = 0;
   await mapLimit(targets, 4, async (t) => {
-    const key = `${t.authority_id}|${t.planning_reference}`;
-    const app = ctx.findApp(t.authority_id, t.planning_reference);
-    let next = await fetchLiveNationalSnapshot(t.authority_id, t.planning_reference);
-    if (!next) next = app ? snapshotFromBundleApp(app) : null;
-    if (!next) return;
-    if (app) {
-      next.commencement_notice = app.commencement_notice ?? null;
-      next.commencement_date = app.commencement_date ?? null;
-      next.completion_date = app.completion_date ?? null;
-    }
-    if (AGILE.has(t.authority_id) && app?.source_url) {
-      try {
-        const live = await ctx.fetchAgileDetail(t.authority_id, app.source_url, t.planning_reference);
-        const mapped = ctx.mapLiveStatus(live);
-        if (mapped) next.status = mapped;
-        if (live?.decision) next.decision = live.decision;
-      } catch {
-        // agile portal down: national snapshot still stands
+    try {
+      const key = `${t.authority_id}|${t.planning_reference}`;
+      const app = ctx.findApp(t.authority_id, t.planning_reference);
+      let next = await fetchLiveNationalSnapshot(t.authority_id, t.planning_reference);
+      if (!next) next = app ? snapshotFromBundleApp(app) : null;
+      if (!next) return;
+      if (app) {
+        next.commencement_notice = app.commencement_notice ?? null;
+        next.commencement_date = app.commencement_date ?? null;
+        next.completion_date = app.completion_date ?? null;
       }
-    }
-    const prev = prevByKey.get(key);
-    if (prev) {
-      for (const e of diffSnapshots(prev, next)) {
-        await sql(
-          `insert into app_events (authority_id, planning_reference, event_type, field, old_value, new_value, summary)
-           values ($1, $2, $3, $4, $5, $6, $7)`,
-          [t.authority_id, t.planning_reference, e.event_type, e.field, e.old_value, e.new_value, e.summary]
-        );
-        eventsWritten++;
+      if (AGILE.has(t.authority_id) && app?.source_url) {
+        try {
+          const live = await ctx.fetchAgileDetail(t.authority_id, app.source_url, t.planning_reference);
+          const mapped = ctx.mapLiveStatus(live);
+          if (mapped) next.status = mapped;
+          if (live?.decision) next.decision = live.decision;
+        } catch {
+          // agile portal down: national snapshot still stands
+        }
       }
+      const prev = prevByKey.get(key);
+      if (prev) {
+        for (const e of diffSnapshots(prev, next)) {
+          await sql(
+            `insert into app_events (authority_id, planning_reference, event_type, field, old_value, new_value, summary)
+             values ($1, $2, $3, $4, $5, $6, $7)`,
+            [t.authority_id, t.planning_reference, e.event_type, e.field, e.old_value, e.new_value, e.summary]
+          );
+          eventsWritten++;
+        }
+      }
+      await sql(
+        `insert into app_snapshots (authority_id, planning_reference, snapshot, fetched_at)
+         values ($1, $2, $3::jsonb, now())
+         on conflict (authority_id, planning_reference)
+         do update set snapshot = excluded.snapshot, fetched_at = now()`,
+        [t.authority_id, t.planning_reference, JSON.stringify(next)]
+      );
+    } catch (err) {
+      console.error("check-updates: skipped", t.authority_id, t.planning_reference, err);
     }
-    await sql(
-      `insert into app_snapshots (authority_id, planning_reference, snapshot, fetched_at)
-       values ($1, $2, $3::jsonb, now())
-       on conflict (authority_id, planning_reference)
-       do update set snapshot = excluded.snapshot, fetched_at = now()`,
-      [t.authority_id, t.planning_reference, JSON.stringify(next)]
-    );
   });
 
   const origin = process.env.APP_ORIGIN ?? `https://${req.headers.host}`;
