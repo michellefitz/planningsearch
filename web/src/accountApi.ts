@@ -24,6 +24,7 @@ export interface SavedList {
   id: number;
   name: string;
   position: number;
+  alerts_enabled: boolean;
   item_ids: number[];
 }
 
