@@ -159,7 +159,7 @@ export default function App() {
     localStorage.removeItem("pv_pending_save");
     const { authorityId, reference } = JSON.parse(pending);
     void toggleSave(authorityId, reference);
-  }, [me?.user]);
+  }, [me?.user, toggleSave]);
 
   const nearMe = () => {
     if (!navigator.geolocation) {
@@ -310,8 +310,12 @@ export default function App() {
               notice={authNotice}
               onRefresh={refreshMe}
               onOpenApp={async (authorityId, reference) => {
-                const { id } = await api.resolve(authorityId, reference);
-                await select(id);
+                try {
+                  const { id } = await api.resolve(authorityId, reference);
+                  await select(id);
+                } catch {
+                  setError("That application is no longer in the current dataset.");
+                }
               }}
               onGoSearch={() => setMode("search")}
             />
