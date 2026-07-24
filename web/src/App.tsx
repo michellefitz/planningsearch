@@ -90,6 +90,20 @@ export default function App() {
     runSearch({ ...state, useMapArea: true });
   };
 
+  const refreshMe = useCallback(async () => {
+    try {
+      setMe(await accountApi.me());
+    } catch {
+      setMe({ user: null, saves: [], lists: [] });
+    }
+  }, []);
+
+  const savedByKey = useMemo(() => {
+    const m = new Map<string, SavedApp>();
+    for (const s of me?.saves ?? []) m.set(saveKey(s.authority_id, s.planning_reference), s);
+    return m;
+  }, [me]);
+
   const select = useCallback(async (id: number) => {
     setSelectedId(id);
     try {
@@ -104,20 +118,6 @@ export default function App() {
       setError("Could not load that application.");
     }
   }, [savedByKey, refreshMe]);
-
-  const refreshMe = useCallback(async () => {
-    try {
-      setMe(await accountApi.me());
-    } catch {
-      setMe({ user: null, saves: [], lists: [] });
-    }
-  }, []);
-
-  const savedByKey = useMemo(() => {
-    const m = new Map<string, SavedApp>();
-    for (const s of me?.saves ?? []) m.set(saveKey(s.authority_id, s.planning_reference), s);
-    return m;
-  }, [me]);
 
   const toggleSave = useCallback(async (authorityId: string, reference: string) => {
     if (!me?.user) {
