@@ -98,7 +98,7 @@ async function main() {
   // Kildare live top-up: the national DHLGH feed trails Kildare by ~months, so
   // pull the last 42 days straight off the council register (eplanning list
   // search) and add any not yet in the feed. Best-effort — a failure must not
-  // sink the deploy. These carry no coordinates (map pins come later).
+  // sink the deploy. Coordinates come from each detail page's Site Location tab.
   if (dataSource === "live") {
     try {
       console.log("Fetching recent Kildare applications from eplanning (list search) …");

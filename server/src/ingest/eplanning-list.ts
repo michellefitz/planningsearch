@@ -9,9 +9,9 @@
  * The File Number is both the AppFileRefDetails id and the planning reference
  * used by the national feed's ApplicationNumber, so records dedup cleanly.
  *
- * These records carry no coordinates (the map's lat/lng only comes from the
- * national feed's geometry), so they are list/search-only until the national
- * feed catches up and supersedes them.
+ * Each record's map coordinates come from its detail page's "Site Location"
+ * tab, which carries exact ITM grid coordinates (converted to WGS84) — so
+ * these show on the map straight away, ahead of the national feed's geometry.
  */
 import type { ApplicationRecord } from "../db.js";
 import {
@@ -21,6 +21,7 @@ import {
   normalizeStatus,
 } from "../normalize.js";
 import { extractEircode } from "./ppr.js";
+import { itmToLatLng } from "./itm.js";
 
 const stripTags = (h: string): string => h.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 
@@ -70,6 +71,9 @@ export interface EplanningListItem {
   applicant: string | null;
   address: string | null;
   description: string | null;
+  /** WGS84 coordinates from the detail page's Site Location tab, if fetched. */
+  lat: number | null;
+  lng: number | null;
 }
 
 /**
@@ -98,6 +102,8 @@ export function parseEplanningList(html: string): EplanningListItem[] {
       applicant: cellText(cells[6]),
       address: addressText(cells[7]),
       description: cellText(cells[8]),
+      lat: null,
+      lng: null,
     });
   }
   return out;
@@ -107,6 +113,37 @@ export function parseEplanningList(html: string): EplanningListItem[] {
 export function parseTotalPages(html: string): number {
   const m = html.match(/Page\s+\d+\s+of\s+(\d+)/i);
   return m ? Math.max(1, Number(m[1])) : 1;
+}
+
+/**
+ * Pull the site's coordinates from a detail page's "Site Location Details"
+ * table. eplanning gives exact ITM grid coordinates (Grid Eastings/Northings,
+ * EPSG:2157), which we convert to WGS84 — far better than geocoding an address.
+ *
+ * The markup is a hidden div:
+ *   <th>Grid Northings:</th><td>736395.02375417</td>
+ *   <th>Grid Eastings:</th><td>698588.1612861</td>
+ * Returns null if either coordinate is missing or lands outside Ireland's
+ * bounding box (a guard against parsing garbage).
+ */
+export function parseSiteLocation(html: string): { lat: number; lng: number } | null {
+  const north = html.match(
+    /Grid\s+Northings\s*:?\s*<\/th>\s*<td[^>]*>\s*([\d.]+)/i
+  )?.[1];
+  const east = html.match(/Grid\s+Eastings\s*:?\s*<\/th>\s*<td[^>]*>\s*([\d.]+)/i)?.[1];
+  if (!north || !east) return null;
+  const northing = Number(north);
+  const easting = Number(east);
+  if (!Number.isFinite(northing) || !Number.isFinite(easting)) return null;
+  // ITM eastings/northings for Ireland sit well inside these bounds; 0/0 or a
+  // stray small number means "no location recorded".
+  if (easting < 400_000 || easting > 800_000 || northing < 500_000 || northing > 1_000_000) {
+    return null;
+  }
+  const { lat, lng } = itmToLatLng(easting, northing);
+  // Sanity-check against Ireland's rough bounding box.
+  if (lat < 51.3 || lat > 55.5 || lng < -10.7 || lng > -5.3) return null;
+  return { lat, lng };
 }
 
 const EPLAN_BASE = "https://www.eplanning.ie/KildareCC";
@@ -123,6 +160,26 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Fetch one application's detail page and pull its Site Location coordinates.
+ * Best-effort: returns null on any error (a record without a pin is still
+ * useful in the list/search). `cookies` reuses the search session.
+ */
+async function fetchSiteLocation(
+  id: string,
+  cookies: string
+): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetchWithTimeout(`${EPLAN_BASE}/AppFileRefDetails/${id}/0`, {
+      headers: { ...UA_HEADERS, Cookie: cookies },
+    });
+    if (!res.ok) return null;
+    return parseSiteLocation(await res.text());
+  } catch {
+    return null;
   }
 }
 
@@ -202,6 +259,21 @@ export async function fetchKildareRecent(
     log(`  eplanning Kildare received: page ${p}/${pages}, +${n} rows`);
     await new Promise((r) => setTimeout(r, 300));
   }
+
+  // Enrich with map coordinates from each application's Site Location tab
+  // (exact ITM grid coordinates, converted to WGS84). One detail fetch per
+  // record, gently paced; any failure just leaves that record pin-less.
+  let located = 0;
+  for (const item of items) {
+    const coords = await fetchSiteLocation(item.eplanningId, cookies);
+    if (coords) {
+      item.lat = coords.lat;
+      item.lng = coords.lng;
+      located++;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  log(`  eplanning Kildare received: located ${located}/${items.length} on the map`);
   return items;
 }
 
@@ -241,10 +313,10 @@ export function eplanningItemToRecord(item: EplanningListItem, now: string): App
     floor_area_sqm: null,
     site_area_ha: null,
     expiry_date: null,
-    // No coordinates from the register list — list/search-only until the
-    // national feed (with geometry) supersedes this record.
-    lat: null,
-    lng: null,
+    // Coordinates come from the detail page's Site Location tab (exact ITM
+    // grid coordinates → WGS84); null if that page had none.
+    lat: item.lat,
+    lng: item.lng,
     geom_polygon: null,
     source_url: `https://www.eplanning.ie/KildareCC/AppFileRefDetails/${item.eplanningId}/0`,
     last_synced: now,

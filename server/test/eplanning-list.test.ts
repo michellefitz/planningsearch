@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   eplanningItemToRecord,
   parseEplanningList,
+  parseSiteLocation,
   parseTotalPages,
 } from "../src/ingest/eplanning-list.js";
 
@@ -67,6 +68,39 @@ describe("parseEplanningList", () => {
   it("reads the total page count", () => {
     expect(parseTotalPages(HTML)).toBe(4);
     expect(parseTotalPages("<div>no pager</div>")).toBe(1);
+  });
+});
+
+// The hidden Site Location section of a detail page (AppFileRefDetails/{id}/0).
+const SITE_LOCATION_HTML = `
+<div id="DivSiteLocation" title="Site Location Section" style="display: none">
+<table class="table table-bordered">
+  <tr><td colspan="4"><h3>Site Location Details</h3></td></tr>
+  <tr>
+    <th>Grid Northings:</th><td>736395.02375417</td>
+    <th>Grid Eastings:</th><td>698588.1612861</td>
+  </tr>
+  <tr>
+    <th>Site Area:</th><td>0.033</td>
+    <th>Area Unit:</th><td>Hectares</td>
+  </tr>
+</table></div>`;
+
+describe("parseSiteLocation", () => {
+  it("converts ITM grid coordinates to a Kildare lat/lng", () => {
+    const coords = parseSiteLocation(SITE_LOCATION_HTML);
+    expect(coords).not.toBeNull();
+    expect(coords!.lat).toBeCloseTo(53.3685, 3);
+    expect(coords!.lng).toBeCloseTo(-6.5186, 3);
+  });
+
+  it("returns null when the section has no coordinates", () => {
+    expect(parseSiteLocation("<div id='DivSiteLocation'>no coords here</div>")).toBeNull();
+  });
+
+  it("rejects out-of-range grid values", () => {
+    const bad = `<th>Grid Northings:</th><td>0</td><th>Grid Eastings:</th><td>0</td>`;
+    expect(parseSiteLocation(bad)).toBeNull();
   });
 });
 
