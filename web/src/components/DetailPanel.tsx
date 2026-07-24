@@ -255,23 +255,44 @@ function formatPanoDate(raw: string): string {
   return month ? `${month} ${m[1]}` : m[1];
 }
 
+/** Compass bearing (deg, 0–360) from one lat/lng to another — used to aim the
+ *  Street View camera from the chosen panorama toward the property, so it faces
+ *  the building instead of pointing along the road. */
+function bearing(fromLat: number, fromLng: number, toLat: number, toLng: number): number {
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const φ1 = toRad(fromLat);
+  const φ2 = toRad(toLat);
+  const Δλ = toRad(toLng - fromLng);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * 180) / Math.PI; // Google accepts negative headings
+}
+
 function PropertyMedia({ detail: d }: { detail: AppDetail }) {
-  // null = no panorama / not loaded; object (with optional date) = coverage.
-  const [pano, setPano] = useState<{ date: string | null } | null>(null);
+  // null = no panorama / not loaded; object = coverage (with optional date and
+  // a heading that aims the camera from the pano toward the property).
+  const [pano, setPano] = useState<{ date: string | null; heading: number | null } | null>(null);
   const hasCoords = d.lat != null && d.lng != null;
 
   useEffect(() => {
     setPano(null);
     if (!GMAPS_KEY || !hasCoords) return;
     const ctrl = new AbortController();
+    // source=outdoor keeps it to road-level panoramas (no indoor/business shots);
+    // the returned pano location lets us point the camera at the building.
     fetch(
-      `https://maps.googleapis.com/maps/api/streetview/metadata?location=${d.lat},${d.lng}&key=${GMAPS_KEY}`,
+      `https://maps.googleapis.com/maps/api/streetview/metadata?location=${d.lat},${d.lng}&source=outdoor&key=${GMAPS_KEY}`,
       { signal: ctrl.signal }
     )
       .then((r) => r.json())
-      .then((m: { status: string; date?: string }) =>
-        setPano(m.status === "OK" ? { date: m.date ?? null } : null)
-      )
+      .then((m: { status: string; date?: string; location?: { lat: number; lng: number } }) => {
+        if (m.status !== "OK") return setPano(null);
+        const heading =
+          m.location && (m.location.lat !== d.lat! || m.location.lng !== d.lng!)
+            ? Math.round(bearing(m.location.lat, m.location.lng, d.lat!, d.lng!))
+            : null;
+        setPano({ date: m.date ?? null, heading });
+      })
       .catch(() => setPano(null));
     return () => ctrl.abort();
   }, [d.id, d.lat, d.lng, hasCoords]);
@@ -295,7 +316,11 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
           className="media-tile"
         >
           <img
-            src={`https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${loc}&key=${GMAPS_KEY}`}
+            src={
+              `https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${loc}&source=outdoor` +
+              (pano.heading != null ? `&heading=${pano.heading}` : "") +
+              `&key=${GMAPS_KEY}`
+            }
             alt={`Street View of ${d.address_text ?? "the property"}`}
             loading="lazy"
             onError={onImgError}
