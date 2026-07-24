@@ -29,9 +29,10 @@ describe("buildDigestEmail", () => {
     expect(text).toContain(ENTRY.url);
   });
 
-  it("html body carries address, summaries and the link", () => {
+  it("html body carries address, reference, summaries and the link", () => {
     const { html } = buildDigestEmail([ENTRY]);
     expect(html).toContain("12 Main Street, Maynooth");
+    expect(html).toContain("KE26/0123");
     expect(html).toContain("Decision issued: GRANT PERMISSION");
     expect(html).toContain(ENTRY.url);
     expect(html).toContain("PlanView");

@@ -25,7 +25,7 @@ export function buildDigestEmail(entries) {
     <ul style="margin:10px 0 12px;padding-left:18px;font-size:14px;line-height:1.6;color:#5c6370;">
       ${e.summaries.map((s) => `<li>${esc(s)}</li>`).join("")}
     </ul>
-    <a href="${e.url}" style="font-size:13px;font-weight:600;color:#0b62d6;text-decoration:none;">View application →</a>
+    <a href="${esc(e.url)}" style="font-size:13px;font-weight:600;color:#0b62d6;text-decoration:none;">View application →</a>
   </div>
 </td></tr>`
     )
