@@ -159,25 +159,6 @@ function withGlossary(text: string, glossary: Record<string, string>): JSX.Eleme
 const aerialUrl = (lat: number, lng: number): string =>
   `https://www.google.com/maps/@?api=1&map_action=map&center=${lat},${lng}&zoom=19&basemap=satellite`;
 
-/**
- * Static aerial thumbnail from Esri World Imagery (public ArcGIS service, no key
- * — the same family we already use for zoning/flood). Replaces the Google Maps
- * Static API, which needs its own API to be enabled/billed separately from
- * Street View. Builds a ~230m-wide, 16:9 Web-Mercator bbox around the point.
- */
-const esriAerial = (lat: number, lng: number): string => {
-  const R = 20037508.342789244;
-  const x = (lng * R) / 180;
-  const y = (R * Math.log(Math.tan(((90 + lat) * Math.PI) / 360))) / Math.PI;
-  const halfW = 190;
-  const halfH = (halfW * 360) / 640;
-  const bbox = `${x - halfW},${y - halfH},${x + halfW},${y + halfH}`;
-  return (
-    "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export" +
-    `?bbox=${bbox}&bboxSR=3857&imageSR=3857&size=640,360&format=jpg&f=image`
-  );
-};
-
 /** Open the property in Google Maps — Street View and satellite when we have
  *  coordinates, otherwise an address search (official Maps URLs API, no key). */
 function MapLinks({ detail: d }: { detail: AppDetail }) {
@@ -288,7 +269,7 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
       )}
       <a href={aerialUrl(d.lat!, d.lng!)} target="_blank" rel="noopener noreferrer" className="media-tile">
         <img
-          src={esriAerial(d.lat!, d.lng!)}
+          src={`https://maps.googleapis.com/maps/api/staticmap?center=${loc}&zoom=18&maptype=satellite&size=640x360&markers=color:red%7C${loc}&key=${GMAPS_KEY}`}
           alt={`Aerial view of ${d.address_text ?? "the property"}`}
           loading="lazy"
           onError={onImgError}
