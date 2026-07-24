@@ -268,30 +268,105 @@ function bearing(fromLat: number, fromLng: number, toLat: number, toLng: number)
   return (Math.atan2(y, x) * 180) / Math.PI; // Google accepts negative headings
 }
 
+/** Metres between two lat/lng points (haversine). */
+function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Points to ask Google for a panorama: the site itself plus a ring around it.
+ *  Google returns the pano *nearest each point*, so probing outward surfaces
+ *  panoramas on surrounding roads — not just the one nearest the plot centre. */
+const PROBE_RADIUS_M = 35;
+const PROBE_BEARINGS = [0, 45, 90, 135, 180, 225, 270, 315];
+/** Ignore candidates further than this from the site — too far to be useful. */
+const MAX_PANO_DISTANCE_M = 90;
+
+function probePoints(lat: number, lng: number): Array<{ lat: number; lng: number }> {
+  const points = [{ lat, lng }];
+  for (const b of PROBE_BEARINGS) {
+    const rad = (b * Math.PI) / 180;
+    const dLat = (PROBE_RADIUS_M * Math.cos(rad)) / 111320;
+    const dLng = (PROBE_RADIUS_M * Math.sin(rad)) / (111320 * Math.cos((lat * Math.PI) / 180));
+    points.push({ lat: lat + dLat, lng: lng + dLng });
+  }
+  return points;
+}
+
+interface PanoCandidate {
+  panoId: string;
+  date: string | null;
+  lat: number;
+  lng: number;
+}
+
 function PropertyMedia({ detail: d }: { detail: AppDetail }) {
-  // null = no panorama / not loaded; object = coverage (with optional date and
-  // a heading that aims the camera from the pano toward the property).
-  const [pano, setPano] = useState<{ date: string | null; heading: number | null } | null>(null);
+  // null = no panorama / not loaded; object = the chosen panorama, with the
+  // heading that aims it from the pano back at the property.
+  const [pano, setPano] = useState<{
+    panoId: string;
+    date: string | null;
+    heading: number | null;
+  } | null>(null);
   const hasCoords = d.lat != null && d.lng != null;
 
   useEffect(() => {
     setPano(null);
     if (!GMAPS_KEY || !hasCoords) return;
     const ctrl = new AbortController();
-    // source=outdoor keeps it to road-level panoramas (no indoor/business shots);
-    // the returned pano location lets us point the camera at the building.
-    fetch(
-      `https://maps.googleapis.com/maps/api/streetview/metadata?location=${d.lat},${d.lng}&source=outdoor&key=${GMAPS_KEY}`,
-      { signal: ctrl.signal }
+    const lat = d.lat!;
+    const lng = d.lng!;
+
+    // Probe the site and a ring around it. Google always returns the *nearest*
+    // panorama to the point asked for, so asking only at the plot centre can
+    // land on a side road when a better (newer) pano exists on the frontage.
+    // Metadata requests are free, so we can afford to look around and choose.
+    Promise.all(
+      probePoints(lat, lng).map((p) =>
+        fetch(
+          `https://maps.googleapis.com/maps/api/streetview/metadata?location=${p.lat},${p.lng}&source=outdoor&key=${GMAPS_KEY}`,
+          { signal: ctrl.signal }
+        )
+          .then((r) => r.json())
+          .catch(() => null)
+      )
     )
-      .then((r) => r.json())
-      .then((m: { status: string; date?: string; location?: { lat: number; lng: number } }) => {
-        if (m.status !== "OK") return setPano(null);
-        const heading =
-          m.location && (m.location.lat !== d.lat! || m.location.lng !== d.lng!)
-            ? Math.round(bearing(m.location.lat, m.location.lng, d.lat!, d.lng!))
-            : null;
-        setPano({ date: m.date ?? null, heading });
+      .then((results) => {
+        const byId = new Map<string, PanoCandidate>();
+        for (const m of results) {
+          if (!m || m.status !== "OK" || !m.pano_id || !m.location) continue;
+          if (distanceM(lat, lng, m.location.lat, m.location.lng) > MAX_PANO_DISTANCE_M) continue;
+          if (!byId.has(m.pano_id)) {
+            byId.set(m.pano_id, {
+              panoId: m.pano_id,
+              date: m.date ?? null,
+              lat: m.location.lat,
+              lng: m.location.lng,
+            });
+          }
+        }
+        const candidates = [...byId.values()];
+        if (!candidates.length) return setPano(null);
+        // Prefer the most recent imagery; fall back to the closest on a tie.
+        candidates.sort((a, b) => {
+          const byDate = (b.date ?? "").localeCompare(a.date ?? "");
+          if (byDate !== 0) return byDate;
+          return (
+            distanceM(lat, lng, a.lat, a.lng) - distanceM(lat, lng, b.lat, b.lng)
+          );
+        });
+        const best = candidates[0];
+        setPano({
+          panoId: best.panoId,
+          date: best.date,
+          heading: Math.round(bearing(best.lat, best.lng, lat, lng)),
+        });
       })
       .catch(() => setPano(null));
     return () => ctrl.abort();
@@ -305,22 +380,27 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
   };
 
   if (!GMAPS_KEY || !hasCoords) return null;
-  const loc = `${d.lat},${d.lng}`;
   return (
     <div className="media-row">
       {pano && (
         <a
-          href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${loc}`}
+          // Open the same panorama we picked, aimed the same way, so the
+          // click-through matches the thumbnail.
+          href={
+            `https://www.google.com/maps/@?api=1&map_action=pano&pano=${pano.panoId}` +
+            (pano.heading != null ? `&heading=${pano.heading}` : "")
+          }
           target="_blank"
           rel="noopener noreferrer"
           className="media-tile"
         >
           <img
             src={
-              // fov=110 (default 90): our coordinate is the *site centroid*, not
-              // the building frontage, so a narrow cone aimed at it can leave the
-              // house at the edge of frame. A wider shot keeps the frontage in view.
-              `https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${loc}&source=outdoor&fov=110` +
+              // Render the panorama we chose by id (not location, which would
+              // re-pick the nearest one). fov=110 (default 90): our coordinate is
+              // the site centroid, not the building frontage, so a narrow cone can
+              // leave the house at the edge of frame.
+              `https://maps.googleapis.com/maps/api/streetview?size=640x360&pano=${pano.panoId}&fov=110` +
               (pano.heading != null ? `&heading=${pano.heading}` : "") +
               `&key=${GMAPS_KEY}`
             }
