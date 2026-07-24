@@ -20,7 +20,11 @@ import {
   normalizeStatus,
 } from "../normalize.js";
 import { extractEircode } from "./ppr.js";
+import { mapPool } from "./pool.js";
 import type { ApplicationRecord } from "../db.js";
+
+/** Feature pages fetched in parallel once the total count is known. */
+const PAGE_CONCURRENCY = 6;
 
 export const SERVICE_URL =
   process.env.PLANVIEW_ARCGIS_URL ??
@@ -220,6 +224,20 @@ export interface FetchPageOptions {
   signal?: AbortSignal;
 }
 
+/** Total matching features, so pages can be fetched in parallel rather than
+ *  discovered one at a time. Null if the service won't answer a count query. */
+export async function fetchCount(where: string): Promise<number | null> {
+  const params = new URLSearchParams({ f: "json", where, returnCountOnly: "true" });
+  try {
+    const res = await fetch(`${SERVICE_URL}/query?${params}`);
+    if (!res.ok) return null;
+    const body = (await res.json()) as { count?: number };
+    return typeof body.count === "number" ? body.count : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchPage(opts: FetchPageOptions): Promise<ArcgisFeature[]> {
   const params = new URLSearchParams({
     f: "json",
@@ -251,29 +269,59 @@ export function buildWhereClause(sinceIso?: string): string {
   return `${authorityClause} AND ${FIELD_MAP.received} >= TIMESTAMP '${sinceIso} 00:00:00'`;
 }
 
-/** Fetch every matching feature since a date, paginated with polite retries. */
+/** One page with a couple of retries — the public service occasionally blips. */
+async function fetchPageWithRetry(
+  where: string,
+  offset: number,
+  pageSize: number
+): Promise<ArcgisFeature[]> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fetchPage({ where, offset, pageSize });
+    } catch (err) {
+      if (attempt === 3) throw err;
+      await new Promise((r) => setTimeout(r, attempt * 2000));
+    }
+  }
+}
+
+/**
+ * Fetch every matching feature since a date.
+ *
+ * Asking for the count first turns pagination from a serial walk (fetch a page,
+ * discover whether there's another, repeat) into a set of known offsets we can
+ * pull a few at a time — the single biggest chunk of build time. Ordering by
+ * OBJECTID keeps the offsets stable across requests. Falls back to the serial
+ * walk if the service won't give a count.
+ */
 export async function fetchAllSince(
   sinceIso: string,
   onPage?: (fetched: number) => void
 ): Promise<ArcgisFeature[]> {
   const where = buildWhereClause(sinceIso);
-  const all: ArcgisFeature[] = [];
   const pageSize = 1000;
+  const total = await fetchCount(where);
+
+  if (total != null) {
+    const offsets: number[] = [];
+    for (let o = 0; o < total; o += pageSize) offsets.push(o);
+    let done = 0;
+    const pages = await mapPool(offsets, PAGE_CONCURRENCY, async (offset) => {
+      const features = await fetchPageWithRetry(where, offset, pageSize);
+      done += features.length;
+      onPage?.(done);
+      return features;
+    });
+    return pages.flat();
+  }
+
+  // No count available — walk the pages in order until one comes up short.
+  const all: ArcgisFeature[] = [];
   for (let offset = 0; ; offset += pageSize) {
-    let features: ArcgisFeature[] | null = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        features = await fetchPage({ where, offset, pageSize });
-        break;
-      } catch (err) {
-        if (attempt === 3) throw err;
-        await new Promise((r) => setTimeout(r, attempt * 2000));
-      }
-    }
-    all.push(...features!);
+    const features = await fetchPageWithRetry(where, offset, pageSize);
+    all.push(...features);
     onPage?.(all.length);
-    if (features!.length < pageSize) break;
-    await new Promise((r) => setTimeout(r, 300)); // be polite to the public service
+    if (features.length < pageSize) break;
   }
   return all;
 }

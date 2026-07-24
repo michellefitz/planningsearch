@@ -7,6 +7,7 @@
  * than no price.
  */
 import { mapPool } from "./pool.js";
+import { cacheRead, cacheWrite } from "./cache.js";
 
 export interface PprSale {
   date: string; // ISO yyyy-mm-dd
@@ -183,9 +184,26 @@ export async function buildPprIndex(
   // idle on network latency, so pull a few at a time and index the results in
   // order once they land.
   const wanted = counties.flatMap((county) => years.map((year) => ({ county, year })));
-  const fetched = await mapPool(wanted, CSV_CONCURRENCY, ({ county, year }) =>
-    fetchPprCsv(county, year)
-  );
+  // A closed year of the register never changes, so it only has to be
+  // downloaded once — later builds read it back from the build cache. The
+  // current year is always fetched fresh.
+  const thisYear = new Date().getFullYear();
+  let cached = 0;
+  const fetched = await mapPool(wanted, CSV_CONCURRENCY, async ({ county, year }) => {
+    const key = `ppr-${county}-${year}`;
+    const immutable = year < thisYear;
+    if (immutable) {
+      const hit = cacheRead<PprSale[]>(key);
+      if (hit) {
+        cached++;
+        return hit;
+      }
+    }
+    const sales = await fetchPprCsv(county, year);
+    if (sales && immutable) cacheWrite(key, sales);
+    return sales;
+  });
+  if (cached) log(`  PPR: ${cached}/${wanted.length} county-years read from build cache`);
   wanted.forEach(({ county, year }, i) => {
     const sales = fetched[i];
     if (!sales) {
