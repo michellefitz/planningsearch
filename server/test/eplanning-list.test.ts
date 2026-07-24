@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   eplanningItemToRecord,
   parseEplanningList,
+  parseFullDescription,
   parseSiteLocation,
   parseTotalPages,
 } from "../src/ingest/eplanning-list.js";
@@ -101,6 +102,37 @@ describe("parseSiteLocation", () => {
   it("rejects out-of-range grid values", () => {
     const bad = `<th>Grid Northings:</th><td>0</td><th>Grid Eastings:</th><td>0</td>`;
     expect(parseSiteLocation(bad)).toBeNull();
+  });
+});
+
+// The Development tab of a detail page, with the full (untruncated) text.
+const DEVELOPMENT_HTML = `
+<div class="tab-pane fade" id="Development">
+  <table class="table">
+    <tr><th class="AppDetailsTableHeader" colspan="4"><h4>Proposed Development</h4></th></tr>
+    <tr>
+      <th>Development Description: </th>
+      <td colspan="3">(a) 16 no. single-storey stables with associated shed structures, (b) 1 no. horse walker, (c) and ancillary site works, and permission for the removal of Condition No. 2 attached to Planning Reference No. 01/518</td>
+    </tr>
+    <tr>
+      <th>Development Address: </th>
+      <td colspan="3">Newlands North,, Kilcullen,, Co. Kildare</td>
+    </tr>
+  </table>
+</div>`;
+
+describe("parseFullDescription", () => {
+  it("extracts the complete development description", () => {
+    const desc = parseFullDescription(DEVELOPMENT_HTML);
+    expect(desc).toBe(
+      "(a) 16 no. single-storey stables with associated shed structures, " +
+        "(b) 1 no. horse walker, (c) and ancillary site works, and permission " +
+        "for the removal of Condition No. 2 attached to Planning Reference No. 01/518"
+    );
+  });
+
+  it("returns null when the field is absent", () => {
+    expect(parseFullDescription("<div>no development tab</div>")).toBeNull();
   });
 });
 

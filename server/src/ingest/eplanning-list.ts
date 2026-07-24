@@ -126,6 +126,20 @@ export function parseTotalPages(html: string): number {
  * Returns null if either coordinate is missing or lands outside Ireland's
  * bounding box (a guard against parsing garbage).
  */
+/**
+ * Pull the full development description from a detail page's "Development" tab.
+ * The list search only carries a truncated description; the detail page has the
+ * complete text in:
+ *   <th>Development Description: </th><td colspan="3">…full text…</td>
+ * Returns null if the field is absent or empty.
+ */
+export function parseFullDescription(html: string): string | null {
+  const m = html.match(/Development Description\s*:?\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+  if (!m) return null;
+  const text = decodeEntities(stripTags(m[1])).trim();
+  return text || null;
+}
+
 export function parseSiteLocation(html: string): { lat: number; lng: number } | null {
   const north = html.match(
     /Grid\s+Northings\s*:?\s*<\/th>\s*<td[^>]*>\s*([\d.]+)/i
@@ -163,23 +177,28 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
   }
 }
 
+export interface EplanningDetail {
+  coords: { lat: number; lng: number } | null;
+  /** Full development description (the list one is truncated). */
+  description: string | null;
+}
+
 /**
- * Fetch one application's detail page and pull its Site Location coordinates.
- * Best-effort: returns null on any error (a record without a pin is still
- * useful in the list/search). `cookies` reuses the search session.
+ * Fetch one application's detail page and pull its Site Location coordinates
+ * and full development description in a single request. Best-effort: returns
+ * nulls on any error (a record without a pin/full description is still useful).
+ * `cookies` reuses the search session.
  */
-async function fetchSiteLocation(
-  id: string,
-  cookies: string
-): Promise<{ lat: number; lng: number } | null> {
+async function fetchDetail(id: string, cookies: string): Promise<EplanningDetail> {
   try {
     const res = await fetchWithTimeout(`${EPLAN_BASE}/AppFileRefDetails/${id}/0`, {
       headers: { ...UA_HEADERS, Cookie: cookies },
     });
-    if (!res.ok) return null;
-    return parseSiteLocation(await res.text());
+    if (!res.ok) return { coords: null, description: null };
+    const html = await res.text();
+    return { coords: parseSiteLocation(html), description: parseFullDescription(html) };
   } catch {
-    return null;
+    return { coords: null, description: null };
   }
 }
 
@@ -260,20 +279,30 @@ export async function fetchKildareRecent(
     await new Promise((r) => setTimeout(r, 300));
   }
 
-  // Enrich with map coordinates from each application's Site Location tab
-  // (exact ITM grid coordinates, converted to WGS84). One detail fetch per
-  // record, gently paced; any failure just leaves that record pin-less.
+  // Enrich each record from its detail page: exact Site Location coordinates
+  // (ITM grid → WGS84) for the map pin, and the full development description
+  // (the list one is truncated). One detail fetch per record, gently paced;
+  // any failure just leaves that record with what the list gave us.
   let located = 0;
+  let described = 0;
   for (const item of items) {
-    const coords = await fetchSiteLocation(item.eplanningId, cookies);
-    if (coords) {
-      item.lat = coords.lat;
-      item.lng = coords.lng;
+    const detail = await fetchDetail(item.eplanningId, cookies);
+    if (detail.coords) {
+      item.lat = detail.coords.lat;
+      item.lng = detail.coords.lng;
       located++;
+    }
+    // Prefer the fuller detail-page text over the truncated list description.
+    if (detail.description && detail.description.length > (item.description?.length ?? 0)) {
+      item.description = detail.description;
+      described++;
     }
     await new Promise((r) => setTimeout(r, 200));
   }
-  log(`  eplanning Kildare received: located ${located}/${items.length} on the map`);
+  log(
+    `  eplanning Kildare received: located ${located}/${items.length} on the map, ` +
+      `${described} full descriptions`
+  );
   return items;
 }
 
