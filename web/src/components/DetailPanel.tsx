@@ -190,7 +190,7 @@ const esriAerial = (lat: number, lng: number): string => {
 
 const mapboxAerial = (lat: number, lng: number): string =>
   `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-  `pin-s+e11d48(${lng},${lat})/${lng},${lat},17.5,0/640x360@2x` +
+  `${lng},${lat},17.5,0/640x360@2x` +
   `?access_token=${MAPBOX_TOKEN}`;
 
 /** Non-Google satellite thumbnail: Mapbox when a token is configured, else Esri. */
@@ -312,6 +312,18 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
           loading="lazy"
           onError={onImgError}
         />
+        {/* The image is centred on the property, so the tile centre marks it. */}
+        <span className="aerial-pin" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="30" height="30">
+            <path
+              d="M12 2C8.1 2 5 5.1 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.9-3.1-7-7-7z"
+              fill="#e11d48"
+              stroke="#fff"
+              strokeWidth="1.6"
+            />
+            <circle cx="12" cy="9" r="2.6" fill="#fff" />
+          </svg>
+        </span>
         <span className="media-label">Aerial ↗</span>
       </a>
     </div>
