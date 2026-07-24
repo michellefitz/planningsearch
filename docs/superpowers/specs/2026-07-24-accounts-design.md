@@ -89,17 +89,20 @@ a clear "check your inbox" state.
 - Endpoints (session-authed): `POST/DELETE /api/saves`, `PATCH /api/saves/:id`
   (alerts toggle, mark seen), `POST/PATCH/DELETE /api/lists`,
   `POST/DELETE /api/lists/:id/items`. All keyed by authority + planning reference.
-- At save time the server seeds `app_snapshots` immediately from live data, so the
-  first digest never misreports "changes" that are just initial observation.
+- At save time the server seeds `app_snapshots` from the bundle record — the exact
+  state the user was looking at when they saved — so the first digest never misreports
+  "changes" that are just initial observation.
 
 ## Change detection & digest
 
 Vercel cron → `GET /api/cron/check-updates` daily, protected by `CRON_SECRET` header.
 
 1. Collect distinct (`authority_id`, `planning_reference`) across all alert-enabled saves.
-2. Fetch live state per application, reusing the existing enrichment fetch paths:
-   national ArcGIS dataset (status/decision/appeal), Agile API (Dublin councils),
-   Kildare eplanning, BCMS (commencements).
+2. Fetch live state per application: a per-reference query against the national
+   ArcGIS dataset (status/decision/appeal, all five councils), overlaid with the
+   live Agile API status for the four Dublin councils. Commencement fields come from
+   the bundle, which regenerates each deploy. (Kildare-live via the eplanning parser
+   is a logged v2 follow-up.)
 3. Diff against `app_snapshots` on the update-relevant fields. Write `app_events`
    with human summaries, e.g. "Decision issued: Granted with conditions",
    "Appeal lodged with An Coimisiún Pleanála", "Commencement notice filed — work is
@@ -160,4 +163,5 @@ Follow the existing hand-rolled component style (no component libraries), existi
 - Neon Postgres project + `DATABASE_URL` (HTTP endpoint) in Vercel env
 - Resend API key (`RESEND_API_KEY`) + verified sending domain
 - `CRON_SECRET` env var; `crons` entry in `vercel.json` (daily)
-- `SESSION_SECRET` for cookie/token hashing
+- (No signing secret needed: sessions are DB-backed, stored as SHA-256 of
+  high-entropy random tokens)
