@@ -1,0 +1,91 @@
+import { describe, expect, it } from "vitest";
+import {
+  eplanningItemToRecord,
+  parseEplanningList,
+  parseTotalPages,
+} from "../src/ingest/eplanning-list.js";
+
+// Trimmed from the real Kildare searchresults page (Applications Received, 7 days).
+const HTML = `
+<table class="table table-striped table-bordered table-condensed table-hover">
+  <tr>
+    <th><a href="/KildareCC/searchresults/File_Number_desc">File Number</a></th>
+    <th><a href="/KildareCC/searchresults/application_status">Application Status</a></th>
+    <th><a href="/KildareCC/searchresults/decduedate">Decision Due Date</a></th>
+    <th><a href="/KildareCC/searchresults/decdate">Decision Date</a></th>
+    <th><a href="/KildareCC/searchresults/decisioncode">Decision Code</a></th>
+    <th><a href="/KildareCC/searchresults/recvdate">Received Date</a></th>
+    <th><a href="/KildareCC/searchresults/applicname">Applicant Name</a></th>
+    <th><a href="/KildareCC/searchresults/devaddress">Development Address</a></th>
+    <th>Development Description</th>
+    <th>Local Authority Name</th>
+  </tr>
+  <tr>
+    <td><a href="/KildareCC/AppFileRefDetails/2660816/0">2660816</a></td>
+    <td>NEW APPLICATION</td>
+    <td>10/09/2026</td>
+    <td></td>
+    <td></td>
+    <td>17/07/2026</td>
+    <td>David Hughes</td>
+    <td>4 Whitethorn Grove<br/>Celbridge<br/>County Kildare<br/>W23XY04<br/></td>
+    <td>Widen the existing recessed vehicular entrance and adjust the boundary line to footpath...</td>
+    <td>Kildare Co. Co.</td>
+  </tr>
+  <tr>
+    <td><a href="/KildareCC/AppFileRefDetails/2660819/0">2660819</a></td>
+    <td>NEW APPLICATION</td>
+    <td>13/09/2026</td>
+    <td></td>
+    <td></td>
+    <td>17/07/2026</td>
+    <td>Heritage Cremation and Burial Gardens Ltd</td>
+    <td>Derrymullen,<br/>Allenwood,<br/>Co. Kildare,<br/><br/></td>
+    <td>Retention permission for an existing earth berm, and peripheral of site...</td>
+    <td>Kildare Co. Co.</td>
+  </tr>
+</table>
+<div>Page 1 of 4 (33 Applications)</div>`;
+
+describe("parseEplanningList", () => {
+  it("parses the received-applications results rows", () => {
+    const rows = parseEplanningList(HTML);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      eplanningId: "2660816",
+      reference: "2660816",
+      statusText: "NEW APPLICATION",
+      receivedDate: "2026-07-17",
+      decisionDueDate: "2026-09-10",
+      decisionDate: null,
+      applicant: "David Hughes",
+    });
+    expect(rows[0].address).toBe("4 Whitethorn Grove, Celbridge, County Kildare, W23XY04");
+    expect(rows[0].description).toContain("Widen the existing recessed vehicular entrance");
+  });
+
+  it("reads the total page count", () => {
+    expect(parseTotalPages(HTML)).toBe(4);
+    expect(parseTotalPages("<div>no pager</div>")).toBe(1);
+  });
+});
+
+describe("eplanningItemToRecord", () => {
+  it("maps a NEW APPLICATION row to a pending Kildare record with eircode + type", () => {
+    const [row] = parseEplanningList(HTML);
+    const rec = eplanningItemToRecord(row, "2026-07-24T00:00:00Z");
+    expect(rec.authority_id).toBe("kildare");
+    expect(rec.planning_reference).toBe("2660816");
+    expect(rec.status).toBe("pending"); // "NEW APPLICATION"
+    expect(rec.received_date).toBe("2026-07-17");
+    expect(rec.eircode).toBe("W23 XY04"); // pulled from the address
+    expect(rec.lat).toBeNull();
+    expect(rec.source_url).toBe("https://www.eplanning.ie/KildareCC/AppFileRefDetails/2660816/0");
+  });
+
+  it("infers retention from the description", () => {
+    const rows = parseEplanningList(HTML);
+    const rec = eplanningItemToRecord(rows[1], "2026-07-24T00:00:00Z");
+    expect(rec.application_type).toBe("retention");
+  });
+});
