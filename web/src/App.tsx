@@ -240,10 +240,6 @@ export default function App() {
         <h1>
           PlanView <span className="beta">beta</span>
         </h1>
-        <p className="tagline">
-          Planning applications for Dublin City, Fingal, Dún Laoghaire-Rathdown, South Dublin &amp;
-          Kildare — one search, one map.
-        </p>
         {/* Account lives in the top bar, where a web app puts it — not as a
             third panel tab. Signing in and the dashboard are app-level
             destinations, not modes of the search panel. */}

@@ -85,24 +85,9 @@ body {
   vertical-align: 0.15em;
 }
 
-/* Truncates rather than wrapping, so the account nav stays on the brand row
-   at narrower desktop widths. */
-.tagline {
-  margin: 0;
-  /* basis 0, not auto: with flex-wrap the line breaks on the hypothetical
-     size, so an auto basis wraps the nav instead of letting this shrink. */
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.8rem;
-  color: var(--ink-3);
-}
-
 /* ---------- Top-bar account nav ---------- */
 
-/* Pushed to the right of the brand/tagline, as in any ordinary web app. */
+/* Pushed to the right of the wordmark, as in any ordinary web app. */
 .app-nav {
   margin-left: auto;
   display: flex;
@@ -293,10 +278,8 @@ body {
   .app-header {
     padding: 0.5rem 1rem;
   }
-  /* Header collapses to just the app name + beta; the strapline and the
-     data-source footer are dropped to reclaim vertical space (attribution
+  /* The data-source footer is dropped to reclaim vertical space (attribution
      still shows on every application's detail sheet). */
-  .tagline,
   .app-footer {
     display: none;
   }
