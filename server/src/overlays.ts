@@ -1,15 +1,22 @@
 /**
- * Map overlays: polygon layers (zoning, flood) fetched from ArcGIS as GeoJSON
- * for the current map viewport. Proxied through us so the browser needs no
- * cross-origin access, and so we can bbox-limit, simplify and cap the payload.
- * These are the same services the per-application zoning/flood lookups use.
+ * Map overlays: polygon layers (zoning, flood, conservation) fetched from
+ * ArcGIS as GeoJSON for the current map viewport. Proxied through us so the
+ * browser needs no cross-origin access, and so we can bbox-limit, simplify
+ * and cap the payload.
  */
 import { GZT_URL } from "./zoning.js";
 import { FLOOD_URL } from "./flood.js";
 
 const TIMEOUT_MS = 12_000;
 
-export type OverlayLayer = "zoning" | "flood";
+// NPWS Special Areas of Conservation (Natura 2000), DHLGH's hosted layer.
+// The npws.ie webservices host is dead; this ArcGIS Online mirror is the
+// live public endpoint (CC-BY, via data.gov.ie).
+export const SAC_URL =
+  process.env.PLANVIEW_SAC_URL ??
+  "https://services-eu1.arcgis.com/Jhij7i46ouO8Cc0N/arcgis/rest/services/NPWSDesignatedAreas/FeatureServer/3/query";
+
+export type OverlayLayer = "zoning" | "flood" | "conservation";
 
 interface OverlayConfig {
   url: string;
@@ -20,6 +27,7 @@ interface OverlayConfig {
 const OVERLAYS: Record<OverlayLayer, OverlayConfig> = {
   zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,GZT_DESC,PLAN_NAME" },
   flood: { url: FLOOD_URL, where: "1=1", outFields: "*" },
+  conservation: { url: SAC_URL, where: "1=1", outFields: "SITECODE,SITE_NAME,URL" },
 };
 
 /**
@@ -73,6 +81,12 @@ function transformFeatures(layer: OverlayLayer, features: unknown[]): unknown[] 
         zone_general: s(p.GZT_DESC),
         plan: s(p.PLAN_NAME),
       };
+    } else if (layer === "conservation") {
+      f.properties = {
+        site_name: s(p.SITE_NAME) || "Special Area of Conservation",
+        site_code: s(p.SITECODE),
+        site_url: s(p.URL),
+      };
     } else {
       f.properties = { flood_label: floodLabel(p) };
     }
@@ -88,7 +102,7 @@ export interface GeoJson {
 }
 
 export function isOverlayLayer(v: string): v is OverlayLayer {
-  return v === "zoning" || v === "flood";
+  return v === "zoning" || v === "flood" || v === "conservation";
 }
 
 /**

@@ -1803,6 +1803,10 @@ body {
   font-size: 0.75rem;
   color: var(--ink-3);
 }
+a.ov-pop-sub {
+  color: var(--action);
+  text-decoration: underline;
+}
 
 .legend {
   position: absolute;

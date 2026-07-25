@@ -827,10 +827,17 @@ async function fetchFlood(lat, lng, trace) {
   }
 }
 
-// Map overlays (zoning, flood) as GeoJSON for a viewport. Mirrors server/src/overlays.ts.
+// Map overlays (zoning, flood, conservation) as GeoJSON for a viewport.
+// Mirrors server/src/overlays.ts.
+// NPWS SACs: the npws.ie webservices host is dead; this DHLGH ArcGIS Online
+// mirror is the live public endpoint (CC-BY, via data.gov.ie).
+const SAC_URL =
+  process.env.PLANVIEW_SAC_URL ??
+  "https://services-eu1.arcgis.com/Jhij7i46ouO8Cc0N/arcgis/rest/services/NPWSDesignatedAreas/FeatureServer/3/query";
 const OVERLAY_CONFIG = {
   zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,GZT_DESC,PLAN_NAME" },
   flood: { url: FLOOD_URL, where: "1=1", outFields: "*" },
+  conservation: { url: SAC_URL, where: "1=1", outFields: "SITECODE,SITE_NAME,URL" },
 };
 const EMPTY_FC = { type: "FeatureCollection", features: [] };
 
@@ -871,6 +878,12 @@ function ovTransform(layer, features) {
         zone_code: ovStr(p.ZONE_ORIG),
         zone_general: ovStr(p.GZT_DESC),
         plan: ovStr(p.PLAN_NAME),
+      };
+    } else if (layer === "conservation") {
+      f.properties = {
+        site_name: ovStr(p.SITE_NAME) || "Special Area of Conservation",
+        site_code: ovStr(p.SITECODE),
+        site_url: ovStr(p.URL),
       };
     } else {
       f.properties = { flood_label: ovFloodLabel(p) };
@@ -2404,7 +2417,7 @@ export default async function handler(req, res) {
     return send(res, 200, { supported: true, flood });
   }
 
-  const om = route.match(/^\/api\/overlays\/(zoning|flood)$/);
+  const om = route.match(/^\/api\/overlays\/(zoning|flood|conservation)$/);
   if (om) {
     const bbox = parseBbox(p.get("bbox"));
     if (!bbox) return send(res, 200, { type: "FeatureCollection", features: [] });

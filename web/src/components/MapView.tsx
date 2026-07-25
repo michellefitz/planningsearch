@@ -5,10 +5,10 @@ import { api, type PointFeatureCollection } from "../api";
 
 /** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport.
     Flood extents removed 2026-07: the source service now requires a token and
-    the OPW publishes no public API — rebuild from their shapefiles (backlog).
-    Conservation areas are the next layer to add here. */
-type OverlayKey = "zoning";
+    the OPW publishes no public API — rebuild from their shapefiles (backlog). */
+type OverlayKey = "zoning" | "conservation";
 const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; line: string; label: string }> = {
+  conservation: { fill: "#2e8f5b", fillOpacity: 0.28, line: "#1d6b41", label: "Conservation (SAC)" },
   zoning: { fill: "#14b8a6", fillOpacity: 0.22, line: "#0f766e", label: "Zoning" },
 };
 // Overlays are only meaningful (and light enough to fetch) when zoomed in.
@@ -78,14 +78,14 @@ export default function MapView({
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
 
-  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false });
+  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false });
   const [layersOpen, setLayersOpen] = useState(false);
   const [mapZoom, setMapZoom] = useState(7);
   const overlaysRef = useRef(overlays);
   overlaysRef.current = overlays;
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const zoomRef = useRef(7);
-  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0 });
+  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0 });
   // Latest overlay-refresh closure, so the map's one-off event handlers can
   // always call the current version (which reads live state via refs).
   const applyRef = useRef<(layer: OverlayKey) => void>(() => {});
@@ -178,18 +178,30 @@ export default function MapView({
           const f = e.features?.[0];
           if (!f) return;
           const pr = f.properties ?? {};
-          const code = String(pr.zone_code ?? "").trim();
-          const name = String(pr.zone_label ?? "").trim();
-          const general = String(pr.zone_general ?? "").trim();
-          // "Z1: Sustainable Residential Neighbourhoods"
-          const head = code && name && name.toLowerCase() !== code.toLowerCase() ? `${code}: ${name}` : name || code || "Zone";
-          const showGeneral = general && general.toLowerCase() !== name.toLowerCase();
-          const html =
-            `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(head)}</strong>` +
-            (showGeneral ? `<span class="ov-pop-gen"> · ${escapeHtml(general)}</span>` : "") +
-            `</div><span class="ov-pop-tag">${escapeHtml(ZONE_GROUPS[pr.zone_group as string]?.label ?? "Zoning")}</span>` +
-            (pr.plan ? `<span class="ov-pop-sub">${escapeHtml(pr.plan)}</span>` : "") +
-            `</div>`;
+          let html: string;
+          if (layer === "conservation") {
+            const url = String(pr.site_url ?? "").trim();
+            html =
+              `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(String(pr.site_name ?? "Special Area of Conservation"))}</strong></div>` +
+              `<span class="ov-pop-tag">Special Area of Conservation</span>` +
+              (url.startsWith("https://")
+                ? `<a class="ov-pop-sub" href="${escapeHtml(url)}" target="_blank" rel="noopener">Site details on npws.ie</a>`
+                : "") +
+              `</div>`;
+          } else {
+            const code = String(pr.zone_code ?? "").trim();
+            const name = String(pr.zone_label ?? "").trim();
+            const general = String(pr.zone_general ?? "").trim();
+            // "Z1: Sustainable Residential Neighbourhoods"
+            const head = code && name && name.toLowerCase() !== code.toLowerCase() ? `${code}: ${name}` : name || code || "Zone";
+            const showGeneral = general && general.toLowerCase() !== name.toLowerCase();
+            html =
+              `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(head)}</strong>` +
+              (showGeneral ? `<span class="ov-pop-gen"> · ${escapeHtml(general)}</span>` : "") +
+              `</div><span class="ov-pop-tag">${escapeHtml(ZONE_GROUPS[pr.zone_group as string]?.label ?? "Zoning")}</span>` +
+              (pr.plan ? `<span class="ov-pop-sub">${escapeHtml(pr.plan)}</span>` : "") +
+              `</div>`;
+          }
           new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
             .setLngLat(e.lngLat)
             .setHTML(html)
