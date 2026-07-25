@@ -1674,6 +1674,7 @@ body {
 /* ---------- Map legend ---------- */
 
 /* Overlay toggles, top-left of the map */
+/* Layers control: one small button; the box of toggles opens beneath it. */
 .map-overlays {
   position: absolute;
   left: 0.6rem;
@@ -1681,16 +1682,63 @@ body {
   z-index: 5;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+.layers-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(26, 29, 33, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: var(--radius);
+  padding: 0.32rem 0.6rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 550;
+  color: var(--ink-2);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(26, 29, 33, 0.08);
+  transition: color 120ms ease, border-color 120ms ease, transform var(--t-base) var(--ease);
+}
+.layers-btn:hover { color: var(--ink); border-color: rgba(26, 29, 33, 0.16); }
+.layers-btn:active { transform: scale(0.97); }
+.layers-btn-on { color: var(--action); border-color: var(--action-ring); }
+.layers-count {
+  min-width: 15px;
+  height: 15px;
+  border-radius: var(--r-pill);
+  background: var(--action);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 15px;
+  text-align: center;
+  padding: 0 3px;
+}
+.layers-box {
+  display: flex;
+  flex-direction: column;
   gap: 0.25rem;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(26, 29, 33, 0.06);
   border-radius: var(--radius);
   padding: 0.5rem 0.65rem;
-  font-size: 0.78rem;
-  color: var(--ink-2);
   box-shadow: 0 1px 3px rgba(26, 29, 33, 0.08);
+  transition: opacity 140ms var(--ease), transform 140ms var(--ease);
+  transform-origin: top left;
+}
+@starting-style {
+  .layers-box {
+    opacity: 0;
+    transform: scale(0.97);
+  }
 }
 .overlay-toggle {
   display: flex;

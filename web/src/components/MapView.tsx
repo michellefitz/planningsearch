@@ -3,10 +3,12 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { api, type PointFeatureCollection } from "../api";
 
-/** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport. */
-type OverlayKey = "flood" | "zoning";
+/** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport.
+    Flood extents removed 2026-07: the source service now requires a token and
+    the OPW publishes no public API — rebuild from their shapefiles (backlog).
+    Conservation areas are the next layer to add here. */
+type OverlayKey = "zoning";
 const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; line: string; label: string }> = {
-  flood: { fill: "#3b82f6", fillOpacity: 0.35, line: "#1d4ed8", label: "Flood extents" },
   zoning: { fill: "#14b8a6", fillOpacity: 0.22, line: "#0f766e", label: "Zoning" },
 };
 // Overlays are only meaningful (and light enough to fetch) when zoomed in.
@@ -76,13 +78,14 @@ export default function MapView({
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
 
-  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ flood: false, zoning: false });
+  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false });
+  const [layersOpen, setLayersOpen] = useState(false);
   const [mapZoom, setMapZoom] = useState(7);
   const overlaysRef = useRef(overlays);
   overlaysRef.current = overlays;
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const zoomRef = useRef(7);
-  const seqRef = useRef<Record<OverlayKey, number>>({ flood: 0, zoning: 0 });
+  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0 });
   // Latest overlay-refresh closure, so the map's one-off event handlers can
   // always call the current version (which reads live state via refs).
   const applyRef = useRef<(layer: OverlayKey) => void>(() => {});
@@ -175,25 +178,18 @@ export default function MapView({
           const f = e.features?.[0];
           if (!f) return;
           const pr = f.properties ?? {};
-          let html: string;
-          if (layer === "zoning") {
-            const code = String(pr.zone_code ?? "").trim();
-            const name = String(pr.zone_label ?? "").trim();
-            const general = String(pr.zone_general ?? "").trim();
-            // "Z1: Sustainable Residential Neighbourhoods"
-            const head = code && name && name.toLowerCase() !== code.toLowerCase() ? `${code}: ${name}` : name || code || "Zone";
-            const showGeneral = general && general.toLowerCase() !== name.toLowerCase();
-            html =
-              `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(head)}</strong>` +
-              (showGeneral ? `<span class="ov-pop-gen"> · ${escapeHtml(general)}</span>` : "") +
-              `</div><span class="ov-pop-tag">${escapeHtml(ZONE_GROUPS[pr.zone_group as string]?.label ?? "Zoning")}</span>` +
-              (pr.plan ? `<span class="ov-pop-sub">${escapeHtml(pr.plan)}</span>` : "") +
-              `</div>`;
-          } else {
-            html =
-              `<div class="ov-popup"><strong>Flood extent</strong>` +
-              `<span class="ov-pop-sub">${escapeHtml(pr.flood_label || "Mapped flood extent")}</span></div>`;
-          }
+          const code = String(pr.zone_code ?? "").trim();
+          const name = String(pr.zone_label ?? "").trim();
+          const general = String(pr.zone_general ?? "").trim();
+          // "Z1: Sustainable Residential Neighbourhoods"
+          const head = code && name && name.toLowerCase() !== code.toLowerCase() ? `${code}: ${name}` : name || code || "Zone";
+          const showGeneral = general && general.toLowerCase() !== name.toLowerCase();
+          const html =
+            `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(head)}</strong>` +
+            (showGeneral ? `<span class="ov-pop-gen"> · ${escapeHtml(general)}</span>` : "") +
+            `</div><span class="ov-pop-tag">${escapeHtml(ZONE_GROUPS[pr.zone_group as string]?.label ?? "Zoning")}</span>` +
+            (pr.plan ? `<span class="ov-pop-sub">${escapeHtml(pr.plan)}</span>` : "") +
+            `</div>`;
           new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
             .setLngLat(e.lngLat)
             .setHTML(html)
@@ -379,33 +375,51 @@ export default function MapView({
     (Object.keys(OVERLAY_STYLE) as OverlayKey[]).forEach((layer) => applyRef.current(layer));
   }, [overlays]);
 
-  const anyOverlayOn = overlays.flood || overlays.zoning;
+  const anyOverlayOn = Object.values(overlays).some(Boolean);
+  const overlaysOnCount = Object.values(overlays).filter(Boolean).length;
   return (
     <>
       <div ref={containerRef} className="map-container" role="region" aria-label="Map of planning applications" />
-      <div className="map-overlays" role="group" aria-label="Map overlays">
-        {(Object.keys(OVERLAY_STYLE) as OverlayKey[]).map((layer) => (
-          <label key={layer} className="overlay-toggle">
-            <input
-              type="checkbox"
-              checked={overlays[layer]}
-              onChange={(e) => setOverlays((o) => ({ ...o, [layer]: e.target.checked }))}
-            />
-            <span className="overlay-swatch" style={{ background: OVERLAY_STYLE[layer].fill }} aria-hidden="true" />
-            {OVERLAY_STYLE[layer].label}
-          </label>
-        ))}
-        {anyOverlayOn && mapZoom < MIN_OVERLAY_ZOOM && (
-          <p className="overlay-hint">Zoom in to load overlays</p>
-        )}
-        {overlays.zoning && mapZoom >= MIN_OVERLAY_ZOOM && (
-          <div className="zone-legend">
-            {Object.entries(ZONE_GROUPS).map(([k, v]) => (
-              <span key={k} className="zone-legend-item">
-                <span className="overlay-swatch" style={{ background: v.color }} aria-hidden="true" />
-                {v.label}
-              </span>
+      <div className="map-overlays">
+        <button
+          type="button"
+          className={`layers-btn${anyOverlayOn ? " layers-btn-on" : ""}`}
+          aria-expanded={layersOpen}
+          onClick={() => setLayersOpen((o) => !o)}
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3l9 5-9 5-9-5z" />
+            <path d="M3 13l9 5 9-5" />
+          </svg>
+          Layers
+          {anyOverlayOn && <span className="layers-count">{overlaysOnCount}</span>}
+        </button>
+        {layersOpen && (
+          <div className="layers-box" role="group" aria-label="Map layers">
+            {(Object.keys(OVERLAY_STYLE) as OverlayKey[]).map((layer) => (
+              <label key={layer} className="overlay-toggle">
+                <input
+                  type="checkbox"
+                  checked={overlays[layer]}
+                  onChange={(e) => setOverlays((o) => ({ ...o, [layer]: e.target.checked }))}
+                />
+                <span className="overlay-swatch" style={{ background: OVERLAY_STYLE[layer].fill }} aria-hidden="true" />
+                {OVERLAY_STYLE[layer].label}
+              </label>
             ))}
+            {anyOverlayOn && mapZoom < MIN_OVERLAY_ZOOM && (
+              <p className="overlay-hint">Zoom in to load layers</p>
+            )}
+            {overlays.zoning && mapZoom >= MIN_OVERLAY_ZOOM && (
+              <div className="zone-legend">
+                {Object.entries(ZONE_GROUPS).map(([k, v]) => (
+                  <span key={k} className="zone-legend-item">
+                    <span className="overlay-swatch" style={{ background: v.color }} aria-hidden="true" />
+                    {v.label}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
