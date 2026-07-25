@@ -15,6 +15,26 @@ interface Props {
 const DECIDED = new Set(["granted", "refused", "split", "decided", "withdrawn", "invalid"]);
 const PENDING = new Set(["pending", "further_info"]);
 
+function BellIcon({ on }: { on: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" />
+      <path d="M13.7 20a2 2 0 0 1-3.4 0" />
+      {!on && <path d="M4.5 3.5l15 17" />}
+    </svg>
+  );
+}
+
 function sortSaves(saves: SavedApp[]): SavedApp[] {
   return [...saves].sort((a, b) => {
     if (a.has_update !== b.has_update) return a.has_update ? -1 : 1;
@@ -98,7 +118,7 @@ function RegisterRow({
             }
           }}
         >
-          {alertsOn ? "\u{1F514}" : "\u{1F515}"}
+          <BellIcon on={alertsOn} />
         </button>
         {lists.length > 0 && (
           <select
@@ -159,6 +179,34 @@ function ListSectionHead({
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(list.name);
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <div className="reg-section-head">
+        <p className="list-confirm">
+          Delete “{list.name}”? Its applications stay saved.
+          <button
+            type="button"
+            className="list-confirm-del"
+            onClick={async () => {
+              await accountApi.deleteList(list.id);
+              await onRefresh();
+            }}
+          >
+            Delete list
+          </button>
+          <button
+            type="button"
+            className="list-confirm-keep"
+            onClick={() => setConfirming(false)}
+          >
+            Keep list
+          </button>
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="reg-section-head">
@@ -198,7 +246,7 @@ function ListSectionHead({
             await onRefresh();
           }}
         >
-          {list.alerts_enabled ? "\u{1F514}" : "\u{1F515}"}
+          <BellIcon on={list.alerts_enabled} />
         </button>
         <button
           type="button"
@@ -212,10 +260,7 @@ function ListSectionHead({
           type="button"
           className="list-delete-btn"
           title="Delete list"
-          onClick={async () => {
-            await accountApi.deleteList(list.id);
-            await onRefresh();
-          }}
+          onClick={() => setConfirming(true)}
         >
           ✕
         </button>
@@ -228,6 +273,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [view, setView] = useState<"register" | "map">("register");
+  const [mapList, setMapList] = useState<number | "all">("all");
   const [newListName, setNewListName] = useState("");
   const [creatingList, setCreatingList] = useState(false);
 
@@ -298,8 +344,11 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
     items: sortSaves(saves.filter((s) => l.item_ids.includes(s.id))),
   }));
 
-  const mappable = saves.filter((s) => s.app && s.app.lat != null && s.app.lng != null);
-  const unmappedCount = saves.length - mappable.length;
+  // Map view can be narrowed to one list; fall back to all if it was deleted.
+  const mapListObj = mapList === "all" ? null : lists.find((l) => l.id === mapList) ?? null;
+  const mapSource = mapListObj ? saves.filter((s) => mapListObj.item_ids.includes(s.id)) : saves;
+  const mappable = mapSource.filter((s) => s.app && s.app.lat != null && s.app.lng != null);
+  const unmappedCount = mapSource.length - mappable.length;
 
   const mapGeoJson: PointFeatureCollection = {
     type: "FeatureCollection",
@@ -331,7 +380,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
   return (
     <div className="account-panel">
       <div className="reg-head">
-        <h2>Your applications</h2>
+        <h2>Your saved applications</h2>
         {saves.length > 0 && (
           <p className="reg-statline">
             <b>{tracked}</b> tracked
@@ -398,13 +447,34 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
           </div>
 
           {view === "map" ? (
-            mappable.length === 0 ? (
-              <div className="account-empty">
-                <strong>No mapped locations</strong>
-                <p>None of these applications have coordinates to show on a map.</p>
-              </div>
-            ) : (
-              <>
+            <>
+              {lists.length > 0 && (
+                <div className="map-list-chips" role="group" aria-label="Filter map by list">
+                  <button
+                    type="button"
+                    className={mapList === "all" ? "on" : ""}
+                    onClick={() => setMapList("all")}
+                  >
+                    All saved
+                  </button>
+                  {lists.map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      className={mapList === l.id ? "on" : ""}
+                      onClick={() => setMapList(l.id)}
+                    >
+                      {l.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {mappable.length === 0 ? (
+                <div className="account-empty">
+                  <strong>No mapped locations</strong>
+                  <p>None of these applications have coordinates to show on a map.</p>
+                </div>
+              ) : (
                 <div className="account-map-wrap">
                   <MapView
                     data={mapGeoJson}
@@ -414,13 +484,13 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                     onBoundsChange={() => {}}
                   />
                 </div>
-                {unmappedCount > 0 && (
-                  <p className="account-map-note">
-                    {unmappedCount} without map location{unmappedCount === 1 ? "" : "s"}
-                  </p>
-                )}
-              </>
-            )
+              )}
+              {unmappedCount > 0 && (
+                <p className="account-map-note">
+                  {unmappedCount} without map location{unmappedCount === 1 ? "" : "s"}
+                </p>
+              )}
+            </>
           ) : (
             <div className="reg-body">
               {groups.map(({ list, items }) => (

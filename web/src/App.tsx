@@ -445,7 +445,8 @@ export default function App() {
               onOpenApp={async (authorityId, reference) => {
                 try {
                   const { id } = await api.resolve(authorityId, reference);
-                  setMode("search");
+                  // Stay in account mode: the detail sheet slides over the
+                  // dashboard, and closing it lands back on the register.
                   await select(id);
                 } catch {
                   setError("That application is no longer in the current dataset.");

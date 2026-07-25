@@ -2425,9 +2425,12 @@ a.pill:hover {
 .reg-section-head { display: flex; align-items: center; gap: 8px; margin: 22px 0 0; padding: 0 6px 6px; border-bottom: 1px solid var(--line-strong); }
 .reg-section-head h3 { margin: 0; font-size: 11.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
 .reg-count { color: var(--ink-3); font-weight: 500; font-variant-numeric: tabular-nums; margin-left: 2px; }
-.reg-section-head .list-actions { margin-left: auto; }
-.reg-section-head:hover .list-actions,
-.reg-section-head:focus-within .list-actions { opacity: 1; }
+/* Section controls stay visible — hidden list management is unfindable. */
+.reg-section-head .list-actions { margin-left: auto; opacity: 1; }
+.list-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.list-confirm-del { border: 1px solid #dc2626; background: none; color: #dc2626; border-radius: var(--r-pill); padding: 3px 12px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: background 120ms ease, color 120ms ease; }
+.list-confirm-del:hover { background: #dc2626; color: #fff; }
+.list-confirm-keep { border: 0; background: none; color: var(--ink-2); font-size: 12px; font-family: inherit; cursor: pointer; text-decoration: underline; padding: 3px 4px; }
 
 .reg-row { display: grid; grid-template-columns: 128px minmax(0, 1fr) max-content max-content; align-items: center; gap: 14px; padding: 9px 6px; border-bottom: 1px solid var(--line); cursor: pointer; transition: background var(--t-fast) var(--ease); animation: card-in 240ms var(--ease) backwards; animation-delay: calc(min(var(--i, 0), 8) * 40ms); }
 .reg-row:hover { background: var(--surface); }
@@ -2445,7 +2448,8 @@ a.pill:hover {
 
 /* List controls, shared by section heads and inline forms. */
 .list-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 120ms ease; }
-.list-bell, .list-edit-btn, .list-delete-btn { border: 0; background: none; cursor: pointer; font-size: 12px; padding: 4px; border-radius: 4px; color: var(--ink-3); transition: color 120ms ease; }
+.list-bell, .list-edit-btn, .list-delete-btn { border: 0; background: none; cursor: pointer; font-size: 12px; padding: 4px; border-radius: 4px; color: var(--ink-3); transition: color 120ms ease; display: inline-flex; align-items: center; }
+.list-bell svg, .saved-bell svg { display: block; }
 .list-bell:hover, .list-edit-btn:hover { color: var(--ink); }
 .list-delete-btn:hover { color: #dc2626; }
 .list-bell-on { color: var(--action); }
@@ -2457,12 +2461,16 @@ a.pill:hover {
 .list-new-form button { padding: 6px 12px; border: 0; border-radius: var(--radius); background: var(--action); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
 
 /* View toggle */
-.account-view-toggle { margin-bottom: 14px; }
+.account-view-toggle { margin: 28px 0 14px; }
 .view-seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 999px; overflow: hidden; background: var(--surface); }
 .view-seg button { appearance: none; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 0.82rem; font-weight: 550; padding: 0.32rem 0.95rem; cursor: pointer; transition: background 140ms ease, color 140ms ease; }
 .view-seg button.on { background: var(--action); color: #fff; }
 
 /* Dashboard map */
+.map-list-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.map-list-chips button { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-2); border-radius: var(--r-pill); padding: 4px 12px; font-size: 12.5px; font-family: inherit; cursor: pointer; transition: background 120ms ease, color 120ms ease, border-color 120ms ease; }
+.map-list-chips button:hover { border-color: var(--ink-3); }
+.map-list-chips button.on { background: var(--action-tint); border-color: var(--action); color: var(--action); font-weight: 600; }
 .account-map-wrap { position: relative; height: 420px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }
 .account-map-wrap .map-overlays { display: none; }
 .account-map-note { margin-top: 8px; font-size: 0.82rem; color: var(--ink-3); }
