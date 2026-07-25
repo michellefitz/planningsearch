@@ -102,6 +102,17 @@ export default function App() {
     }
   }, []);
 
+  // Sign-out sits in the top bar with the rest of the account controls.
+  const signOut = useCallback(async () => {
+    try {
+      await accountApi.logout();
+      await refreshMe();
+      setMode("search");
+    } catch {
+      // sign-out failed — leave state unchanged
+    }
+  }, [refreshMe]);
+
   const savedByKey = useMemo(() => {
     const m = new Map<string, SavedApp>();
     for (const s of me?.saves ?? []) m.set(saveKey(s.authority_id, s.planning_reference), s);
@@ -233,9 +244,46 @@ export default function App() {
           Planning applications for Dublin City, Fingal, Dún Laoghaire-Rathdown, South Dublin &amp;
           Kildare — one search, one map.
         </p>
+        {/* Account lives in the top bar, where a web app puts it — not as a
+            third panel tab. Signing in and the dashboard are app-level
+            destinations, not modes of the search panel. */}
+        <nav className="app-nav" aria-label="Account">
+          {me?.user ? (
+            <>
+              <button
+                type="button"
+                className={`nav-link ${mode === "account" ? "nav-link-on" : ""}`}
+                aria-current={mode === "account" ? "page" : undefined}
+                onClick={() => setMode("account")}
+              >
+                Dashboard
+                {me.saves.some((s) => s.has_update) ? <span className="nav-dot" /> : null}
+              </button>
+              <span className="nav-email" title={me.user.email}>
+                {me.user.email}
+              </span>
+              <button type="button" className="nav-signout" onClick={signOut}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary nav-signin"
+              onClick={() => setMode("account")}
+            >
+              Sign in
+            </button>
+          )}
+        </nav>
       </header>
 
-      <div className={`layout ${mode === "search" && mobileView === "map" ? "m-map" : "m-panel"}`}>
+      {/* The dashboard is a full-screen destination, but the map stays mounted
+          behind it (hidden, not unmounted) so returning keeps its position. */}
+      <div
+        className={`layout ${mode === "search" && mobileView === "map" ? "m-map" : "m-panel"}`}
+        hidden={mode === "account"}
+      >
         <div className="side-panel">
           <div className="mode-tabs" role="tablist" aria-label="Panel mode">
             <button
@@ -255,15 +303,6 @@ export default function App() {
               onClick={() => setMode("ask")}
             >
               Ask
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === "account"}
-              className={mode === "account" ? "tab-active" : ""}
-              onClick={() => setMode("account")}
-            >
-              Account{me?.saves.some((s) => s.has_update) ? <span className="tab-dot" /> : null}
             </button>
           </div>
 
@@ -327,22 +366,6 @@ export default function App() {
             <ChatPanel onSelectApp={select} onHoverApp={setHoveredId} onAppsReferenced={showAgentApps} />
           </div>
 
-          {mode === "account" && (
-            <AccountPanel
-              me={me}
-              notice={authNotice}
-              onRefresh={refreshMe}
-              onOpenApp={async (authorityId, reference) => {
-                try {
-                  const { id } = await api.resolve(authorityId, reference);
-                  await select(id);
-                } catch {
-                  setError("That application is no longer in the current dataset.");
-                }
-              }}
-              onGoSearch={() => setMode("search")}
-            />
-          )}
         </div>
 
         <div className="map-wrap">
@@ -389,6 +412,31 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {mode === "account" && (
+        <main className="account-screen">
+          <div className="account-screen-inner">
+            <button type="button" className="back-to-map" onClick={() => setMode("search")}>
+              ← Back to map
+            </button>
+            <AccountPanel
+              me={me}
+              notice={authNotice}
+              onRefresh={refreshMe}
+              onOpenApp={async (authorityId, reference) => {
+                try {
+                  const { id } = await api.resolve(authorityId, reference);
+                  setMode("search");
+                  await select(id);
+                } catch {
+                  setError("That application is no longer in the current dataset.");
+                }
+              }}
+              onGoSearch={() => setMode("search")}
+            />
+          </div>
+        </main>
+      )}
 
       <footer className="app-footer">
         <span>

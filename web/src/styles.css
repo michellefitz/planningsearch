@@ -85,10 +85,152 @@ body {
   vertical-align: 0.15em;
 }
 
+/* Truncates rather than wrapping, so the account nav stays on the brand row
+   at narrower desktop widths. */
 .tagline {
   margin: 0;
+  /* basis 0, not auto: with flex-wrap the line breaks on the hypothetical
+     size, so an auto basis wraps the nav instead of letting this shrink. */
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.8rem;
   color: var(--ink-3);
+}
+
+/* ---------- Top-bar account nav ---------- */
+
+/* Pushed to the right of the brand/tagline, as in any ordinary web app. */
+.app-nav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-link {
+  position: relative;
+  padding: 0.3rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 550;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.nav-link:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.nav-link-on {
+  background: var(--action-tint);
+  color: var(--action);
+}
+
+.nav-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--action);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.nav-email {
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+
+.nav-signout {
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.nav-signout:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.nav-signin {
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+
+/* ---------- Dashboard as a full-screen destination ---------- */
+
+/* The map/search layout stays mounted behind the dashboard so returning to it
+   keeps the map's position; `hidden` alone loses to its display:flex. */
+.layout[hidden] {
+  display: none;
+}
+
+.account-screen {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--surface-2);
+}
+
+.account-screen-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 2.5rem;
+}
+
+/* Full width to work with, so the panel drops its own panel chrome. */
+.account-screen .account-panel {
+  flex: none;
+  overflow: visible;
+  padding: 0;
+  background: none;
+}
+
+.back-to-map {
+  margin-bottom: 0.9rem;
+  padding: 0.3rem 0.7rem 0.3rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.back-to-map:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+/* At full width the heading is a page title, not a panel header. */
+.account-screen .account-head h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+/* The sign-in card centres in the viewport rather than a 420px column. */
+.account-screen .account-signin {
+  min-height: 60vh;
 }
 
 /* ---------- Layout ---------- */
@@ -157,6 +299,16 @@ body {
   .tagline,
   .app-footer {
     display: none;
+  }
+  /* Keep the top bar to brand + the account controls that fit. */
+  .nav-email {
+    display: none;
+  }
+  .app-nav {
+    gap: 0.5rem;
+  }
+  .account-screen-inner {
+    padding: 0.8rem 1rem 2rem;
   }
 
   .layout {
@@ -2102,17 +2254,25 @@ a.pill:hover {
 .account-email { font-size: 13px; color: var(--ink-3); }
 .account-signout { background: none; border: 0; color: var(--ink-2); font-size: 13px; cursor: pointer; text-decoration: underline; }
 .account-empty { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 40px; text-align: center; color: var(--ink-2); }
+/* Don't let the empty state stretch the width of a full-screen dashboard. */
+.account-screen > .account-screen-inner .account-panel > .account-empty { max-width: 620px; margin: 0 auto; }
 .account-empty button { margin-top: 12px; padding: 10px 18px; border: 0; border-radius: var(--radius); background: var(--action); color: #fff; font-weight: 600; cursor: pointer; }
 .badge-updated { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--action-tint); color: var(--action); font-size: 11px; font-weight: 600; }
 
 /* Stat row */
 .account-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0 24px; }
+/* Full-screen dashboard: keep the tiles compact instead of stretched thin. */
+.account-screen .account-stats { max-width: 760px; }
 .stat-tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
 .stat-tile strong { display: block; font-size: 24px; color: var(--ink); }
 .stat-tile span { font-size: 12px; color: var(--ink-2); }
 
 /* Layout: sidebar + main */
 .account-layout { display: grid; grid-template-columns: 200px 1fr; gap: 24px; }
+/* Scoped to desktop: unscoped it would outrank the single-column mobile rule. */
+@media (min-width: 768px) {
+  .account-screen .account-layout { grid-template-columns: 240px 1fr; gap: 32px; }
+}
 @media (max-width: 767px) { .account-layout { grid-template-columns: 1fr; } }
 
 /* List sidebar */

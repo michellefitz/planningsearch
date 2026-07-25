@@ -272,25 +272,9 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
 
   return (
     <div className="account-panel">
+      {/* Identity and sign-out live in the app's top bar, not in here. */}
       <div className="account-head">
         <h2>Saved applications</h2>
-        <div className="account-head-right">
-          <span className="account-email">{me.user.email}</span>
-          <button
-            type="button"
-            className="account-signout"
-            onClick={async () => {
-              try {
-                await accountApi.logout();
-                await onRefresh();
-              } catch {
-                // sign-out failed — leave state unchanged
-              }
-            }}
-          >
-            Sign out
-          </button>
-        </div>
       </div>
 
       {saves.length === 0 ? (
