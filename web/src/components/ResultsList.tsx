@@ -130,22 +130,26 @@ export default function ResultsList({
               onFocus={() => onHover(r.id)}
               onBlur={() => onHover(null)}
             >
+              {/* The address is the row's identity, so it gets the full width;
+                  status joins the pills beneath rather than squeezing it. */}
               <div className="result-top">
                 <strong>{r.address_text ?? r.planning_reference}</strong>
-                <StatusBadge status={r.status} label={r.status_label} />
                 <SaveStar
                   saved={savedByKey.has(saveKey(r.authority_id, r.planning_reference))}
                   onToggle={() => onToggleSave(r.authority_id, r.planning_reference)}
                 />
               </div>
-              {/* Secondary axes the status badge can't carry — appeal and
-                  commencement. No appealUrl here: the card is a <button>, so an
-                  anchor pill would be invalid markup (it links from the sheet). */}
-              <SecondaryPills
-                appealReference={r.appeal_reference}
-                commencementDate={r.commencement_date}
-                completionDate={r.completion_date}
-              />
+              {/* Status plus the axes it can't carry — appeal and commencement.
+                  No appealUrl here: the card is a <button>, so an anchor pill
+                  would be invalid markup (it links from the sheet). */}
+              <div className="result-pills">
+                <StatusBadge status={r.status} label={r.status_label} />
+                <SecondaryPills
+                  appealReference={r.appeal_reference}
+                  commencementDate={r.commencement_date}
+                  completionDate={r.completion_date}
+                />
+              </div>
               <p className="result-desc">{r.description}</p>
               <p className="result-meta">
                 <span className="ref">{r.planning_reference}</span> · {r.authority_short_name}

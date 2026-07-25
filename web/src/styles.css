@@ -1,20 +1,41 @@
 /* PlanView visual system — quiet utility chrome in the Google/Mac register.
    Mobile-first (PRD F8.2): map fills the screen; the panel is a bottom sheet
-   on small screens and a left column from 768px up. */
+   on small screens and a left column from 768px up.
+
+   Polish notes: borders carry the structure and shadows stay almost invisible
+   — depth comes from a hairline changing tone, not from a drop shadow. Motion
+   is short and eased-out. Numerals are tabular everywhere they're data. */
 
 :root {
-  --ink: #1a1d21;
-  --ink-2: #5c6370;
-  --ink-3: #9aa1ab;
-  --line: #e9ebee;
-  --line-strong: #d8dce1;
+  --ink: #17191e;
+  --ink-2: #5a616e;
+  --ink-3: #949aa6;
+  --line: #ebecf0;
+  --line-strong: #dcdee4;
   --surface: #ffffff;
-  --surface-2: #f6f7f8;
+  --surface-2: #f7f8fa;
+  --surface-3: #eef0f3;
   --brand: #17456e;
   --action: #0b62d6;
   --action-tint: #eaf2fe;
-  --radius: 8px;
-  --shadow-pop: 0 1px 2px rgba(26, 29, 33, 0.06), 0 8px 24px rgba(26, 29, 33, 0.12);
+  --action-ring: rgba(11, 98, 214, 0.18);
+
+  /* One radius scale: pills for togglable/status shapes, rects for surfaces. */
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 10px;
+  --radius: var(--r-md);
+  --r-pill: 999px;
+
+  /* Barely-there elevation; the largest is reserved for true overlays. */
+  --shadow-xs: 0 1px 2px rgba(23, 25, 30, 0.05);
+  --shadow-sm: 0 1px 2px rgba(23, 25, 30, 0.04), 0 2px 6px rgba(23, 25, 30, 0.05);
+  --shadow-pop: 0 1px 2px rgba(23, 25, 30, 0.05), 0 6px 20px rgba(23, 25, 30, 0.09);
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --t-fast: 110ms;
+  --t-base: 160ms;
+
   --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Roboto Mono", Menlo, monospace;
 }
@@ -27,16 +48,68 @@ body {
   margin: 0;
   font-family: var(--font-ui);
   font-size: 14px;
+  line-height: 1.5;
+  /* Slightly tight tracking + Inter's disambiguated glyphs (single-storey l,
+     open 4) read cleaner at UI sizes. */
+  letter-spacing: -0.006em;
+  font-feature-settings: "cv05" 1, "cv11" 1, "ss01" 1;
   color: var(--ink);
   background: var(--surface);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   accent-color: var(--action);
 }
 
+/* References, dates, counts and prices are data — align them in columns. */
+.ref,
+.result-meta,
+.tl-date,
+.stat-tile strong,
+.vt-count,
+.list-count,
+.saved-card-ref,
+.fact-value,
+.ppr-price {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--action-tint);
+  color: var(--ink);
+}
+
+/* A soft ring rather than a hard outline — reads as focus, not as an error.
+   The shadow follows each element's own radius, so pills stay pills. */
 :focus-visible {
-  outline: 2px solid var(--action);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--action-ring);
+}
+
+/* Thin, self-effacing scrollbars; they appear against the content, not a track. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: var(--r-pill);
+  background-color: var(--line-strong);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-3);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -434,7 +507,7 @@ body {
 .search-input:focus {
   outline: none;
   border-color: var(--action);
-  box-shadow: 0 0 0 3px var(--action-tint);
+  box-shadow: 0 0 0 3px var(--action-ring);
 }
 
 .btn {
@@ -446,12 +519,23 @@ body {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface);
+  box-shadow: var(--shadow-xs);
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
 }
 
 .btn:hover {
   background: var(--surface-2);
+  border-color: var(--ink-3);
+}
+
+/* A press should feel like a press: the lift goes away. */
+.btn:active {
+  background: var(--surface-3);
+  box-shadow: none;
 }
 
 .btn-primary {
@@ -463,6 +547,11 @@ body {
 .btn-primary:hover {
   background: #0a56bc;
   border-color: #0a56bc;
+}
+
+.btn-primary:active {
+  background: #094ba3;
+  border-color: #094ba3;
 }
 
 .suggestions {
@@ -851,7 +940,9 @@ body {
   padding: 0.65rem 0.6rem 0.7rem;
   cursor: pointer;
   font: inherit;
-  transition: background 100ms ease;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
 }
 
 .result-card:hover,
@@ -861,21 +952,31 @@ body {
 
 .result-selected,
 .result-selected:hover {
-  border-left-color: var(--brand);
-  background: var(--surface-2);
+  border-left-color: var(--action);
+  background: var(--action-tint);
 }
 
 .result-top {
   display: flex;
-  justify-content: space-between;
-  gap: 0.6rem;
-  align-items: baseline;
+  gap: 0.5rem;
+  align-items: center;
 }
 
+/* One line, ellipsised: rows keep a steady rhythm instead of the address
+   wrapping around the badge and every card being a different height. */
 .result-top strong {
-  font-size: 0.88rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
   font-weight: 550;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.012em;
+}
+
+.result-top .status-badge {
+  flex: none;
 }
 
 .result-desc {
@@ -916,10 +1017,11 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.32rem;
-  background: color-mix(in srgb, var(--sc, #64748b) 11%, #fff);
+  background: color-mix(in srgb, var(--sc, #64748b) 10%, #fff);
   color: color-mix(in srgb, var(--sc, #64748b) 82%, #000);
-  border-radius: 999px;
-  padding: 0.16rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--sc, #64748b) 18%, transparent);
+  border-radius: var(--r-pill);
+  padding: 0.15rem 0.54rem;
   font-size: 0.7rem;
   font-weight: 550;
   white-space: nowrap;
@@ -939,8 +1041,9 @@ body {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(26, 29, 33, 0.32);
-  animation: backdrop-in 180ms ease;
+  background: rgba(23, 25, 30, 0.24);
+  backdrop-filter: blur(2px);
+  animation: backdrop-in var(--t-base) var(--ease);
 }
 
 @keyframes backdrop-in {
@@ -958,10 +1061,11 @@ body {
   width: min(50vw, 720px);
   min-width: min(560px, 100vw);
   background: var(--surface);
-  box-shadow: -12px 0 40px rgba(26, 29, 33, 0.18);
+  border-left: 1px solid var(--line-strong);
+  box-shadow: -1px 0 0 rgba(23, 25, 30, 0.02), -16px 0 40px rgba(23, 25, 30, 0.1);
   overflow-y: auto;
   padding: 1.1rem 1.75rem 1.5rem;
-  animation: sheet-in 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  animation: sheet-in 260ms var(--ease);
 }
 
 @keyframes sheet-in {
@@ -1102,10 +1206,10 @@ body {
 
 .detail-sheet h3 {
   margin: 0 0 0.6rem;
-  font-size: 0.68rem;
+  font-size: 0.67rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--ink-3);
 }
 
@@ -1627,11 +1731,13 @@ body {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(26, 29, 33, 0.06);
-  border-radius: var(--radius);
+  border: 1px solid rgba(23, 25, 30, 0.07);
+  border-radius: var(--r-lg);
   padding: 0.45rem 0.7rem;
-  max-width: calc(100% - 1.2rem);
-  box-shadow: 0 1px 3px rgba(26, 29, 33, 0.08);
+  /* Capped so the key wraps to two rows instead of running the width of the
+     map and colliding with MapLibre's attribution control at bottom-right. */
+  max-width: min(calc(100% - 1.2rem), 34rem);
+  box-shadow: var(--shadow-sm);
 }
 
 .legend-items {
@@ -1910,6 +2016,20 @@ body {
 
 .result-card .pill-row {
   margin-top: 0.3rem;
+}
+
+/* Status and the secondary pills share one wrapping row; `display: contents`
+   lets the nested pill-row's children join it rather than form a second group. */
+.result-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.result-pills .pill-row {
+  display: contents;
 }
 
 .pill {
@@ -2240,14 +2360,14 @@ a.pill:hover {
 /* Don't let the empty state stretch the width of a full-screen dashboard. */
 .account-screen > .account-screen-inner .account-panel > .account-empty { max-width: 620px; margin: 0 auto; }
 .account-empty button { margin-top: 12px; padding: 10px 18px; border: 0; border-radius: var(--radius); background: var(--action); color: #fff; font-weight: 600; cursor: pointer; }
-.badge-updated { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--action-tint); color: var(--action); font-size: 11px; font-weight: 600; }
+.badge-updated { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--action-tint); color: var(--action); font-size: 11px; font-weight: 600; }
 
 /* Stat row */
 .account-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0 24px; }
 /* Full-screen dashboard: keep the tiles compact instead of stretched thin. */
 .account-screen .account-stats { max-width: 760px; }
-.stat-tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
-.stat-tile strong { display: block; font-size: 24px; color: var(--ink); }
+.stat-tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 13px 16px 14px; }
+.stat-tile strong { display: block; font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15; color: var(--ink); }
 .stat-tile span { font-size: 12px; color: var(--ink-2); }
 
 /* Layout: sidebar + main */
@@ -2293,12 +2413,12 @@ a.pill:hover {
 
 /* Card grid */
 .saved-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
-.saved-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: box-shadow 120ms ease; }
-.saved-card:hover { box-shadow: var(--shadow-pop); }
+.saved-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px; cursor: pointer; transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.saved-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
 .saved-card:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .saved-card-top { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
-.saved-card-address { font-size: 14px; font-weight: 550; letter-spacing: -0.005em; line-height: 1.35; }
-.saved-card-status { margin-top: 8px; }
+.saved-card-address { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; font-weight: 550; letter-spacing: -0.012em; line-height: 1.35; }
+.saved-card-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 .saved-card-gone { font-size: 12px; color: var(--ink-3); font-style: italic; margin: 6px 0 0; }
 .saved-card-ref { margin: 8px 0 0; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .saved-card-date { color: var(--ink-3); }

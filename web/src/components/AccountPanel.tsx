@@ -58,16 +58,18 @@ function SavedCard({
       onClick={handleClick}
       onKeyDown={handleKey}
     >
+      {/* The address gets the card's full width; "Updated" joins the status
+          row below rather than squeezing the address into extra lines. */}
       <div className="saved-card-top">
         <strong className="saved-card-address">
           {s.app?.address_text ?? s.planning_reference}
         </strong>
-        {s.has_update && <span className="badge-updated">Updated</span>}
       </div>
 
       {s.app ? (
         <div className="saved-card-status">
           <StatusBadge status={s.app.status} label={s.app.status_label} />
+          {s.has_update && <span className="badge-updated">Updated</span>}
         </div>
       ) : (
         <p className="saved-card-gone">No longer in the dataset</p>
