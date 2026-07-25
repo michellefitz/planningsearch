@@ -22,18 +22,20 @@ function sortSaves(saves: SavedApp[]): SavedApp[] {
   });
 }
 
-function SavedCard({
+function RegisterRow({
   s,
   lists,
   onOpenApp,
   onRefresh,
   index,
+  updated,
 }: {
   s: SavedApp;
   lists: SavedList[];
   onOpenApp: (authorityId: string, reference: string) => Promise<void>;
   onRefresh: () => Promise<Me>;
   index: number;
+  updated?: boolean;
 }) {
   const [alertsOn, setAlertsOn] = useState(s.alerts_enabled);
   useEffect(() => {
@@ -41,54 +43,49 @@ function SavedCard({
   }, [s.alerts_enabled]);
   const [busy, setBusy] = useState(false);
 
-  const handleClick = () => {
-    void onOpenApp(s.authority_id, s.planning_reference);
-  };
-
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      handleClick();
-    }
-  };
+  const open = () => void onOpenApp(s.authority_id, s.planning_reference);
+  // The most decision-relevant date wins the single date slot.
+  const date = s.app?.decision_date
+    ? `decided ${s.app.decision_date}`
+    : s.app?.received_date
+      ? `received ${s.app.received_date}`
+      : null;
 
   return (
     <div
-      className="saved-card"
+      className={`reg-row${updated ? " reg-row-updated" : ""}`}
       role="button"
       tabIndex={0}
       style={{ "--i": index } as CSSProperties}
-      onClick={handleClick}
-      onKeyDown={handleKey}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      }}
     >
-      {/* The address gets the card's full width; "Updated" joins the status
-          row below rather than squeezing the address into extra lines. */}
-      <div className="saved-card-top">
-        <strong className="saved-card-address">
-          {s.app?.address_text ?? s.planning_reference}
-        </strong>
-      </div>
-
-      {s.app ? (
-        <div className="saved-card-status">
+      <span className="reg-status">
+        {s.app ? (
           <StatusBadge status={s.app.status} label={s.app.status_label} />
-          {s.has_update && <span className="badge-updated">Updated</span>}
-        </div>
-      ) : (
-        <p className="saved-card-gone">No longer in the dataset</p>
-      )}
-
-      <p className="saved-card-ref">
+        ) : (
+          <span className="reg-gone">Not in dataset</span>
+        )}
+      </span>
+      <span className="reg-main">
+        <strong className="reg-address">{s.app?.address_text ?? s.planning_reference}</strong>
+        {s.has_update && !updated && <span className="badge-updated">Updated</span>}
+      </span>
+      <span className="reg-meta">
         <span className="ref">{s.planning_reference}</span>
-        {s.app?.received_date && <span className="saved-card-date"> · received {s.app.received_date}</span>}
-        {s.app?.decision_date && <span className="saved-card-date"> · decided {s.app.decision_date}</span>}
-      </p>
-
-      <div className="saved-card-actions" onClick={(e) => e.stopPropagation()}>
+        {date && <span className="reg-date">{date}</span>}
+      </span>
+      <span className="reg-actions" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
           className={`saved-bell${alertsOn ? " saved-bell-on" : ""}`}
           title={alertsOn ? "Alerts on — click to turn off" : "Alerts off — click to turn on"}
+          aria-pressed={alertsOn}
           disabled={busy}
           onClick={async (e) => {
             e.stopPropagation();
@@ -103,30 +100,31 @@ function SavedCard({
         >
           {alertsOn ? "\u{1F514}" : "\u{1F515}"}
         </button>
-
-        <select
-          className="saved-list-select"
-          value=""
-          onClick={(e) => e.stopPropagation()}
-          onChange={async (e) => {
-            e.stopPropagation();
-            const listId = Number(e.target.value);
-            if (!listId) return;
-            setBusy(true);
-            try {
-              await accountApi.addToList(listId, s.id);
-              await onRefresh();
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <option value="">Add to list…</option>
-          {lists.map((l) => (
-            <option key={l.id} value={l.id}>{l.name}</option>
-          ))}
-        </select>
-
+        {lists.length > 0 && (
+          <select
+            className="saved-list-select"
+            value=""
+            aria-label="Add to list"
+            onClick={(e) => e.stopPropagation()}
+            onChange={async (e) => {
+              e.stopPropagation();
+              const listId = Number(e.target.value);
+              if (!listId) return;
+              setBusy(true);
+              try {
+                await accountApi.addToList(listId, s.id);
+                await onRefresh();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <option value="">List…</option>
+            {lists.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+        )}
         <button
           type="button"
           className="saved-remove"
@@ -145,47 +143,95 @@ function SavedCard({
         >
           ✕
         </button>
-      </div>
+      </span>
     </div>
   );
 }
 
-function CompactRow({
-  s,
-  onOpenApp,
+function ListSectionHead({
+  list,
+  count,
+  onRefresh,
 }: {
-  s: SavedApp;
-  onOpenApp: (authorityId: string, reference: string) => Promise<void>;
+  list: SavedList;
+  count: number;
+  onRefresh: () => Promise<Me>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(list.name);
+
   return (
-    <button
-      type="button"
-      className="compact-row"
-      onClick={() => void onOpenApp(s.authority_id, s.planning_reference)}
-    >
-      <strong>{s.app?.address_text ?? s.planning_reference}</strong>
-      {s.app ? (
-        <StatusBadge status={s.app.status} label={s.app.status_label} />
+    <div className="reg-section-head">
+      {editing ? (
+        <form
+          className="list-rename-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!name.trim()) return;
+            await accountApi.updateList(list.id, { name: name.trim() });
+            setEditing(false);
+            await onRefresh();
+          }}
+        >
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+          />
+        </form>
       ) : (
-        <span className="saved-card-gone">Not in dataset</span>
+        <h3>
+          {list.name} <span className="reg-count">{count}</span>
+        </h3>
       )}
-      {s.has_update && <span className="badge-updated">Updated</span>}
-      <span className="ref compact-ref">{s.planning_reference}</span>
-    </button>
+      <div className="list-actions">
+        <button
+          type="button"
+          className={`list-bell${list.alerts_enabled ? " list-bell-on" : ""}`}
+          title={list.alerts_enabled ? "List alerts on" : "List alerts off"}
+          aria-pressed={list.alerts_enabled}
+          onClick={async () => {
+            await accountApi.updateList(list.id, { alerts_enabled: !list.alerts_enabled });
+            await onRefresh();
+          }}
+        >
+          {list.alerts_enabled ? "\u{1F514}" : "\u{1F515}"}
+        </button>
+        <button
+          type="button"
+          className="list-edit-btn"
+          title="Rename list"
+          onClick={() => { setName(list.name); setEditing(true); }}
+        >
+          ✎
+        </button>
+        <button
+          type="button"
+          className="list-delete-btn"
+          title="Delete list"
+          onClick={async () => {
+            await accountApi.deleteList(list.id);
+            await onRefresh();
+          }}
+        >
+          ✕
+        </button>
+      </div>
+    </div>
   );
 }
 
 export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSearch }: Props) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [view, setView] = useState<"cards" | "list" | "map">("cards");
-  const [activeList, setActiveList] = useState<number | "all">("all");
+  const [view, setView] = useState<"register" | "map">("register");
   const [newListName, setNewListName] = useState("");
   const [creatingList, setCreatingList] = useState(false);
-  const [editingListId, setEditingListId] = useState<number | null>(null);
-  const [editingListName, setEditingListName] = useState("");
 
-  if (!me) return <div className="account-panel"><p className="account-muted">Loading…</p></div>;
+  if (!me) return <div className="account-panel"><p className="account-muted">Loading your applications…</p></div>;
 
   if (!me.user) {
     return (
@@ -241,15 +287,19 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
   const tracked = saves.length;
   const pending = saves.filter((s) => s.app && PENDING.has(s.app.status)).length;
   const decided = saves.filter((s) => s.app && DECIDED.has(s.app.status)).length;
-  const updated = saves.filter((s) => s.has_update).length;
+  const updatedSaves = sortSaves(saves.filter((s) => s.has_update));
 
-  const activeListObj = activeList === "all" ? null : lists.find((l) => l.id === activeList) ?? null;
-  const activeIds = activeListObj ? new Set(activeListObj.item_ids) : null;
-  const filtered = activeIds ? saves.filter((s) => activeIds.has(s.id)) : saves;
-  const sorted = sortSaves(filtered);
+  // Grouping: one section per list (a save can appear in several), then the
+  // rest under "Everything else". No lists → one flat register, no headers.
+  const inAnyList = new Set(lists.flatMap((l) => l.item_ids));
+  const unfiled = sortSaves(saves.filter((s) => !inAnyList.has(s.id)));
+  const groups = lists.map((l) => ({
+    list: l,
+    items: sortSaves(saves.filter((s) => l.item_ids.includes(s.id))),
+  }));
 
-  const mappable = sorted.filter((s) => s.app && s.app.lat != null && s.app.lng != null);
-  const unmappedCount = sorted.length - mappable.length;
+  const mappable = saves.filter((s) => s.app && s.app.lat != null && s.app.lng != null);
+  const unmappedCount = saves.length - mappable.length;
 
   const mapGeoJson: PointFeatureCollection = {
     type: "FeatureCollection",
@@ -275,11 +325,28 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
     if (match) void onOpenApp(match.authority_id, match.planning_reference);
   };
 
+  // Row stagger index across the whole page, so sections cascade as one.
+  let rowIndex = 0;
+
   return (
     <div className="account-panel">
-      {/* Identity and sign-out live in the app's top bar, not in here. */}
-      <div className="account-head">
-        <h2>Saved applications</h2>
+      <div className="reg-head">
+        <h2>Your applications</h2>
+        {saves.length > 0 && (
+          <p className="reg-statline">
+            <b>{tracked}</b> tracked
+            <span className="reg-sep">·</span>
+            <b>{pending}</b> pending
+            <span className="reg-sep">·</span>
+            <b>{decided}</b> decided
+            {updatedSaves.length > 0 && (
+              <>
+                <span className="reg-sep">·</span>
+                <span className="reg-stat-live"><b>{updatedSaves.length}</b> updated</span>
+              </>
+            )}
+          </p>
+        )}
       </div>
 
       {saves.length === 0 ? (
@@ -290,102 +357,113 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
         </div>
       ) : (
         <>
-          {/* Req 1: Stat row */}
-          <div className="account-stats">
-            <div className="stat-tile">
-              <strong>{tracked}</strong>
-              <span>tracked</span>
-            </div>
-            <div className="stat-tile">
-              <strong>{pending}</strong>
-              <span>pending decision</span>
-            </div>
-            <div className="stat-tile">
-              <strong>{decided}</strong>
-              <span>decided</span>
-            </div>
-            <div className="stat-tile">
-              <strong>{updated}</strong>
-              <span>with updates</span>
+          {updatedSaves.length > 0 ? (
+            <section className="reg-updates" aria-label="Updated applications">
+              <h3>Since you last looked</h3>
+              {updatedSaves.map((s) => (
+                <RegisterRow
+                  key={`u${s.id}`}
+                  s={s}
+                  lists={lists}
+                  onOpenApp={onOpenApp}
+                  onRefresh={onRefresh}
+                  index={rowIndex++}
+                  updated
+                />
+              ))}
+            </section>
+          ) : (
+            <p className="reg-steady">
+              Nothing new since you last looked — we'll email you the day something changes.
+            </p>
+          )}
+
+          <div className="account-view-toggle">
+            <div className="view-seg">
+              <button
+                type="button"
+                className={view === "register" ? "on" : ""}
+                onClick={() => setView("register")}
+              >
+                Register
+              </button>
+              <button
+                type="button"
+                className={view === "map" ? "on" : ""}
+                onClick={() => setView("map")}
+              >
+                Map
+              </button>
             </div>
           </div>
 
-          {/* Req 2: View toggle + Req 4: List sidebar */}
-          <div className="account-layout">
-            <div className="account-lists">
-              <button
-                type="button"
-                className={activeList === "all" ? "list-active" : ""}
-                onClick={() => setActiveList("all")}
-              >
-                All saved <span className="list-count">{saves.length}</span>
-              </button>
-              {lists.map((l) => (
-                <div key={l.id} className="list-row">
-                  {editingListId === l.id ? (
-                    <form
-                      className="list-rename-form"
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        if (!editingListName.trim()) return;
-                        await accountApi.updateList(l.id, { name: editingListName.trim() });
-                        setEditingListId(null);
-                        await onRefresh();
-                      }}
-                    >
-                      <input
-                        type="text"
-                        value={editingListName}
-                        onChange={(e) => setEditingListName(e.target.value)}
-                        autoFocus
-                        onBlur={() => setEditingListId(null)}
-                        onKeyDown={(e) => { if (e.key === "Escape") setEditingListId(null); }}
-                      />
-                    </form>
-                  ) : (
-                    <button
-                      type="button"
-                      className={activeList === l.id ? "list-active" : ""}
-                      onClick={() => setActiveList(l.id)}
-                    >
-                      {l.name} <span className="list-count">{l.item_ids.length}</span>
-                    </button>
-                  )}
-                  <div className="list-actions">
-                    <button
-                      type="button"
-                      className={`list-bell${l.alerts_enabled ? " list-bell-on" : ""}`}
-                      title={l.alerts_enabled ? "List alerts on" : "List alerts off"}
-                      onClick={async () => {
-                        await accountApi.updateList(l.id, { alerts_enabled: !l.alerts_enabled });
-                        await onRefresh();
-                      }}
-                    >
-                      {l.alerts_enabled ? "\u{1F514}" : "\u{1F515}"}
-                    </button>
-                    <button
-                      type="button"
-                      className="list-edit-btn"
-                      title="Rename list"
-                      onClick={() => { setEditingListId(l.id); setEditingListName(l.name); }}
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      className="list-delete-btn"
-                      title="Delete list"
-                      onClick={async () => {
-                        await accountApi.deleteList(l.id);
-                        if (activeList === l.id) setActiveList("all");
-                        await onRefresh();
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
+          {view === "map" ? (
+            mappable.length === 0 ? (
+              <div className="account-empty">
+                <strong>No mapped locations</strong>
+                <p>None of these applications have coordinates to show on a map.</p>
+              </div>
+            ) : (
+              <>
+                <div className="account-map-wrap">
+                  <MapView
+                    data={mapGeoJson}
+                    selectedId={null}
+                    hoveredId={null}
+                    onSelect={handleMapSelect}
+                    onBoundsChange={() => {}}
+                  />
                 </div>
+                {unmappedCount > 0 && (
+                  <p className="account-map-note">
+                    {unmappedCount} without map location{unmappedCount === 1 ? "" : "s"}
+                  </p>
+                )}
+              </>
+            )
+          ) : (
+            <div className="reg-body">
+              {groups.map(({ list, items }) => (
+                <section key={list.id} aria-label={list.name}>
+                  <ListSectionHead list={list} count={items.length} onRefresh={onRefresh} />
+                  {items.length === 0 ? (
+                    <p className="reg-list-empty">Nothing in this list yet — add applications from any row.</p>
+                  ) : (
+                    items.map((s) => (
+                      <RegisterRow
+                        key={`${list.id}-${s.id}`}
+                        s={s}
+                        lists={lists}
+                        onOpenApp={onOpenApp}
+                        onRefresh={onRefresh}
+                        index={rowIndex++}
+                      />
+                    ))
+                  )}
+                </section>
               ))}
+
+              {unfiled.length > 0 && (
+                <section aria-label={lists.length > 0 ? "Everything else" : "Saved applications"}>
+                  {lists.length > 0 && (
+                    <div className="reg-section-head">
+                      <h3>
+                        Everything else <span className="reg-count">{unfiled.length}</span>
+                      </h3>
+                    </div>
+                  )}
+                  {unfiled.map((s) => (
+                    <RegisterRow
+                      key={s.id}
+                      s={s}
+                      lists={lists}
+                      onOpenApp={onOpenApp}
+                      onRefresh={onRefresh}
+                      index={rowIndex++}
+                    />
+                  ))}
+                </section>
+              )}
 
               {creatingList ? (
                 <form
@@ -407,7 +485,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                     autoFocus
                     onKeyDown={(e) => { if (e.key === "Escape") setCreatingList(false); }}
                   />
-                  <button type="submit">Add</button>
+                  <button type="submit">Create list</button>
                 </form>
               ) : (
                 <button
@@ -415,89 +493,17 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                   className="list-new-btn"
                   onClick={() => setCreatingList(true)}
                 >
-                  + New list…
+                  + New list
                 </button>
               )}
-            </div>
 
-            <div className="account-main">
-              <div className="account-view-toggle">
-                <div className="view-seg">
-                  <button
-                    type="button"
-                    className={view === "cards" ? "on" : ""}
-                    onClick={() => setView("cards")}
-                  >
-                    Cards
-                  </button>
-                  <button
-                    type="button"
-                    className={view === "list" ? "on" : ""}
-                    onClick={() => setView("list")}
-                  >
-                    List
-                  </button>
-                  <button
-                    type="button"
-                    className={view === "map" ? "on" : ""}
-                    onClick={() => setView("map")}
-                  >
-                    Map
-                  </button>
-                </div>
-              </div>
-
-              {sorted.length === 0 && activeListObj ? (
-                <div className="account-empty">
-                  <strong>Nothing in this list yet</strong>
-                  <p>Add saved applications to it from their cards.</p>
-                </div>
-              ) : view === "map" ? (
-                mappable.length === 0 ? (
-                  <div className="account-empty">
-                    <strong>No mapped locations</strong>
-                    <p>None of these applications have coordinates to show on a map.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="account-map-wrap">
-                      <MapView
-                        data={mapGeoJson}
-                        selectedId={null}
-                        hoveredId={null}
-                        onSelect={handleMapSelect}
-                        onBoundsChange={() => {}}
-                      />
-                    </div>
-                    {unmappedCount > 0 && (
-                      <p className="account-map-note">
-                        {unmappedCount} without map location{unmappedCount === 1 ? "" : "s"}
-                      </p>
-                    )}
-                  </>
-                )
-              ) : view === "cards" ? (
-                <div className="saved-grid">
-                  {sorted.map((s, i) => (
-                    <SavedCard
-                      key={s.id}
-                      s={s}
-                      lists={lists}
-                      onOpenApp={onOpenApp}
-                      onRefresh={onRefresh}
-                      index={i}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="compact-list">
-                  {sorted.map((s) => (
-                    <CompactRow key={s.id} s={s} onOpenApp={onOpenApp} />
-                  ))}
-                </div>
+              {saves.length <= 5 && (
+                <p className="reg-teach">
+                  Star more applications in Search to build out your register.
+                </p>
               )}
             </div>
-          </div>
+          )}
         </>
       )}
     </div>
