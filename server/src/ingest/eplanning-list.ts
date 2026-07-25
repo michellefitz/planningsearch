@@ -78,6 +78,10 @@ export interface EplanningListItem {
   /** WGS84 coordinates from the detail page's Site Location tab, if fetched. */
   lat: number | null;
   lng: number | null;
+  /** From the detail page: the council's application type wording. */
+  applicationTypeRaw: string | null;
+  /** From the detail page: deadline for submissions/observations, ISO. */
+  submissionsBy: string | null;
 }
 
 /**
@@ -108,6 +112,8 @@ export function parseEplanningList(html: string): EplanningListItem[] {
       description: cellText(cells[8]),
       lat: null,
       lng: null,
+      applicationTypeRaw: null,
+      submissionsBy: null,
     });
   }
   return out;
@@ -120,16 +126,37 @@ export function parseTotalPages(html: string): number {
 }
 
 /**
- * Pull the site's coordinates from a detail page's "Site Location Details"
- * table. eplanning gives exact ITM grid coordinates (Grid Eastings/Northings,
- * EPSG:2157), which we convert to WGS84 — far better than geocoding an address.
- *
- * The markup is a hidden div:
- *   <th>Grid Northings:</th><td>736395.02375417</td>
- *   <th>Grid Eastings:</th><td>698588.1612861</td>
- * Returns null if either coordinate is missing or lands outside Ireland's
- * bounding box (a guard against parsing garbage).
+ * Read a labelled field from a detail page: the pages are `<th>Label:</th>
+ * <td>value</td>` pairs throughout, so one matcher serves every field.
  */
+function detailField(html: string, label: string): string | null {
+  const re = new RegExp(
+    `<th[^>]*>\\s*${label.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\s*:?\\s*</th>\\s*<td[^>]*>([\\s\\S]*?)</td>`,
+    "i"
+  );
+  const m = html.match(re);
+  return m ? decodeEntities(stripTags(m[1])).trim() || null : null;
+}
+
+/**
+ * The application type as the council records it ("PERMISSION", "RETENTION",
+ * "OUTLINE PERMISSION"…). The list search has no type column, so without this
+ * the type had to be guessed from the description and fell back to "other".
+ */
+export function parseApplicationTypeRaw(html: string): string | null {
+  return detailField(html, "Application Type");
+}
+
+/**
+ * The date up to which submissions/observations can be made on an application
+ * ("Submissions By" on the Details tab), normalised to ISO.
+ */
+export function parseSubmissionsBy(html: string): string | null {
+  const raw = detailField(html, "Submissions By");
+  const m = raw?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+}
+
 /**
  * Pull the full development description from a detail page's "Development" tab.
  * The list search only carries a truncated description; the detail page has the
@@ -144,6 +171,17 @@ export function parseFullDescription(html: string): string | null {
   return text || null;
 }
 
+/**
+ * Pull the site's coordinates from a detail page's "Site Location Details"
+ * table. eplanning gives exact ITM grid coordinates (Grid Eastings/Northings,
+ * EPSG:2157), which we convert to WGS84 — far better than geocoding an address.
+ *
+ * The markup is a hidden div:
+ *   <th>Grid Northings:</th><td>736395.02375417</td>
+ *   <th>Grid Eastings:</th><td>698588.1612861</td>
+ * Returns null if either coordinate is missing or lands outside Ireland's
+ * bounding box (a guard against parsing garbage).
+ */
 export function parseSiteLocation(html: string): { lat: number; lng: number } | null {
   const north = html.match(
     /Grid\s+Northings\s*:?\s*<\/th>\s*<td[^>]*>\s*([\d.]+)/i
@@ -185,6 +223,10 @@ export interface EplanningDetail {
   coords: { lat: number; lng: number } | null;
   /** Full development description (the list one is truncated). */
   description: string | null;
+  /** The council's own application type wording, absent from the list search. */
+  applicationTypeRaw: string | null;
+  /** Deadline for submissions/observations, ISO. */
+  submissionsBy: string | null;
 }
 
 /**
@@ -193,16 +235,28 @@ export interface EplanningDetail {
  * nulls on any error (a record without a pin/full description is still useful).
  * `cookies` reuses the search session.
  */
+const EMPTY_DETAIL: EplanningDetail = {
+  coords: null,
+  description: null,
+  applicationTypeRaw: null,
+  submissionsBy: null,
+};
+
 async function fetchDetail(id: string, cookies: string): Promise<EplanningDetail> {
   try {
     const res = await fetchWithTimeout(`${EPLAN_BASE}/AppFileRefDetails/${id}/0`, {
       headers: { ...UA_HEADERS, Cookie: cookies },
     });
-    if (!res.ok) return { coords: null, description: null };
+    if (!res.ok) return EMPTY_DETAIL;
     const html = await res.text();
-    return { coords: parseSiteLocation(html), description: parseFullDescription(html) };
+    return {
+      coords: parseSiteLocation(html),
+      description: parseFullDescription(html),
+      applicationTypeRaw: parseApplicationTypeRaw(html),
+      submissionsBy: parseSubmissionsBy(html),
+    };
   } catch {
-    return { coords: null, description: null };
+    return EMPTY_DETAIL;
   }
 }
 
@@ -305,6 +359,8 @@ export async function fetchKildareRecent(
       item.description = detail.description;
       described++;
     }
+    item.applicationTypeRaw = detail.applicationTypeRaw;
+    item.submissionsBy = detail.submissionsBy;
   });
   log(
     `  eplanning Kildare received: located ${located}/${items.length} on the map, ` +
@@ -319,8 +375,10 @@ export function eplanningItemToRecord(item: EplanningListItem, now: string): App
     authority_id: "kildare",
     planning_reference: item.reference,
     description: item.description,
-    application_type: deriveApplicationType(null, item.description),
-    application_type_raw: null,
+    // The council's own wording when the detail page gave it, else inferred
+    // from the description (the list search has no type column).
+    application_type: deriveApplicationType(item.applicationTypeRaw, item.description),
+    application_type_raw: item.applicationTypeRaw,
     is_domestic_guess: guessIsDomestic(item.description) ? 1 : 0,
     // Status from the list wording plus the single-letter decision code.
     status: normalizeStatus(item.statusText, expandDecisionCode(item.decisionCode)),
@@ -330,6 +388,7 @@ export function eplanningItemToRecord(item: EplanningListItem, now: string): App
     further_info_requested_date: null,
     further_info_received_date: null,
     decision_due_date: item.decisionDueDate,
+    submissions_by_date: item.submissionsBy,
     // The list carries only a decision code, not the outcome text — leave the
     // decision text null (the detail page / national feed fills it later).
     decision: null,

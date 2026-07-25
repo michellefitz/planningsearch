@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   eplanningItemToRecord,
+  parseApplicationTypeRaw,
   parseEplanningList,
   parseFullDescription,
   parseSiteLocation,
+  parseSubmissionsBy,
   parseTotalPages,
 } from "../src/ingest/eplanning-list.js";
 
@@ -121,6 +123,43 @@ const DEVELOPMENT_HTML = `
   </table>
 </div>`;
 
+// The Details tab of a detail page (labelled th/td pairs, as eplanning emits).
+const DETAILS_HTML = `
+<table class="table">
+  <tr>
+    <th valign="top" align="right">Application Type: </th>
+    <td> PERMISSION </td>
+    <th valign="top" align="right">Planning Status: </th>
+    <td>NEW APPLICATION</td>
+  </tr>
+  <tr>
+    <th valign="top" align="right">Commenced Date: </th>
+    <td></td>
+    <th valign="top" align="right">Submissions By: </th>
+    <td> 16/07/2026</td>
+  </tr>
+</table>`;
+
+describe("parseApplicationTypeRaw", () => {
+  it("reads the council's own application type", () => {
+    expect(parseApplicationTypeRaw(DETAILS_HTML)).toBe("PERMISSION");
+  });
+
+  it("returns null when the field is absent", () => {
+    expect(parseApplicationTypeRaw("<table><tr><th>Other: </th><td>x</td></tr></table>")).toBeNull();
+  });
+});
+
+describe("parseSubmissionsBy", () => {
+  it("reads the submissions deadline as ISO", () => {
+    expect(parseSubmissionsBy(DETAILS_HTML)).toBe("2026-07-16");
+  });
+
+  it("returns null when the cell is empty", () => {
+    expect(parseSubmissionsBy("<th>Submissions By: </th><td> </td>")).toBeNull();
+  });
+});
+
 describe("parseFullDescription", () => {
   it("extracts the complete development description", () => {
     const desc = parseFullDescription(DEVELOPMENT_HTML);
@@ -153,5 +192,25 @@ describe("eplanningItemToRecord", () => {
     const rows = parseEplanningList(HTML);
     const rec = eplanningItemToRecord(rows[1], "2026-07-24T00:00:00Z");
     expect(rec.application_type).toBe("retention");
+  });
+
+  it("uses the detail page's application type over guessing from the description", () => {
+    // This description has no type keyword, so inference alone yields "other" —
+    // the bug the detail-page lookup fixes.
+    const [row] = parseEplanningList(HTML);
+    expect(eplanningItemToRecord(row, "2026-07-24T00:00:00Z").application_type).toBe("other");
+    const enriched = { ...row, applicationTypeRaw: "PERMISSION" };
+    const rec = eplanningItemToRecord(enriched, "2026-07-24T00:00:00Z");
+    expect(rec.application_type).toBe("permission");
+    expect(rec.application_type_raw).toBe("PERMISSION");
+  });
+
+  it("carries the submissions deadline onto the record", () => {
+    const [row] = parseEplanningList(HTML);
+    const rec = eplanningItemToRecord(
+      { ...row, submissionsBy: "2026-07-16" },
+      "2026-07-24T00:00:00Z"
+    );
+    expect(rec.submissions_by_date).toBe("2026-07-16");
   });
 });

@@ -5,11 +5,12 @@
   not the building frontage, and Google returns the panorama **nearest the point
   asked for** — so it often lands on a laneway or side road, sometimes years
   older than the frontage coverage, and clearly not the property. Already done:
-  `source=outdoor`, a heading aimed from the pano back at the site, `fov=110`,
-  and a probe of the site + a 35 m ring (8 bearings) that picks the most recent
-  panorama found (`PropertyMedia` in `web/src/components/DetailPanel.tsx`).
-  Newest-date is only a proxy, though — it doesn't mean *front*. The real fix is
-  to anchor on the **street named in the address**: look that road up (OSM
+  `source=outdoor`, a heading aimed from the pano back at the site, and
+  `fov=110` (`PropertyMedia` in `web/src/components/DetailPanel.tsx`). A probe
+  of a 35 m ring that preferred the *most recent* panorama was tried and
+  **reverted** — "newest" is no proxy for "front", and it sometimes picked a
+  pano a street away, which reads worse than a near one facing the wrong way.
+  The real fix is to anchor on the **street named in the address**: look that road up (OSM
   Overpass/Nominatim), take the point on it nearest the property, and ask Google
   for a panorama there. Caveats: only works where the address has a street name
   (many Kildare addresses are townlands), road-name matching is messy

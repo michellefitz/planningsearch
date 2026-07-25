@@ -32,6 +32,16 @@ interface TimelineStep {
   statutory?: boolean;
 }
 
+/** Whole days from today until an ISO date; negative once it has passed. */
+function daysUntil(iso: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const then = new Date(`${iso}T00:00:00`);
+  return Math.round((then.getTime() - today.getTime()) / 86_400_000);
+}
+
+const isPast = (iso: string): boolean => daysUntil(iso) < 0;
+
 function buildTimeline(d: AppDetail): TimelineStep[] {
   const decided = Boolean(d.decision_date);
   const steps: TimelineStep[] = [
@@ -46,6 +56,15 @@ function buildTimeline(d: AppDetail): TimelineStep[] {
     if (d.further_info_received_date) {
       steps.push({ label: "Further information received", date: d.further_info_received_date, state: "done" });
     }
+  }
+  // The window for public submissions/observations closes before the decision.
+  if (d.submissions_by_date) {
+    steps.push({
+      label: "Submissions by",
+      date: d.submissions_by_date,
+      state: decided || isPast(d.submissions_by_date) ? "done" : "current",
+      statutory: true,
+    });
   }
   steps.push({
     label: "Decision due",
@@ -271,47 +290,9 @@ function bearing(fromLat: number, fromLng: number, toLat: number, toLng: number)
   return (Math.atan2(y, x) * 180) / Math.PI; // Google accepts negative headings
 }
 
-/** Metres between two lat/lng points (haversine). */
-function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const R = 6371000;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-/** Points to ask Google for a panorama: the site itself plus a ring around it.
- *  Google returns the pano *nearest each point*, so probing outward surfaces
- *  panoramas on surrounding roads — not just the one nearest the plot centre. */
-const PROBE_RADIUS_M = 35;
-const PROBE_BEARINGS = [0, 45, 90, 135, 180, 225, 270, 315];
-/** Ignore candidates further than this from the site — too far to be useful. */
-const MAX_PANO_DISTANCE_M = 90;
-
-function probePoints(lat: number, lng: number): Array<{ lat: number; lng: number }> {
-  const points = [{ lat, lng }];
-  for (const b of PROBE_BEARINGS) {
-    const rad = (b * Math.PI) / 180;
-    const dLat = (PROBE_RADIUS_M * Math.cos(rad)) / 111320;
-    const dLng = (PROBE_RADIUS_M * Math.sin(rad)) / (111320 * Math.cos((lat * Math.PI) / 180));
-    points.push({ lat: lat + dLat, lng: lng + dLng });
-  }
-  return points;
-}
-
-interface PanoCandidate {
-  panoId: string;
-  date: string | null;
-  lat: number;
-  lng: number;
-}
-
 function PropertyMedia({ detail: d }: { detail: AppDetail }) {
-  // null = no panorama / not loaded; object = the chosen panorama, with the
-  // heading that aims it from the pano back at the property.
+  // null = no panorama / not loaded; object = the panorama, with the heading
+  // that aims it from the pano back at the property.
   const [pano, setPano] = useState<{
     panoId: string;
     date: string | null;
@@ -326,49 +307,23 @@ function PropertyMedia({ detail: d }: { detail: AppDetail }) {
     const lat = d.lat!;
     const lng = d.lng!;
 
-    // Probe the site and a ring around it. Google always returns the *nearest*
-    // panorama to the point asked for, so asking only at the plot centre can
-    // land on a side road when a better (newer) pano exists on the frontage.
-    // Metadata requests are free, so we can afford to look around and choose.
-    Promise.all(
-      probePoints(lat, lng).map((p) =>
-        fetch(
-          `https://maps.googleapis.com/maps/api/streetview/metadata?location=${p.lat},${p.lng}&source=outdoor&key=${GMAPS_KEY}`,
-          { signal: ctrl.signal }
-        )
-          .then((r) => r.json())
-          .catch(() => null)
-      )
+    // Simply the nearest outdoor panorama. We tried searching a ring around the
+    // site for more recent imagery, but "newest" is no proxy for "the road the
+    // property is on" — it could land a street away. Nearest is at least
+    // predictable, and the click-through lets people walk to the frontage.
+    fetch(
+      `https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lng}&source=outdoor&key=${GMAPS_KEY}`,
+      { signal: ctrl.signal }
     )
-      .then((results) => {
-        const byId = new Map<string, PanoCandidate>();
-        for (const m of results) {
-          if (!m || m.status !== "OK" || !m.pano_id || !m.location) continue;
-          if (distanceM(lat, lng, m.location.lat, m.location.lng) > MAX_PANO_DISTANCE_M) continue;
-          if (!byId.has(m.pano_id)) {
-            byId.set(m.pano_id, {
-              panoId: m.pano_id,
-              date: m.date ?? null,
-              lat: m.location.lat,
-              lng: m.location.lng,
-            });
-          }
-        }
-        const candidates = [...byId.values()];
-        if (!candidates.length) return setPano(null);
-        // Prefer the most recent imagery; fall back to the closest on a tie.
-        candidates.sort((a, b) => {
-          const byDate = (b.date ?? "").localeCompare(a.date ?? "");
-          if (byDate !== 0) return byDate;
-          return (
-            distanceM(lat, lng, a.lat, a.lng) - distanceM(lat, lng, b.lat, b.lng)
-          );
-        });
-        const best = candidates[0];
+      .then((r) => r.json())
+      .then((m: { status: string; date?: string; pano_id?: string; location?: { lat: number; lng: number } }) => {
+        if (m.status !== "OK" || !m.pano_id) return setPano(null);
         setPano({
-          panoId: best.panoId,
-          date: best.date,
-          heading: Math.round(bearing(best.lat, best.lng, lat, lng)),
+          panoId: m.pano_id,
+          date: m.date ?? null,
+          heading: m.location
+            ? Math.round(bearing(m.location.lat, m.location.lng, lat, lng))
+            : null,
         });
       })
       .catch(() => setPano(null));
@@ -1448,6 +1403,18 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             </li>
           ))}
         </ol>
+        {/* While the window is open, make the submissions deadline actionable —
+            this is the one date a member of the public can still act on. */}
+        {!d.decision_date && d.submissions_by_date && !isPast(d.submissions_by_date) && (
+          <p className="submissions-open">
+            <strong>Open for submissions until {d.submissions_by_date}</strong>
+            {(() => {
+              const left = daysUntil(d.submissions_by_date);
+              return left === 0 ? " — today is the last day" : ` — ${left} day${left === 1 ? "" : "s"} left`;
+            })()}
+            . Observations are made to {d.authority_name}, usually with a fee.
+          </p>
+        )}
         {!d.decision_date && d.decision_due_date && (
           <p className="caveat">
             Statutory dates shown are from the register as of the last sync. For anything

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS applications (
   further_info_requested_date TEXT,
   further_info_received_date TEXT,
   decision_due_date TEXT,
+  submissions_by_date TEXT,
   decision TEXT,
   decision_raw TEXT,
   decision_date TEXT,
@@ -183,6 +184,8 @@ export interface ApplicationRecord {
   further_info_requested_date: string | null;
   further_info_received_date: string | null;
   decision_due_date: string | null;
+  /** Deadline for public submissions/observations, where the council publishes it. */
+  submissions_by_date: string | null;
   decision: string | null;
   decision_raw: string | null;
   decision_date: string | null;
@@ -214,6 +217,7 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       authority_id, planning_reference, description, application_type, application_type_raw,
       is_domestic_guess, status, status_raw, received_date, validated_date,
       further_info_requested_date, further_info_received_date, decision_due_date,
+      submissions_by_date,
       decision, decision_raw, decision_date, appeal_status, appeal_reference,
       appeal_lodged_date, appeal_decision, appeal_decision_date, final_grant_date,
       applicant_name, agent_name, address_text, eircode,
@@ -223,6 +227,7 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       @authority_id, @planning_reference, @description, @application_type, @application_type_raw,
       @is_domestic_guess, @status, @status_raw, @received_date, @validated_date,
       @further_info_requested_date, @further_info_received_date, @decision_due_date,
+      @submissions_by_date,
       @decision, @decision_raw, @decision_date, @appeal_status, @appeal_reference,
       @appeal_lodged_date, @appeal_decision, @appeal_decision_date, @final_grant_date,
       @applicant_name, @agent_name, @address_text, @eircode,
@@ -241,6 +246,7 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       further_info_requested_date = excluded.further_info_requested_date,
       further_info_received_date = excluded.further_info_received_date,
       decision_due_date = excluded.decision_due_date,
+      submissions_by_date = excluded.submissions_by_date,
       decision = excluded.decision,
       decision_raw = excluded.decision_raw,
       decision_date = excluded.decision_date,

@@ -489,6 +489,18 @@ body {
   flex: none;
 }
 
+/* The one date a member of the public can still act on — flagged, not buried. */
+.submissions-open {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--action-tint);
+  border-left: 3px solid var(--action);
+  border-radius: 6px;
+}
+
 /* ---------- Dropdown multi-select (council filter) ---------- */
 
 .ms {

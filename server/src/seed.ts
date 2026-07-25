@@ -196,6 +196,7 @@ export function generateSeedRecords(): ApplicationRecord[] {
         further_info_requested_date: fi ? addDays(received, 40) : null,
         further_info_received_date: null,
         decision_due_date: decisionDue,
+        submissions_by_date: null,
         decision: plan.decisionRaw,
         decision_raw: plan.decisionRaw,
         decision_date: decisionDate,

@@ -20,6 +20,7 @@ const base: ApplicationRecord = {
   further_info_requested_date: null,
   further_info_received_date: null,
   decision_due_date: "2026-06-26",
+  submissions_by_date: null,
   decision: null,
   decision_raw: null,
   decision_date: null,

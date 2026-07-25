@@ -186,6 +186,8 @@ export function featureToRecord(
     further_info_requested_date: isoDate(attrs, FIELD_MAP.fiRequested),
     further_info_received_date: isoDate(attrs, FIELD_MAP.fiReceived),
     decision_due_date: isoDate(attrs, FIELD_MAP.decisionDueDate),
+    // The national feed carries no submissions deadline.
+    submissions_by_date: null,
     decision: decisionRaw,
     decision_raw: decisionRaw,
     decision_date: isoDate(attrs, FIELD_MAP.decisionDate),

@@ -56,6 +56,7 @@ export interface AppDetail extends AppSummary {
   further_info_requested_date: string | null;
   further_info_received_date: string | null;
   decision_due_date: string | null;
+  submissions_by_date: string | null;
   appeal_status: string | null;
   appeal_reference: string | null;
   appeal_lodged_date: string | null;
