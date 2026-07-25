@@ -7,7 +7,7 @@ import MapView from "./MapView";
 interface Props {
   me: Me | null;
   notice: string | null;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => Promise<Me>;
   onOpenApp: (authorityId: string, reference: string) => Promise<void>;
   onGoSearch: () => void;
 }
@@ -31,7 +31,7 @@ function SavedCard({
   s: SavedApp;
   lists: SavedList[];
   onOpenApp: (authorityId: string, reference: string) => Promise<void>;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => Promise<Me>;
 }) {
   const [alertsOn, setAlertsOn] = useState(s.alerts_enabled);
   useEffect(() => {
