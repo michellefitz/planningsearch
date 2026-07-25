@@ -112,6 +112,22 @@ body {
   background-color: var(--ink-3);
 }
 
+/* iOS Safari zooms the viewport when a field it focuses is under 16px, which
+   leaves the page half-zoomed and needing a pinch back out. Pin every text
+   control to 16px on touch devices so focusing never moves the viewport.
+   Keyed on pointer rather than width so tablets are covered too.
+
+   !important because this is a hard constraint, not a preference: any
+   component rule that sets a smaller size (e.g. `.toggle-row select`) would
+   otherwise win on specificity and silently reintroduce the zoom. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
