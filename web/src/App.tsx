@@ -157,6 +157,8 @@ export default function App() {
     }
   }, [savedByKey, refreshMe]);
 
+  // Optimistic: the star fills the instant it's clicked; the request settles
+  // in the background and a failure resyncs from the server.
   const toggleSave = useCallback(async (authorityId: string, reference: string) => {
     if (!me?.user) {
       localStorage.setItem("pv_pending_save", JSON.stringify({ authorityId, reference }));
@@ -164,14 +166,45 @@ export default function App() {
       return;
     }
     const existing = savedByKey.get(saveKey(authorityId, reference));
-    try {
-      if (existing) await accountApi.unsave(existing.id);
-      else await accountApi.save(authorityId, reference);
-      await refreshMe();
-    } catch {
-      setError("Could not update your saved applications.");
+    // A negative id is an optimistic save still in flight — ignore re-clicks
+    // until the server id lands, or an unsave would target a phantom row.
+    if (existing && existing.id < 0) return;
+    if (existing) {
+      setMe((m) => m && ({
+        ...m,
+        saves: m.saves.filter((s) => s.id !== existing.id),
+        lists: m.lists.map((l) => ({ ...l, item_ids: l.item_ids.filter((id) => id !== existing.id) })),
+      }));
+      try {
+        await accountApi.unsave(existing.id);
+      } catch {
+        setError("Could not update your saved applications.");
+        await refreshMe();
+      }
+    } else {
+      const now = new Date().toISOString();
+      const temp: SavedApp = {
+        id: -Date.now(),
+        authority_id: authorityId,
+        planning_reference: reference,
+        alerts_enabled: true,
+        events_seen_at: now,
+        created_at: now,
+        has_update: false,
+        app: results.find(
+          (r) => r.authority_id === authorityId && r.planning_reference === reference
+        ) ?? null,
+      };
+      setMe((m) => m && ({ ...m, saves: [temp, ...m.saves] }));
+      try {
+        const real = await accountApi.save(authorityId, reference);
+        setMe((m) => m && ({ ...m, saves: m.saves.map((s) => (s.id === temp.id ? real : s)) }));
+      } catch {
+        setError("Could not update your saved applications.");
+        await refreshMe();
+      }
     }
-  }, [me, savedByKey, refreshMe]);
+  }, [me, savedByKey, refreshMe, results]);
 
   useEffect(() => {
     void (async () => {
