@@ -1,6 +1,9 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { AppSummary } from "../api";
+import type { SavedApp } from "../accountApi";
+import { saveKey } from "../accountApi";
 import { STATUS_STYLE } from "./MapView";
+import SaveStar from "./SaveStar";
 
 interface Props {
   results: AppSummary[];
@@ -10,6 +13,8 @@ interface Props {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
+  savedByKey: Map<string, SavedApp>;
+  onToggleSave: (authorityId: string, reference: string) => void;
 }
 
 export function StatusBadge({ status, label }: { status: string; label: string }) {
@@ -97,6 +102,8 @@ export default function ResultsList({
   selectedId,
   onSelect,
   onHover,
+  savedByKey,
+  onToggleSave,
 }: Props) {
   if (loading) return <p className="list-note" role="status">Searching…</p>;
   if (results.length === 0)
@@ -126,6 +133,10 @@ export default function ResultsList({
               <div className="result-top">
                 <strong>{r.address_text ?? r.planning_reference}</strong>
                 <StatusBadge status={r.status} label={r.status_label} />
+                <SaveStar
+                  saved={savedByKey.has(saveKey(r.authority_id, r.planning_reference))}
+                  onToggle={() => onToggleSave(r.authority_id, r.planning_reference)}
+                />
               </div>
               {/* Secondary axes the status badge can't carry — appeal and
                   commencement. No appealUrl here: the card is a <button>, so an

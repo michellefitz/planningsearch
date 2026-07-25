@@ -157,3 +157,28 @@
   response (check whether any tenant carries an eircode field), AI extraction
   from the application-form document we already fetch, or reverse-geocoding
   coordinates (needs a licensed Eircode/autoaddress API — no free lookup).
+
+## Accounts follow-ups (from 2026-07-24 accounts build)
+
+- **Area-watch alerts (v2):** "anything new near X" — watch a location/radius
+  for new applications and commencements, not just explicitly saved apps.
+- **In-app notification feed (v2):** bell with red dot, chronological feed of
+  events across saves; possibly AI summaries of what changed.
+- **Rate limiting beyond the live-token cap:** per-IP throttle on
+  /api/auth/request-link and the write endpoints.
+- **Kildare live status in cron:** the eplanning list parser isn't wired into
+  the cron's live fetch, so Kildare relies on the national dataset + bundle.
+- **Remove-from-list UI:** list membership can be added in the save popover
+  but there's no affordance to remove a save from one list without unsaving.
+- **Token/session GC:** expired auth_tokens and sessions rows accumulate;
+  add cleanup to the daily cron.
+- **Cookie-parse hardening:** wrap cookie parsing in try/catch (malformed
+  header currently 500s instead of treating as signed-out).
+- **Save PATCH null type:** accountApi.updateSave accepts nulls the backend
+  ignores; tighten the type.
+- **Accessibility:** aria-pressed on save stars; list rename commits on
+  Enter but should also handle Escape-to-cancel consistently.
+- **Dashboard map fit-to-pins:** map view opens at default viewport instead
+  of fitting saved pins.
+- **Pre-existing:** MapView stale onSelect closure; agent request abort not
+  wired through.

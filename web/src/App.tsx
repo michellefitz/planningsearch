@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   EMPTY_SEARCH,
@@ -15,6 +15,8 @@ import ResultsList from "./components/ResultsList";
 import DetailPanel from "./components/DetailPanel";
 import MapView, { STATUS_STYLE } from "./components/MapView";
 import ChatPanel from "./components/ChatPanel";
+import AccountPanel from "./components/AccountPanel";
+import { accountApi, saveKey, type Me, type SavedApp } from "./accountApi";
 import type { AgentAppRef } from "./agentApi";
 
 export default function App() {
@@ -30,13 +32,15 @@ export default function App() {
   const [detail, setDetail] = useState<AppDetail | null>(null);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"search" | "ask">("search");
+  const [mode, setMode] = useState<"search" | "ask" | "account">("search");
   // Mobile only: the layout shows one of map / list at a time (a toggle),
   // rather than squishing both. Ignored at ≥768px, where they sit side by side.
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
   const [legendOpen, setLegendOpen] = useState(false);
   // Shown after the user pans/zooms the map: a one-tap "search this area".
   const [canSearchArea, setCanSearchArea] = useState(false);
+  const [me, setMe] = useState<Me | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
 
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const nearRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -86,16 +90,97 @@ export default function App() {
     runSearch({ ...state, useMapArea: true });
   };
 
+  const refreshMe = useCallback(async (): Promise<Me> => {
+    try {
+      const data = await accountApi.me();
+      setMe(data);
+      return data;
+    } catch {
+      const empty: Me = { user: null, saves: [], lists: [] };
+      setMe(empty);
+      return empty;
+    }
+  }, []);
+
+  const savedByKey = useMemo(() => {
+    const m = new Map<string, SavedApp>();
+    for (const s of me?.saves ?? []) m.set(saveKey(s.authority_id, s.planning_reference), s);
+    return m;
+  }, [me]);
+
   const select = useCallback(async (id: number) => {
     setSelectedId(id);
     try {
       const d = await api.detail(id);
       setDetail(d);
       if (d.lat != null && d.lng != null) setFlyTo({ lat: d.lat, lng: d.lng });
+      const save = savedByKey.get(saveKey(d.authority_id, d.planning_reference));
+      if (save?.has_update) {
+        accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
+      }
     } catch {
       setError("Could not load that application.");
     }
+  }, [savedByKey, refreshMe]);
+
+  const toggleSave = useCallback(async (authorityId: string, reference: string) => {
+    if (!me?.user) {
+      localStorage.setItem("pv_pending_save", JSON.stringify({ authorityId, reference }));
+      setMode("account");
+      return;
+    }
+    const existing = savedByKey.get(saveKey(authorityId, reference));
+    try {
+      if (existing) await accountApi.unsave(existing.id);
+      else await accountApi.save(authorityId, reference);
+      await refreshMe();
+    } catch {
+      setError("Could not update your saved applications.");
+    }
+  }, [me, savedByKey, refreshMe]);
+
+  useEffect(() => {
+    void (async () => {
+      const freshMe = await refreshMe();
+      const hash = window.location.hash;
+      if (hash === "#account") setMode("account");
+      if (hash === "#auth-expired") {
+        setMode("account");
+        setAuthNotice("That sign-in link has expired — request a fresh one.");
+      }
+      const appMatch = hash.match(/^#app=([^:]+):(.+)$/);
+      if (appMatch) {
+        try {
+          const authorityId = decodeURIComponent(appMatch[1]);
+          const reference = decodeURIComponent(appMatch[2]);
+          const { id } = await api.resolve(authorityId, reference);
+          await select(id);
+          const key = saveKey(authorityId, reference);
+          const save = freshMe.saves.find(
+            (s) => saveKey(s.authority_id, s.planning_reference) === key
+          );
+          if (save?.has_update) {
+            accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
+          }
+        } catch {
+          setError("That application is no longer in the current dataset.");
+        }
+      }
+      if (hash) history.replaceState(null, "", window.location.pathname);
+    })();
   }, []);
+
+  useEffect(() => {
+    const pending = localStorage.getItem("pv_pending_save");
+    if (!pending || !me?.user) return;
+    localStorage.removeItem("pv_pending_save");
+    try {
+      const { authorityId, reference } = JSON.parse(pending);
+      void toggleSave(authorityId, reference);
+    } catch {
+      // corrupted storage entry — already removed above
+    }
+  }, [me?.user, toggleSave]);
 
   const nearMe = () => {
     if (!navigator.geolocation) {
@@ -171,6 +256,15 @@ export default function App() {
             >
               Ask
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "account"}
+              className={mode === "account" ? "tab-active" : ""}
+              onClick={() => setMode("account")}
+            >
+              Account{me?.saves.some((s) => s.has_update) ? <span className="tab-dot" /> : null}
+            </button>
           </div>
 
           <div hidden={mode !== "search"} className="search-wrap">
@@ -223,6 +317,8 @@ export default function App() {
                 selectedId={selectedId}
                 onSelect={select}
                 onHover={setHoveredId}
+                savedByKey={savedByKey}
+                onToggleSave={toggleSave}
               />
             </div>
           </div>
@@ -230,6 +326,23 @@ export default function App() {
           <div hidden={mode !== "ask"} className="chat-wrap">
             <ChatPanel onSelectApp={select} onHoverApp={setHoveredId} onAppsReferenced={showAgentApps} />
           </div>
+
+          {mode === "account" && (
+            <AccountPanel
+              me={me}
+              notice={authNotice}
+              onRefresh={refreshMe}
+              onOpenApp={async (authorityId, reference) => {
+                try {
+                  const { id } = await api.resolve(authorityId, reference);
+                  await select(id);
+                } catch {
+                  setError("That application is no longer in the current dataset.");
+                }
+              }}
+              onGoSearch={() => setMode("search")}
+            />
+          )}
         </div>
 
         <div className="map-wrap">
@@ -303,6 +416,8 @@ export default function App() {
               setSelectedId(null);
             }}
             onSelectRelated={select}
+            saved={savedByKey.has(saveKey(detail.authority_id, detail.planning_reference))}
+            onToggleSave={() => toggleSave(detail.authority_id, detail.planning_reference)}
           />
         </>
       )}
