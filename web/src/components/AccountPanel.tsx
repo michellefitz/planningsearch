@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { accountApi, type Me, type SavedApp, type SavedList } from "../accountApi";
 import type { PointFeatureCollection } from "../api";
 import { StatusBadge } from "./ResultsList";
@@ -27,11 +27,13 @@ function SavedCard({
   lists,
   onOpenApp,
   onRefresh,
+  index,
 }: {
   s: SavedApp;
   lists: SavedList[];
   onOpenApp: (authorityId: string, reference: string) => Promise<void>;
   onRefresh: () => Promise<Me>;
+  index: number;
 }) {
   const [alertsOn, setAlertsOn] = useState(s.alerts_enabled);
   useEffect(() => {
@@ -55,6 +57,7 @@ function SavedCard({
       className="saved-card"
       role="button"
       tabIndex={0}
+      style={{ "--i": index } as CSSProperties}
       onClick={handleClick}
       onKeyDown={handleKey}
     >
@@ -475,13 +478,14 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                 )
               ) : view === "cards" ? (
                 <div className="saved-grid">
-                  {sorted.map((s) => (
+                  {sorted.map((s, i) => (
                     <SavedCard
                       key={s.id}
                       s={s}
                       lists={lists}
                       onOpenApp={onOpenApp}
                       onRefresh={onRefresh}
+                      index={i}
                     />
                   ))}
                 </div>

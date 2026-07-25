@@ -45,6 +45,24 @@ export default function App() {
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const nearRef = useRef<{ lat: number; lng: number } | null>(null);
   const searchSeq = useRef(0);
+  // Desktop sheet close: keep it mounted with a closing class so the slide-out
+  // can play, then unmount. Mobile dismiss animates in DetailPanel's drag code.
+  const [sheetClosing, setSheetClosing] = useState(false);
+  const sheetCloseTimer = useRef<number | null>(null);
+  const closeSheet = useCallback(() => {
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      setDetail(null);
+      setSelectedId(null);
+      return;
+    }
+    setSheetClosing(true);
+    sheetCloseTimer.current = window.setTimeout(() => {
+      sheetCloseTimer.current = null;
+      setSheetClosing(false);
+      setDetail(null);
+      setSelectedId(null);
+    }, 240);
+  }, []);
 
   useEffect(() => {
     api.meta().then(setMeta).catch(() => setError("Could not reach the PlanView API."));
@@ -120,6 +138,11 @@ export default function App() {
   }, [me]);
 
   const select = useCallback(async (id: number) => {
+    if (sheetCloseTimer.current != null) {
+      window.clearTimeout(sheetCloseTimer.current);
+      sheetCloseTimer.current = null;
+      setSheetClosing(false);
+    }
     setSelectedId(id);
     try {
       const d = await api.detail(id);
@@ -445,20 +468,15 @@ export default function App() {
       {detail && (
         <>
           <div
-            className="sheet-backdrop"
-            onClick={() => {
-              setDetail(null);
-              setSelectedId(null);
-            }}
+            className={`sheet-backdrop${sheetClosing ? " sheet-closing" : ""}`}
+            onClick={closeSheet}
             aria-hidden="true"
           />
           <DetailPanel
             detail={detail}
             meta={meta}
-            onClose={() => {
-              setDetail(null);
-              setSelectedId(null);
-            }}
+            closing={sheetClosing}
+            onClose={closeSheet}
             onSelectRelated={select}
             saved={savedByKey.has(saveKey(detail.authority_id, detail.planning_reference))}
             onToggleSave={() => toggleSave(detail.authority_id, detail.planning_reference)}

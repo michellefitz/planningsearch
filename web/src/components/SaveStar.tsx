@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 interface Props {
   saved: boolean;
   onToggle: () => void;
@@ -6,6 +8,12 @@ interface Props {
 }
 
 export default function SaveStar({ saved, onToggle, label, inline }: Props) {
+  // Pop only on the act of saving — never on stars that render already filled.
+  const [pop, setPop] = useState(false);
+  const toggle = () => {
+    if (!saved) setPop(true);
+    onToggle();
+  };
   const star = (
     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
       <path
@@ -33,17 +41,18 @@ export default function SaveStar({ saved, onToggle, label, inline }: Props) {
       tabIndex={0}
       aria-pressed={saved}
       aria-label={saved ? "Remove from saved" : "Save application"}
-      className={`save-star ${saved ? "save-star-on" : ""}`}
+      className={`save-star ${saved ? "save-star-on" : ""}${pop ? " save-star-pop" : ""}`}
+      onAnimationEnd={() => setPop(false)}
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
-        onToggle();
+        toggle();
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.stopPropagation();
           e.preventDefault();
-          onToggle();
+          toggle();
         }
       }}
     >

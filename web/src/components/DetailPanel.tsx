@@ -23,6 +23,7 @@ interface Props {
   onSelectRelated: (id: number) => void;
   saved: boolean;
   onToggleSave: () => void;
+  closing?: boolean;
 }
 
 interface TimelineStep {
@@ -1046,7 +1047,7 @@ function useIsMobile(): boolean {
   return m;
 }
 
-export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated, saved, onToggleSave }: Props) {
+export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated, saved, onToggleSave, closing }: Props) {
   const glossary = meta?.glossary ?? {};
   const isMobile = useIsMobile();
   const isEplanning =
@@ -1295,7 +1296,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   return (
     <aside
       ref={sheetRef}
-      className={`detail-sheet ${isMobile ? "sheet-mobile" : ""}`}
+      className={`detail-sheet ${isMobile ? "sheet-mobile" : ""}${closing ? " sheet-closing" : ""}`}
       aria-label={`Application ${d.planning_reference}`}
       role="dialog"
     >
