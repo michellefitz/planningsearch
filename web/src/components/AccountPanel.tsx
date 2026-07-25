@@ -280,8 +280,12 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
             type="button"
             className="account-signout"
             onClick={async () => {
-              await accountApi.logout();
-              await onRefresh();
+              try {
+                await accountApi.logout();
+                await onRefresh();
+              } catch {
+                // sign-out failed — leave state unchanged
+              }
             }}
           >
             Sign out

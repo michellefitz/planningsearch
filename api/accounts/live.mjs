@@ -28,19 +28,36 @@ export function attrsToSnapshot(attrs) {
   const statusRaw = str(attrs.ApplicationStatus);
   const decision = str(attrs.Decision);
   const snap = Object.fromEntries(SNAPSHOT_FIELDS.map((f) => [f, null]));
+
+  let status = normalizeStatus(statusRaw, decision);
+  const withdrawnDate = isoDate(attrs.WithdrawnDate);
+  const appealDecision = str(attrs.AppealDecision);
+  const grantDate = isoDate(attrs.GrantDate);
+
+  if ((status === "unknown" || status === "pending") && grantDate) {
+    status = "granted";
+  }
+  const appealStatus = appealDecision ? normalizeStatus("decided", appealDecision) : null;
+  if (appealStatus && appealStatus !== "unknown") {
+    status = appealStatus;
+  }
+  if (withdrawnDate) {
+    status = "withdrawn";
+  }
+
   return {
     ...snap,
-    status: normalizeStatus(statusRaw, decision),
+    status,
     decision,
     decision_date: isoDate(attrs.DecisionDate),
     appeal_status: str(attrs.AppealStatus),
     appeal_reference: str(attrs.AppealRefNumber),
     appeal_lodged_date: isoDate(attrs.AppealSubmittedDate),
-    appeal_decision: str(attrs.AppealDecision),
+    appeal_decision: appealDecision,
     appeal_decision_date: isoDate(attrs.AppealDecisionDate),
     further_info_requested_date: isoDate(attrs.FIRequestDate),
     further_info_received_date: isoDate(attrs.FIRecDate),
-    final_grant_date: isoDate(attrs.GrantDate),
+    final_grant_date: grantDate,
   };
 }
 

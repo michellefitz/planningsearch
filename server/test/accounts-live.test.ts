@@ -26,6 +26,39 @@ describe("attrsToSnapshot", () => {
     expect(snap.appeal_status).toBeNull();
     expect(snap.commencement_notice).toBeNull();
   });
+
+  it("withdrawn date forces status to withdrawn", () => {
+    const snap = attrsToSnapshot({
+      ...ATTRS,
+      WithdrawnDate: 1672531200000,
+    });
+    expect(snap.status).toBe("withdrawn");
+  });
+
+  it("decided appeal supersedes council status", () => {
+    const snap = attrsToSnapshot({
+      ...ATTRS,
+      AppealDecision: "REFUSE PERMISSION",
+    });
+    expect(snap.status).toBe("refused");
+    expect(snap.appeal_decision).toBe("REFUSE PERMISSION");
+  });
+
+  it("grant date rescues opaque status to granted", () => {
+    const snap = attrsToSnapshot({
+      ApplicationStatus: "DECISION MADE",
+      Decision: null,
+      DecisionDate: null,
+      AppealStatus: null,
+      AppealRefNumber: null,
+      AppealDecision: null,
+      AppealDecisionDate: null,
+      FIRequestDate: null,
+      FIRecDate: null,
+      GrantDate: 1672531200000,
+    });
+    expect(snap.status).toBe("granted");
+  });
 });
 
 describe("fetchLiveNationalSnapshot", () => {

@@ -144,7 +144,8 @@ async function dispatch(req, res, route, url, ctx) {
        values ($1, $2, now() + interval '15 minutes')`,
       [sha256Hex(token), email]
     );
-    const link = `https://${req.headers.host}/api/auth/verify?token=${token}`;
+    const origin = process.env.APP_ORIGIN ?? `https://${req.headers.host}`;
+    const link = `${origin}/api/auth/verify?token=${token}`;
     await sendEmail({ to: email, ...magicLinkEmail(link) });
     return sendPrivate(res, 200, { ok: true });
   }
@@ -326,6 +327,7 @@ async function handleCron(req, res, ctx) {
     try {
       const key = `${t.authority_id}|${t.planning_reference}`;
       const app = ctx.findApp(t.authority_id, t.planning_reference);
+      const prev = prevByKey.get(key);
       let next = await fetchLiveNationalSnapshot(t.authority_id, t.planning_reference);
       if (!next) next = app ? snapshotFromBundleApp(app) : null;
       if (!next) return;
@@ -333,18 +335,21 @@ async function handleCron(req, res, ctx) {
         next.commencement_notice = app.commencement_notice ?? null;
         next.commencement_date = app.commencement_date ?? null;
         next.completion_date = app.completion_date ?? null;
+      } else if (prev) {
+        next.commencement_notice = prev.commencement_notice ?? null;
+        next.commencement_date = prev.commencement_date ?? null;
+        next.completion_date = prev.completion_date ?? null;
       }
       if (AGILE.has(t.authority_id) && app?.source_url) {
         try {
           const live = await ctx.fetchAgileDetail(t.authority_id, app.source_url, t.planning_reference);
-          const mapped = ctx.mapLiveStatus(live);
-          if (mapped) next.status = mapped;
+          const mapped = live ? ctx.mapLiveStatus(live) : null;
+          if (mapped && mapped !== "unknown") next.status = mapped;
           if (live?.decision) next.decision = live.decision;
         } catch {
           // agile portal down: national snapshot still stands
         }
       }
-      const prev = prevByKey.get(key);
       if (prev) {
         for (const e of diffSnapshots(prev, next)) {
           await sql(
@@ -391,7 +396,7 @@ async function handleCron(req, res, ctx) {
         byApp.set(key, {
           address: app?.address_text ?? r.planning_reference,
           reference: r.planning_reference,
-          url: `${origin}/#app=${r.authority_id}:${encodeURIComponent(r.planning_reference)}`,
+          url: `${origin}/#app=${encodeURIComponent(r.authority_id)}:${encodeURIComponent(r.planning_reference)}`,
           summaries: [],
         });
       }

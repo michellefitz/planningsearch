@@ -49,7 +49,7 @@ export const accountApi = {
   createList: (name: string) =>
     j<SavedList>("/api/lists", { method: "POST", body: JSON.stringify({ name }) }),
   updateList: (id: number, patch: { name?: string; alerts_enabled?: boolean }) =>
-    j<Omit<SavedList, "item_ids"> | null>(`/api/lists/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    j<Pick<SavedList, "id" | "name" | "position"> | null>(`/api/lists/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteList: (id: number) => j<{ ok: boolean }>(`/api/lists/${id}`, { method: "DELETE" }),
   addToList: (listId: number, savedAppId: number) =>
     j<{ ok: boolean }>(`/api/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ saved_app_id: savedAppId }) }),

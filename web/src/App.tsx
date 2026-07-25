@@ -90,11 +90,15 @@ export default function App() {
     runSearch({ ...state, useMapArea: true });
   };
 
-  const refreshMe = useCallback(async () => {
+  const refreshMe = useCallback(async (): Promise<Me> => {
     try {
-      setMe(await accountApi.me());
+      const data = await accountApi.me();
+      setMe(data);
+      return data;
     } catch {
-      setMe({ user: null, saves: [], lists: [] });
+      const empty: Me = { user: null, saves: [], lists: [] };
+      setMe(empty);
+      return empty;
     }
   }, []);
 
@@ -137,7 +141,7 @@ export default function App() {
 
   useEffect(() => {
     void (async () => {
-      await refreshMe();
+      const freshMe = await refreshMe();
       const hash = window.location.hash;
       if (hash === "#account") setMode("account");
       if (hash === "#auth-expired") {
@@ -147,8 +151,17 @@ export default function App() {
       const appMatch = hash.match(/^#app=([^:]+):(.+)$/);
       if (appMatch) {
         try {
-          const { id } = await api.resolve(appMatch[1], decodeURIComponent(appMatch[2]));
+          const authorityId = decodeURIComponent(appMatch[1]);
+          const reference = decodeURIComponent(appMatch[2]);
+          const { id } = await api.resolve(authorityId, reference);
           await select(id);
+          const key = saveKey(authorityId, reference);
+          const save = freshMe.saves.find(
+            (s) => saveKey(s.authority_id, s.planning_reference) === key
+          );
+          if (save?.has_update) {
+            accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
+          }
         } catch {
           setError("That application is no longer in the current dataset.");
         }
@@ -161,8 +174,12 @@ export default function App() {
     const pending = localStorage.getItem("pv_pending_save");
     if (!pending || !me?.user) return;
     localStorage.removeItem("pv_pending_save");
-    const { authorityId, reference } = JSON.parse(pending);
-    void toggleSave(authorityId, reference);
+    try {
+      const { authorityId, reference } = JSON.parse(pending);
+      void toggleSave(authorityId, reference);
+    } catch {
+      // corrupted storage entry — already removed above
+    }
   }, [me?.user, toggleSave]);
 
   const nearMe = () => {
