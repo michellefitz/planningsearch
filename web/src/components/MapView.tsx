@@ -6,9 +6,12 @@ import { api, type PointFeatureCollection } from "../api";
 /** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport.
     Flood extents removed 2026-07: the source service now requires a token and
     the OPW publishes no public API — rebuild from their shapefiles (backlog). */
-type OverlayKey = "zoning" | "conservation";
+type OverlayKey = "zoning" | "conservation" | "aca";
 const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; line: string; label: string }> = {
-  conservation: { fill: "#2e8f5b", fillOpacity: 0.28, line: "#1d6b41", label: "Conservation (SAC)" },
+  // ACAs ship as a static file baked from the five councils' development-plan
+  // data (see docs/ACA_DATA.md) — loaded once, no viewport queries.
+  aca: { fill: "#b45a2d", fillOpacity: 0.3, line: "#8a3f1d", label: "Architectural Conservation Areas" },
+  conservation: { fill: "#2e8f5b", fillOpacity: 0.28, line: "#1d6b41", label: "Natura 2000 (SAC)" },
   zoning: { fill: "#14b8a6", fillOpacity: 0.22, line: "#0f766e", label: "Zoning" },
 };
 // Overlays are only meaningful (and light enough to fetch) when zoomed in.
@@ -78,14 +81,16 @@ export default function MapView({
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
 
-  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false });
+  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, aca: false });
   const [layersOpen, setLayersOpen] = useState(false);
   const [mapZoom, setMapZoom] = useState(7);
   const overlaysRef = useRef(overlays);
   overlaysRef.current = overlays;
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const zoomRef = useRef(7);
-  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0 });
+  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0, aca: 0 });
+  // The ACA layer is one static file — fetched at most once, then reused.
+  const acaDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
   // Latest overlay-refresh closure, so the map's one-off event handlers can
   // always call the current version (which reads live state via refs).
   const applyRef = useRef<(layer: OverlayKey) => void>(() => {});
@@ -100,6 +105,26 @@ export default function MapView({
     }
     const src = map.getSource(`ov-${layer}`) as maplibregl.GeoJSONSource | undefined;
     if (!src) return;
+    // Static layer: one small national file, no viewport queries or zoom gate.
+    if (layer === "aca") {
+      if (!enabled) return;
+      if (!acaDataRef.current) {
+        const seq = ++seqRef.current[layer];
+        try {
+          const res = await fetch("/aca.geojson");
+          if (!res.ok) return;
+          const fc = (await res.json()) as GeoJSON.FeatureCollection;
+          acaDataRef.current = fc;
+          if (seq !== seqRef.current[layer]) return;
+        } catch {
+          return;
+        }
+      }
+      (mapRef.current?.getSource(`ov-${layer}`) as maplibregl.GeoJSONSource | undefined)?.setData(
+        acaDataRef.current as never
+      );
+      return;
+    }
     if (!enabled || !bboxRef.current || zoomRef.current < MIN_OVERLAY_ZOOM) {
       src.setData(EMPTY_FC as never);
       return;
@@ -179,7 +204,13 @@ export default function MapView({
           if (!f) return;
           const pr = f.properties ?? {};
           let html: string;
-          if (layer === "conservation") {
+          if (layer === "aca") {
+            html =
+              `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(String(pr.aca_name ?? "Conservation area"))}</strong></div>` +
+              `<span class="ov-pop-tag">${escapeHtml(String(pr.designation ?? "Architectural Conservation Area"))}</span>` +
+              `<span class="ov-pop-sub">${escapeHtml(String(pr.council_label ?? ""))}${pr.ref ? ` · ${escapeHtml(String(pr.ref))}` : ""}</span>` +
+              `</div>`;
+          } else if (layer === "conservation") {
             const url = String(pr.site_url ?? "").trim();
             html =
               `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(String(pr.site_name ?? "Special Area of Conservation"))}</strong></div>` +
@@ -419,8 +450,8 @@ export default function MapView({
                 {OVERLAY_STYLE[layer].label}
               </label>
             ))}
-            {anyOverlayOn && mapZoom < MIN_OVERLAY_ZOOM && (
-              <p className="overlay-hint">Zoom in to load layers</p>
+            {(overlays.zoning || overlays.conservation) && mapZoom < MIN_OVERLAY_ZOOM && (
+              <p className="overlay-hint">Zoom in to load zoning and SAC layers</p>
             )}
             {overlays.zoning && mapZoom >= MIN_OVERLAY_ZOOM && (
               <div className="zone-legend">
