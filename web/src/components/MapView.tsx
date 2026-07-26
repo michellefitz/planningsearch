@@ -2,14 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { api, type PointFeatureCollection } from "../api";
+import { getFloodData } from "../floodData";
 
 /** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport.
-    Flood extents removed 2026-07: the source service now requires a token and
-    the OPW publishes no public API — rebuild from their shapefiles (backlog). */
-type OverlayKey = "zoning" | "conservation" | "archaeology" | "aca";
+    Flood zones rebuilt from OPW CFRAM shapefiles and served as a static file. */
+type OverlayKey = "zoning" | "conservation" | "archaeology" | "aca" | "flood";
 const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; line: string; label: string }> = {
-  // ACAs ship as a static file baked from the five councils' development-plan
-  // data (see docs/ACA_DATA.md) — loaded once, no viewport queries.
+  flood: { fill: "#3b82f6", fillOpacity: 0.25, line: "#1e40af", label: "Flood zones (indicative)" },
   aca: { fill: "#b45a2d", fillOpacity: 0.3, line: "#8a3f1d", label: "Architectural Conservation Areas" },
   // SAC + SPA + NHA + pNHA merged server-side; designations overlap, so the
   // fill is lighter than the single-designation layers.
@@ -84,16 +83,17 @@ export default function MapView({
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
 
-  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false });
+  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false, flood: false });
   const [layersOpen, setLayersOpen] = useState(false);
   const [mapZoom, setMapZoom] = useState(7);
   const overlaysRef = useRef(overlays);
   overlaysRef.current = overlays;
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const zoomRef = useRef(7);
-  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0, archaeology: 0, aca: 0 });
+  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0, archaeology: 0, aca: 0, flood: 0 });
   // The ACA layer is one static file — fetched at most once, then reused.
   const acaDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
+  const floodDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
   // Latest overlay-refresh closure, so the map's one-off event handlers can
   // always call the current version (which reads live state via refs).
   const applyRef = useRef<(layer: OverlayKey) => void>(() => {});
@@ -108,23 +108,25 @@ export default function MapView({
     }
     const src = map.getSource(`ov-${layer}`) as maplibregl.GeoJSONSource | undefined;
     if (!src) return;
-    // Static layer: one small national file, no viewport queries or zoom gate.
-    if (layer === "aca") {
+    // Static layers: one file each, no viewport queries or zoom gate.
+    if (layer === "aca" || layer === "flood") {
       if (!enabled) return;
-      if (!acaDataRef.current) {
+      const dataRef = layer === "aca" ? acaDataRef : floodDataRef;
+      if (!dataRef.current) {
         const seq = ++seqRef.current[layer];
         try {
-          const res = await fetch("/aca.geojson");
-          if (!res.ok) return;
-          const fc = (await res.json()) as GeoJSON.FeatureCollection;
-          acaDataRef.current = fc;
+          const fc = layer === "aca"
+            ? await fetch("/aca.geojson").then((r) => r.ok ? r.json() as Promise<GeoJSON.FeatureCollection> : null)
+            : await getFloodData();
+          if (!fc) return;
+          dataRef.current = fc;
           if (seq !== seqRef.current[layer]) return;
         } catch {
           return;
         }
       }
       (mapRef.current?.getSource(`ov-${layer}`) as maplibregl.GeoJSONSource | undefined)?.setData(
-        acaDataRef.current as never
+        dataRef.current as never
       );
       return;
     }
@@ -221,6 +223,16 @@ export default function MapView({
               (url.startsWith("https://")
                 ? `<a class="ov-pop-sub" href="${escapeHtml(url)}" target="_blank" rel="noopener">Site details on npws.ie</a>`
                 : "") +
+              `</div>`;
+          } else if (layer === "flood") {
+            const type = String(pr.flood_type ?? "").trim();
+            const scenario = String(pr.scenario ?? "").trim();
+            const typeLabel = type === "coastal" ? "Coastal" : type === "fluvial" ? "Fluvial" : "Flood";
+            html =
+              `<div class="ov-popup"><div class="ov-pop-title"><strong>Flood zone</strong></div>` +
+              `<span class="ov-pop-tag">${escapeHtml(typeLabel)}${scenario ? ` · ${escapeHtml(scenario)}` : ""}</span>` +
+              `<span class="ov-pop-sub">Indicative — not a site-specific assessment</span>` +
+              `<a class="ov-pop-sub" href="https://www.floodinfo.ie" target="_blank" rel="noopener">Details on floodinfo.ie</a>` +
               `</div>`;
           } else if (layer === "archaeology") {
             html =
@@ -461,7 +473,7 @@ export default function MapView({
               </label>
             ))}
             {(overlays.zoning || overlays.conservation || overlays.archaeology) && mapZoom < MIN_OVERLAY_ZOOM && (
-              <p className="overlay-hint">Zoom in to load zoning and SAC layers</p>
+              <p className="overlay-hint">Zoom in to load zoning, heritage and archaeology layers</p>
             )}
             {overlays.zoning && mapZoom >= MIN_OVERLAY_ZOOM && (
               <div className="zone-legend">

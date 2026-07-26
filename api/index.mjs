@@ -757,77 +757,7 @@ async function fetchZoning(lat, lng) {
   }
 }
 
-// Indicative flood-risk (OPW national flood mapping). Mirrors server/src/flood.ts.
-const FLOOD_CACHE = new Map();
-const FLOOD_URL =
-  process.env.PLANVIEW_FLOOD_URL ??
-  "https://services7.arcgis.com/aopigSLPh2SnT3cX/ArcGIS/rest/services/Flood_Maps/FeatureServer/0/query";
-const FLOOD_SCENARIO_FIELDS = [
-  "Probability", "PROBABILITY", "Scenario", "SCENARIO", "AEP",
-  "Flood_Zone", "FLOOD_ZONE", "FloodZone", "Flood_Type", "FLOOD_TYPE",
-  "Type", "TYPE", "Likelihood", "Event", "Class", "Descriptor",
-  "DESCRIPT", "Description", "DESCRIPTION",
-];
-const FLOOD_SCENARIO_KEY_RE = /prob|scenario|aep|zone|fluvial|coastal|likelihood|extent|event/i;
-function floodScenarioLabel(attrs) {
-  for (const f of FLOOD_SCENARIO_FIELDS) {
-    const v = attrs[f];
-    if (typeof v === "string" && v.trim() && v.trim().length <= 60) return v.trim();
-  }
-  for (const [k, v] of Object.entries(attrs)) {
-    if (typeof v === "string" && v.trim() && v.trim().length <= 60 && FLOOD_SCENARIO_KEY_RE.test(k)) {
-      return v.trim();
-    }
-  }
-  return null;
-}
-async function fetchFlood(lat, lng, trace) {
-  const cacheKey = `${lat},${lng}`;
-  if (!trace && FLOOD_CACHE.has(cacheKey)) return FLOOD_CACHE.get(cacheKey);
-  const params = new URLSearchParams({
-    geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
-    geometryType: "esriGeometryPoint",
-    inSR: "4326",
-    spatialRel: "esriSpatialRelIntersects",
-    where: "1=1",
-    outFields: "*",
-    returnGeometry: "false",
-    f: "json",
-  });
-  const url = `${FLOOD_URL}?${params}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) {
-      trace?.push({ step: "flood_query", url, status: res.status, error: "non-200" });
-      return null;
-    }
-    const body = await res.json();
-    if (body.error || !Array.isArray(body.features)) {
-      trace?.push({ step: "flood_query", url, bodySnippet: JSON.stringify(body).slice(0, 500), error: "no-features" });
-      return null;
-    }
-    const scenarios = [...new Set(body.features.map((f) => floodScenarioLabel(f.attributes)).filter(Boolean))];
-    const result = { at_risk: body.features.length > 0, scenarios };
-    trace?.push({
-      step: "flood_query",
-      url,
-      status: res.status,
-      featureCount: body.features.length,
-      bodySnippet: JSON.stringify(body.features.slice(0, 3)).slice(0, 800),
-    });
-    FLOOD_CACHE.set(cacheKey, result);
-    return result;
-  } catch (err) {
-    trace?.push({ step: "flood_query", url, error: err instanceof Error ? err.message : String(err) });
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// Map overlays (zoning, flood, conservation, archaeology) as GeoJSON for a
+// Map overlays (zoning, conservation, archaeology) as GeoJSON for a
 // viewport. Mirrors server/src/overlays.ts.
 // NPWS designated areas: the npws.ie webservices host is dead; this DHLGH
 // ArcGIS Online mirror is the live public endpoint (CC-BY, via data.gov.ie).
@@ -848,7 +778,6 @@ const SMR_ZONE_URL =
   "https://services-eu1.arcgis.com/HyjXgkV6KGMSF3jt/arcgis/rest/services/SMRZoneOpenData/FeatureServer/0/query";
 const OVERLAY_CONFIG = {
   zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,GZT_DESC,PLAN_NAME" },
-  flood: { url: FLOOD_URL, where: "1=1", outFields: "*" },
   archaeology: { url: SMR_ZONE_URL, where: "1=1", outFields: "ZONE_ID" },
 };
 const CONSERVATION_FIELDS = "SITECODE,SITE_NAME,URL";
@@ -868,18 +797,6 @@ function classifyZone(text) {
   return "other";
 }
 const ovStr = (v) => (typeof v === "string" ? v.trim() : v == null ? "" : String(v));
-const OV_FLOOD_FIELDS = [
-  "Probability", "PROBABILITY", "Scenario", "SCENARIO", "AEP", "Flood_Zone", "FLOOD_ZONE",
-  "FloodZone", "Flood_Type", "FLOOD_TYPE", "Type", "TYPE", "Likelihood", "Event", "Class",
-  "Descriptor", "DESCRIPT", "Description", "DESCRIPTION",
-];
-function ovFloodLabel(props) {
-  for (const f of OV_FLOOD_FIELDS) {
-    const v = ovStr(props[f]);
-    if (v && v.length <= 60) return v;
-  }
-  return "Mapped flood extent";
-}
 function ovTransform(layer, features, designation) {
   return features.map((f) => {
     const p = f.properties ?? {};
@@ -901,8 +818,6 @@ function ovTransform(layer, features, designation) {
       };
     } else if (layer === "archaeology") {
       f.properties = { zone_ref: ovStr(p.ZONE_ID) };
-    } else {
-      f.properties = { flood_label: ovFloodLabel(p) };
     }
     return f;
   });
@@ -1910,15 +1825,6 @@ const AGENT_TOOLS = [
     },
   },
   {
-    name: "get_flood_risk",
-    description: "Indicative flood risk at an application's location (OPW flood maps).",
-    input_schema: {
-      type: "object",
-      properties: { application_id: { type: "number" } },
-      required: ["application_id"],
-    },
-  },
-  {
     name: "get_appeal",
     description:
       "Appeal case details from An Coimisiún Pleanála for an application that was appealed: " +
@@ -2138,12 +2044,6 @@ async function executeAgentTool(name, input) {
       if (!app) return { error: "Application not found" };
       if (app.lat == null || app.lng == null) return { error: "Application has no coordinates" };
       return (await fetchZoning(app.lat, app.lng)) ?? { error: "Zoning lookup failed" };
-    }
-    case "get_flood_risk": {
-      const app = getApp();
-      if (!app) return { error: "Application not found" };
-      if (app.lat == null || app.lng == null) return { error: "Application has no coordinates" };
-      return (await fetchFlood(app.lat, app.lng)) ?? { error: "Flood lookup failed" };
     }
     case "get_appeal": {
       const app = getApp();
@@ -2594,19 +2494,7 @@ export default async function handler(req, res) {
     return send(res, 200, { supported: true, zones });
   }
 
-  const flm = route.match(/^\/api\/applications\/(\d+)\/flood$/);
-  if (flm) {
-    const app = BUNDLE.applications.find((a) => a.id === Number(flm[1]));
-    if (!app) return send(res, 404, { error: "Application not found" });
-    if (app.lat == null || app.lng == null) return send(res, 200, { supported: false, flood: null });
-    const debug = p.get("debug") === "1";
-    const trace = debug ? [] : undefined;
-    const flood = await fetchFlood(app.lat, app.lng, trace);
-    if (debug) return send(res, 200, { flood, trace });
-    return send(res, 200, { supported: true, flood });
-  }
-
-  const om = route.match(/^\/api\/overlays\/(zoning|flood|conservation|archaeology)$/);
+  const om = route.match(/^\/api\/overlays\/(zoning|conservation|archaeology)$/);
   if (om) {
     const bbox = parseBbox(p.get("bbox"));
     if (!bbox) return send(res, 200, { type: "FeatureCollection", features: [] });

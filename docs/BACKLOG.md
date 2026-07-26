@@ -220,15 +220,7 @@ ACAs are a baked static file (docs/ACA_DATA.md). Still to build:
   audience). Bonus found on the DHLGH org: National Park boundaries,
   Ancient/Long-Established Woodland (ALEW), UNESCO sites.
 
-- **Flood extents layer removed 2026-07-25 — rebuild from OPW open data.**
-  The ArcGIS service the overlay and the per-application flood lookup used
-  (`services7.arcgis.com/aopigSLPh2SnT3cX/.../Flood_Maps`) now returns
-  "Token Required" — it was a third-party upload, not an OPW endpoint, and
-  the OPW publishes no public API (floodinfo.ie's webgis is unreachable).
-  Real fix: download the NIFM/NICM extents shapefiles from data.gov.ie
-  (e.g. catalogue.floodinfo.opw S3 bucket), simplify, and either bake into
-  the bundle or serve as vector tiles. Until then the map layer is removed
-  and the detail-panel "Flood risk" row degrades to "No information
-  available". `PLANVIEW_FLOOD_URL` env override still exists if a working
-  service appears. The Layers box on the map is ready to take this and the
-  conservation-areas layer when they land.
+- **Flood zones layer rebuilt from OPW open data (2026-07).**
+  Static GeoJSON baked from NIFM (fluvial) + NCFHM (coastal) shapefiles,
+  client-side overlay and point-in-polygon lookup. If the file size
+  impacts initial load, convert to PMTiles vector tiles.

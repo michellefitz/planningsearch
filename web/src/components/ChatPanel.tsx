@@ -35,7 +35,6 @@ const TOOL_LABELS: Record<string, string> = {
   get_application_detail: "Reading an application…",
   get_conditions: "Checking decision conditions…",
   get_zoning: "Checking zoning…",
-  get_flood_risk: "Checking flood risk…",
   get_appeal: "Reading the appeal case…",
   get_documents: "Listing documents…",
   read_appeal_document: "Reading a case document — this can take a minute…",
