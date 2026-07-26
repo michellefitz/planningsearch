@@ -238,11 +238,16 @@ export function normaliseEircode(raw: unknown): string | null {
 // (proposalDescription, developmentDescription, proposal_description…), so
 // match on the key rather than an exact name and take the longest such value.
 const DESCRIPTION_KEY_RE = /descript|proposal|development/i;
+// …but never a status/decision narrative: Fingal's "statusDescriptionOwner"
+// ("On 24 Jun 2025, a decision REFUSE PERMISSION was made…") is longer than
+// the real proposal and was winning the longest-string contest.
+const NOT_DESCRIPTION_KEY_RE = /status|decision/i;
 
-function pickDescription(d: Record<string, unknown>): string | null {
+export function pickDescription(d: Record<string, unknown>): string | null {
   let best: string | null = null;
   for (const [key, value] of Object.entries(d)) {
-    if (typeof value !== "string" || !DESCRIPTION_KEY_RE.test(key)) continue;
+    if (typeof value !== "string" || !DESCRIPTION_KEY_RE.test(key) || NOT_DESCRIPTION_KEY_RE.test(key))
+      continue;
     const v = value.trim();
     if (v && v.length > (best?.length ?? 0)) best = v;
   }
