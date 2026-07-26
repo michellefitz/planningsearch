@@ -50,7 +50,7 @@ type ContentBlock =
   | { type: "text"; text: string }
   | { type: "document"; source: { type: "base64"; media_type: "application/pdf"; data: string } };
 
-async function callClaude(
+export async function callClaude(
   system: string,
   content: string | ContentBlock[],
   maxTokens = 120,
