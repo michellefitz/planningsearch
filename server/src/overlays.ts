@@ -1,11 +1,10 @@
 /**
- * Map overlays: polygon layers (zoning, flood, conservation, archaeology)
+ * Map overlays: polygon layers (zoning, conservation, archaeology)
  * fetched from ArcGIS as GeoJSON for the current map viewport. Proxied
  * through us so the browser needs no cross-origin access, and so we can
  * bbox-limit, simplify and cap the payload.
  */
 import { GZT_URL } from "./zoning.js";
-import { FLOOD_URL } from "./flood.js";
 
 const TIMEOUT_MS = 12_000;
 
@@ -32,7 +31,7 @@ export const SMR_ZONE_URL =
   process.env.PLANVIEW_SMR_ZONE_URL ??
   "https://services-eu1.arcgis.com/HyjXgkV6KGMSF3jt/arcgis/rest/services/SMRZoneOpenData/FeatureServer/0/query";
 
-export type OverlayLayer = "zoning" | "flood" | "conservation" | "archaeology";
+export type OverlayLayer = "zoning" | "conservation" | "archaeology";
 
 interface OverlayConfig {
   url: string;
@@ -42,7 +41,6 @@ interface OverlayConfig {
 
 const OVERLAYS: Record<Exclude<OverlayLayer, "conservation">, OverlayConfig> = {
   zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,GZT_DESC,PLAN_NAME" },
-  flood: { url: FLOOD_URL, where: "1=1", outFields: "*" },
   archaeology: { url: SMR_ZONE_URL, where: "1=1", outFields: "ZONE_ID" },
 };
 const CONSERVATION_FIELDS = "SITECODE,SITE_NAME,URL";
@@ -67,19 +65,6 @@ export function classifyZone(text: string): string {
 }
 
 const s = (v: unknown): string => (typeof v === "string" ? v.trim() : v == null ? "" : String(v));
-
-const FLOOD_SCENARIO_FIELDS = [
-  "Probability", "PROBABILITY", "Scenario", "SCENARIO", "AEP", "Flood_Zone", "FLOOD_ZONE",
-  "FloodZone", "Flood_Type", "FLOOD_TYPE", "Type", "TYPE", "Likelihood", "Event", "Class",
-  "Descriptor", "DESCRIPT", "Description", "DESCRIPTION",
-];
-function floodLabel(props: Record<string, unknown>): string {
-  for (const f of FLOOD_SCENARIO_FIELDS) {
-    const v = s(props[f]);
-    if (v && v.length <= 60) return v;
-  }
-  return "Mapped flood extent";
-}
 
 /** Slim + enrich each feature's properties for colouring and click-popups. */
 function transformFeatures(layer: OverlayLayer, features: unknown[], designation?: string): unknown[] {
@@ -107,8 +92,6 @@ function transformFeatures(layer: OverlayLayer, features: unknown[], designation
       };
     } else if (layer === "archaeology") {
       f.properties = { zone_ref: s(p.ZONE_ID) };
-    } else {
-      f.properties = { flood_label: floodLabel(p) };
     }
     return f;
   });
@@ -122,7 +105,7 @@ export interface GeoJson {
 }
 
 export function isOverlayLayer(v: string): v is OverlayLayer {
-  return v === "zoning" || v === "flood" || v === "conservation" || v === "archaeology";
+  return v === "zoning" || v === "conservation" || v === "archaeology";
 }
 
 /** Raw features for one ArcGIS layer within a bbox; [] on any error. */

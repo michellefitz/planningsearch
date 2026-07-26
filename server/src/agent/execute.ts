@@ -2,7 +2,6 @@ import type Database from "better-sqlite3";
 import { aggregateApplications, search as realSearch } from "../search.js";
 import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileConditions, fetchAgileDocumentList } from "../agile.js";
 import { fetchZoning } from "../zoning.js";
-import { fetchFlood } from "../flood.js";
 import { abpCaseUrl, fetchAppealCase } from "../abp.js";
 import { deriveScannedFilesUrl, fetchScannedFileList } from "../documents.js";
 import { STATUS_LABELS } from "../normalize.js";
@@ -12,7 +11,6 @@ export interface ToolDeps {
   search: typeof realSearch;
   fetchAgileConditions: typeof fetchAgileConditions;
   fetchZoning: typeof fetchZoning;
-  fetchFlood: typeof fetchFlood;
   fetchAppealCase: typeof fetchAppealCase;
   fetchScannedFileList: typeof fetchScannedFileList;
   fetchAgileDocumentList: typeof fetchAgileDocumentList;
@@ -22,7 +20,6 @@ const REAL_DEPS: ToolDeps = {
   search: realSearch,
   fetchAgileConditions,
   fetchZoning,
-  fetchFlood,
   fetchAppealCase,
   fetchScannedFileList,
   fetchAgileDocumentList,
@@ -131,12 +128,6 @@ export function buildToolExecutor(db: Database.Database, deps: Partial<ToolDeps>
         if (!row) return { error: "Application not found" };
         if (row.lat == null || row.lng == null) return { error: "Application has no coordinates" };
         return (await d.fetchZoning(Number(row.lat), Number(row.lng))) ?? { error: "Zoning lookup failed" };
-      }
-      case "get_flood_risk": {
-        const row = getRow(input);
-        if (!row) return { error: "Application not found" };
-        if (row.lat == null || row.lng == null) return { error: "Application has no coordinates" };
-        return (await d.fetchFlood(Number(row.lat), Number(row.lng))) ?? { error: "Flood lookup failed" };
       }
       case "get_appeal": {
         const row = getRow(input);

@@ -260,11 +260,6 @@ export const api = {
     getJson<{ supported: boolean; zones: ZoningInfo[] | null }>(
       `/api/applications/${id}/zoning`
     ),
-  flood: (id: number) =>
-    getJson<{
-      supported: boolean;
-      flood: { at_risk: boolean; scenarios: string[] } | null;
-    }>(`/api/applications/${id}/flood`),
   conditions: (id: number) =>
     getJson<{ supported: boolean; conditions: DecisionConditions | null }>(
       `/api/applications/${id}/conditions`
@@ -305,6 +300,6 @@ export const api = {
     getJson<{ id: number }>(
       `/api/resolve?authority=${encodeURIComponent(authority)}&reference=${encodeURIComponent(reference)}`
     ),
-  overlay: (layer: "zoning" | "flood" | "conservation" | "archaeology", bbox: [number, number, number, number]) =>
+  overlay: (layer: "zoning" | "conservation" | "archaeology", bbox: [number, number, number, number]) =>
     getJson<GeoJSON.FeatureCollection>(`/api/overlays/${layer}?bbox=${bbox.join(",")}`),
 };

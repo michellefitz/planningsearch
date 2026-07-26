@@ -123,15 +123,6 @@ export const AGENT_TOOLS: AnthropicTool[] = [
     },
   },
   {
-    name: "get_flood_risk",
-    description: "Indicative flood risk at an application's location (OPW flood maps).",
-    input_schema: {
-      type: "object",
-      properties: { application_id: { type: "number" } },
-      required: ["application_id"],
-    },
-  },
-  {
     name: "get_appeal",
     description:
       "Appeal case details from An Coimisiún Pleanála for an application that was appealed: " +
