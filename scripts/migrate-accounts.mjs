@@ -61,6 +61,26 @@ const STATEMENTS = [
   )`,
   `create index if not exists app_events_app_idx
      on app_events (authority_id, planning_reference, detected_at desc)`,
+  `create table if not exists preplan_projects (
+    id bigint generated always as identity primary key,
+    user_id bigint not null references users(id) on delete cascade,
+    label text not null,
+    lat double precision not null,
+    lng double precision not null,
+    address text not null,
+    eircode text,
+    intent text not null,
+    created_at timestamptz not null default now()
+  )`,
+  `create table if not exists preplan_reports (
+    id bigint generated always as identity primary key,
+    project_id bigint not null references preplan_projects(id) on delete cascade,
+    status text not null default 'running',
+    sections jsonb,
+    narrative text,
+    error text,
+    generated_at timestamptz not null default now()
+  )`,
 ];
 
 for (const stmt of STATEMENTS) {
