@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   collectAppRefs,
   streamAgent,
@@ -38,6 +38,8 @@ const TOOL_LABELS: Record<string, string> = {
   get_flood_risk: "Checking flood risk…",
   get_appeal: "Reading the appeal case…",
   get_documents: "Listing documents…",
+  read_appeal_document: "Reading a case document — this can take a minute…",
+  read_document: "Reading a council document — this can take a minute…",
   geocode_location: "Locating the area…",
 };
 
@@ -214,56 +216,122 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
   const [status, setStatus] = useState<string | null>(null);
   const appRefs = useRef(new Map<number, AgentAppRef>());
 
+  const threadRef = useRef<HTMLDivElement>(null);
+  // Pinned to the bottom? Set false the moment the user scrolls up, so the
+  // thread never yanks them back mid-read; re-arms when they return.
+  const stickRef = useRef(true);
+  // Streamed text arrives in uneven network chunks; the reveal loop drains it
+  // at a steady per-frame rate instead, so the reply reads as typing.
+  const targetRef = useRef("");
+  const shownRef = useRef(0);
+  const replyIndexRef = useRef<number | null>(null);
+  const rafRef = useRef<number>();
+
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = threadRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  }, []);
+
+  const onThreadScroll = useCallback(() => {
+    const el = threadRef.current;
+    if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  }, []);
+
+  const setReplyContent = useCallback((content: string, error = false) => {
+    const idx = replyIndexRef.current;
+    if (idx == null) return;
+    setMessages((ms) =>
+      idx < ms.length ? ms.map((m, i) => (i === idx ? { ...m, content, ...(error ? { error } : {}) } : m)) : ms
+    );
+  }, []);
+
+  const stopReveal = useCallback(() => {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = undefined;
+  }, []);
+
+  const revealTick = useCallback(() => {
+    rafRef.current = undefined;
+    const target = targetRef.current;
+    if (shownRef.current < target.length) {
+      // Steady drip that speeds up with the backlog, so it never falls
+      // hopelessly behind a fast stream but never dumps a whole chunk.
+      const backlog = target.length - shownRef.current;
+      shownRef.current = Math.min(target.length, shownRef.current + Math.max(2, Math.ceil(backlog / 24)));
+      setReplyContent(target.slice(0, shownRef.current));
+      if (stickRef.current) scrollToBottom();
+    }
+    if (shownRef.current < targetRef.current.length) rafRef.current = requestAnimationFrame(revealTick);
+  }, [scrollToBottom, setReplyContent]);
+
+  const ensureReveal = useCallback(() => {
+    if (rafRef.current == null) rafRef.current = requestAnimationFrame(revealTick);
+  }, [revealTick]);
+
+  useEffect(() => stopReveal, [stopReveal]);
+
+  // Status lines and app cards appear outside the reveal loop — keep the
+  // bottom in view for those too, but only while pinned.
+  useEffect(() => {
+    if (stickRef.current) scrollToBottom();
+  }, [status, messages.length, scrollToBottom]);
+
   const send = useCallback(async () => {
     const q = input.trim();
     if (!q || busy) return;
     setInput("");
     setBusy(true);
     setStatus(null);
+    // A previous reply may still be drip-revealing — complete it instantly.
+    stopReveal();
+    if (shownRef.current < targetRef.current.length) setReplyContent(targetRef.current);
     const history: ChatTurn[] = [
       ...messages.filter((m) => !m.error).map((m) => ({ role: m.role, content: m.content })),
       { role: "user", content: q },
     ];
+    targetRef.current = "";
+    shownRef.current = 0;
+    replyIndexRef.current = messages.length + 1;
     setMessages((ms) => [...ms, { role: "user", content: q }, { role: "assistant", content: "" }]);
+    // Sending re-arms the pin and rides down to the new question.
+    stickRef.current = true;
+    requestAnimationFrame(() => scrollToBottom(true));
 
     const onEvent = (ev: AgentEvent) => {
       collectAppRefs(ev, appRefs.current);
       if (ev.type === "text") {
         setStatus(null);
-        setMessages((ms) => {
-          const out = [...ms];
-          out[out.length - 1] = {
-            ...out[out.length - 1],
-            content: out[out.length - 1].content + ev.text,
-          };
-          return out;
-        });
+        targetRef.current += ev.text;
+        ensureReveal();
       } else if (ev.type === "tool_start") {
         setStatus(TOOL_LABELS[ev.name] ?? "Working…");
       } else if (ev.type === "tool_result") {
         const referenced = [...appRefs.current.values()];
         if (referenced.length) onAppsReferenced(referenced);
       } else if (ev.type === "error") {
-        setMessages((ms) => [...ms.slice(0, -1), { role: "assistant", content: ev.message, error: true }]);
+        stopReveal();
+        targetRef.current = ev.message;
+        shownRef.current = ev.message.length;
+        setReplyContent(ev.message, true);
       }
     };
 
     try {
       await streamAgent(history, onEvent);
     } catch {
-      setMessages((ms) => [
-        ...ms.slice(0, -1),
-        { role: "assistant", content: "Something went wrong — try again.", error: true },
-      ]);
+      stopReveal();
+      targetRef.current = "";
+      shownRef.current = 0;
+      setReplyContent("Something went wrong — try again.", true);
     } finally {
       setBusy(false);
       setStatus(null);
     }
-  }, [input, busy, messages, onAppsReferenced]);
+  }, [input, busy, messages, onAppsReferenced, ensureReveal, scrollToBottom, setReplyContent, stopReveal]);
 
   return (
     <div className="chat-panel">
-      <div className="chat-thread">
+      <div className="chat-thread" ref={threadRef} onScroll={onThreadScroll}>
         {messages.length === 0 && (
           <div className="chat-empty">
             <p>Ask about planning in your area — for example:</p>

@@ -2485,11 +2485,20 @@ a.pill:hover {
   flex-direction: column;
   gap: 10px;
   padding: 4px 2px;
+  /* Reaching the top/bottom of the thread shouldn't scroll the page behind it. */
+  overscroll-behavior: contain;
 }
 .chat-msg {
   border-radius: 10px;
   padding: 8px 12px;
   max-width: 95%;
+  transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease);
+}
+@starting-style {
+  .chat-msg {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 .chat-msg p {
   margin: 6px 0;
