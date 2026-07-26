@@ -3,6 +3,9 @@ import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInf
 import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "./MapView";
 import SaveStar from "./SaveStar";
+import { getFloodData } from "../floodData";
+import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+import { point as turfPoint } from "@turf/helpers";
 
 /**
  * Application detail (PRD F3) presented as a right-hand overlay sheet.
@@ -931,7 +934,7 @@ function PropertyContext({
                   </div>
                 ))}
         </dd>
-        <dt>Flood risk</dt>
+        <dt>Flood zone</dt>
         <dd>
           {flood === "pending" ? (
             CHECKING
@@ -939,11 +942,11 @@ function PropertyContext({
             NO_INFO
           ) : flood.at_risk ? (
             <span className="flood-warn-inline">
-              Within a mapped flood extent
+              Within a mapped flood zone
               {flood.scenarios.length > 0 && ` — ${flood.scenarios.join("; ")}`}
             </span>
           ) : (
-            "None mapped at this location"
+            "Not within a mapped flood zone"
           )}
         </dd>
         <dt>Price register</dt>
@@ -1100,10 +1103,31 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         .catch(() => {
           if (!cancelled) setZones("none");
         });
-      api
-        .flood(d.id)
-        .then((res) => {
-          if (!cancelled) setFlood(res.flood ?? "none");
+      getFloodData()
+        .then((fc) => {
+          if (cancelled) return;
+          if (!fc || d.lat == null || d.lng == null) {
+            setFlood("none");
+            return;
+          }
+          const pt = turfPoint([d.lng, d.lat]);
+          const hits = fc.features.filter(
+            (f) =>
+              (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon") &&
+              booleanPointInPolygon(pt, f as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>)
+          );
+          if (hits.length === 0) {
+            setFlood({ at_risk: false, scenarios: [] });
+            return;
+          }
+          const scenarios = [
+            ...new Set(
+              hits
+                .map((f) => String((f.properties as Record<string, unknown>)?.scenario ?? "").trim())
+                .filter(Boolean)
+            ),
+          ];
+          setFlood({ at_risk: true, scenarios });
         })
         .catch(() => {
           if (!cancelled) setFlood("none");
