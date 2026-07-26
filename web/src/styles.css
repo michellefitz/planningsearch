@@ -372,14 +372,12 @@ body {
        from focus and readers; reopening flips visibility immediately. */
     transition: width 240ms var(--ease), padding 240ms var(--ease), visibility 0s 240ms;
   }
-  .panel-collapse-btn {
-    display: inline-flex;
-  }
 }
 
-/* A slim tab on the panel/map seam; the chevron points at what it will do. */
+/* A slim tab on the panel/map seam; the chevron points at what it will do.
+   Desktop-only — mobile has the map/list toggle instead. */
 .panel-collapse-btn {
-  display: none;
+  display: inline-flex;
   position: absolute;
   z-index: 6;
   left: 0;
@@ -411,6 +409,12 @@ body {
 
 .layout.panel-collapsed .panel-collapse-btn svg {
   transform: rotate(180deg);
+}
+
+@media (max-width: 767px) {
+  .panel-collapse-btn {
+    display: none;
+  }
 }
 
 /* The map/list toggle is a mobile affordance; both panes show at ≥768px. */
