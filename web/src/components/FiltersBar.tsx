@@ -12,13 +12,55 @@ function toggle(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
+const fmtDate = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric" });
+
+interface Applied {
+  key: string;
+  label: string;
+  remove: () => void;
+}
+
+/** One removable chip per active filter, so the state of the list is legible
+    without opening the panel. */
+function appliedFilters(meta: Meta | null, s: SearchState, onChange: (n: SearchState) => void): Applied[] {
+  const out: Applied[] = [];
+  for (const id of s.authorities) {
+    const label = meta?.authorities.find((a) => a.id === id)?.short_name ?? id;
+    out.push({ key: `auth-${id}`, label, remove: () => onChange({ ...s, authorities: s.authorities.filter((v) => v !== id) }) });
+  }
+  if (statusesCustomised(s)) {
+    const label =
+      s.statuses.length <= 3
+        ? s.statuses.map((k) => STATUS_STYLE[k]?.label ?? k).join(", ")
+        : `Status · ${s.statuses.length} of ${DEFAULT_STATUSES.length}`;
+    out.push({ key: "statuses", label, remove: () => onChange({ ...s, statuses: [...DEFAULT_STATUSES] }) });
+  }
+  for (const t of s.types) {
+    out.push({ key: `type-${t}`, label: meta?.application_types[t] ?? t, remove: () => onChange({ ...s, types: s.types.filter((v) => v !== t) }) });
+  }
+  if (s.receivedFrom || s.receivedTo) {
+    const label =
+      s.receivedFrom && s.receivedTo
+        ? `${fmtDate(s.receivedFrom)} – ${fmtDate(s.receivedTo)}`
+        : s.receivedFrom
+          ? `From ${fmtDate(s.receivedFrom)}`
+          : `Until ${fmtDate(s.receivedTo)}`;
+    out.push({ key: "dates", label, remove: () => onChange({ ...s, receivedFrom: "", receivedTo: "" }) });
+  }
+  if (s.domesticOnly) out.push({ key: "domestic", label: "Domestic only", remove: () => onChange({ ...s, domesticOnly: false }) });
+  if (s.appealedOnly) out.push({ key: "appealed", label: "Appealed", remove: () => onChange({ ...s, appealedOnly: false }) });
+  if (s.commencedOnly) out.push({ key: "commenced", label: "Work commenced", remove: () => onChange({ ...s, commencedOnly: false }) });
+  if (s.useMapArea) out.push({ key: "maparea", label: "Current map area", remove: () => onChange({ ...s, useMapArea: false }) });
+  return out;
+}
+
 export default function FiltersBar({ meta, state, onChange }: Props) {
+  const applied = appliedFilters(meta, state, onChange);
   return (
+    <>
     <details className="filters" open={false}>
-      <summary>
-        Filters
-        {countActive(state) > 0 && <span className="filter-badge">{countActive(state)}</span>}
-      </summary>
+      <summary>Filters</summary>
       <fieldset>
         {/* A dropdown, not chips: this list grows toward all 31 local authorities. */}
         <legend>Council</legend>
@@ -132,10 +174,47 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
         </label>
       </fieldset>
     </details>
+    {applied.length > 0 && (
+      <div className="applied-row" role="group" aria-label="Active filters">
+        {applied.map((f) => (
+          <button key={f.key} type="button" className="applied-chip" onClick={f.remove} aria-label={`Remove filter: ${f.label}`}>
+            {f.label}
+            <span className="applied-x" aria-hidden="true">
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                <path d="M1 1l6 6M7 1L1 7" />
+              </svg>
+            </span>
+          </button>
+        ))}
+        {applied.length > 1 && (
+          <button
+            type="button"
+            className="applied-clear"
+            onClick={() =>
+              onChange({
+                ...state,
+                authorities: [],
+                statuses: [...DEFAULT_STATUSES],
+                types: [],
+                domesticOnly: false,
+                appealedOnly: false,
+                commencedOnly: false,
+                receivedFrom: "",
+                receivedTo: "",
+                useMapArea: false,
+              })
+            }
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+    )}
+    </>
   );
 }
 
-/** The Status filter counts toward the badge only when narrowed from its
+/** The Status filter gets an applied chip only when narrowed from its
  *  default (everything except invalid/incomplete) — the default view is "clean",
  *  not a filtered state the user set. */
 function statusesCustomised(s: SearchState): boolean {
@@ -144,16 +223,3 @@ function statusesCustomised(s: SearchState): boolean {
   return DEFAULT_STATUSES.some((k) => !set.has(k));
 }
 
-function countActive(s: SearchState): number {
-  return (
-    s.authorities.length +
-    (statusesCustomised(s) ? 1 : 0) +
-    s.types.length +
-    (s.domesticOnly ? 1 : 0) +
-    (s.appealedOnly ? 1 : 0) +
-    (s.commencedOnly ? 1 : 0) +
-    (s.receivedFrom ? 1 : 0) +
-    (s.receivedTo ? 1 : 0) +
-    (s.useMapArea ? 1 : 0)
-  );
-}

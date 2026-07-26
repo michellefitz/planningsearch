@@ -62,7 +62,19 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
           title="Search near my location"
           aria-label="Search near my location"
         >
-          <span aria-hidden="true">📍</span>
+          <svg
+            aria-hidden="true"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <circle cx="12" cy="12" r="3.4" />
+            <path d="M12 2.5V6M12 18v3.5M21.5 12H18M6 12H2.5" />
+          </svg>
         </button>
       </form>
       {open && (

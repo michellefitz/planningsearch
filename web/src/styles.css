@@ -512,8 +512,12 @@ body {
   width: 2.1rem;
   display: inline-grid;
   place-items: center;
-  font-size: 0.95rem;
   line-height: 1;
+  color: var(--ink-2);
+}
+
+.search-bar .btn-icon:hover {
+  color: var(--ink);
 }
 
 .search-input::placeholder {
@@ -585,6 +589,17 @@ body {
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: var(--shadow-pop);
+  transform-origin: top;
+  transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease);
+}
+
+/* Popovers arrive from their trigger — a short settle, no keyframes, so
+   rapid open/close stays interruptible (progressive enhancement). */
+@starting-style {
+  .suggestions {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
 }
 
 .suggestions button {
@@ -657,13 +672,69 @@ body {
   color: var(--ink);
 }
 
-.filter-badge {
-  background: var(--action);
-  color: #fff;
+/* Active filters, spelled out: one removable chip per applied filter sits
+   under the (usually collapsed) editor, so the state of the list is always
+   legible. Clicking a chip removes that filter. */
+.applied-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.28rem;
+  margin: 0.35rem 0 0.1rem;
+}
+
+.applied-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid transparent;
   border-radius: 999px;
-  font-size: 0.66rem;
-  font-weight: 600;
-  padding: 0.05rem 0.42rem;
+  padding: 0.18rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 550;
+  color: var(--action);
+  background: var(--action-tint);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), transform var(--t-base) var(--ease);
+}
+
+.applied-chip:hover {
+  border-color: var(--action);
+}
+
+.applied-chip:active {
+  transform: scale(0.97);
+}
+
+.applied-chip:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 1px;
+}
+
+.applied-x {
+  display: inline-grid;
+  place-items: center;
+  opacity: 0.65;
+}
+
+.applied-chip:hover .applied-x {
+  opacity: 1;
+}
+
+.applied-clear {
+  border: 0;
+  background: none;
+  padding: 0.18rem 0.3rem;
+  font-family: inherit;
+  font-size: 0.72rem;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease);
+}
+
+.applied-clear:hover {
+  color: var(--action);
 }
 
 .filters fieldset {
@@ -809,6 +880,15 @@ body {
   border: 1px solid var(--line-strong);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12);
+  transform-origin: top;
+  transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease);
+}
+
+@starting-style {
+  .ms-panel {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
 }
 
 .ms-filter {
