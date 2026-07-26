@@ -1,0 +1,4 @@
+# Local git worktrees (flood shapefile bake lives here — 1.5GB) must never upload.
+.worktrees
+node_modules
+.git
