@@ -305,6 +305,6 @@ export const api = {
     getJson<{ id: number }>(
       `/api/resolve?authority=${encodeURIComponent(authority)}&reference=${encodeURIComponent(reference)}`
     ),
-  overlay: (layer: "zoning" | "flood" | "conservation", bbox: [number, number, number, number]) =>
+  overlay: (layer: "zoning" | "flood" | "conservation" | "archaeology", bbox: [number, number, number, number]) =>
     getJson<GeoJSON.FeatureCollection>(`/api/overlays/${layer}?bbox=${bbox.join(",")}`),
 };

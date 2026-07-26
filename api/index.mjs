@@ -827,18 +827,31 @@ async function fetchFlood(lat, lng, trace) {
   }
 }
 
-// Map overlays (zoning, flood, conservation) as GeoJSON for a viewport.
-// Mirrors server/src/overlays.ts.
-// NPWS SACs: the npws.ie webservices host is dead; this DHLGH ArcGIS Online
-// mirror is the live public endpoint (CC-BY, via data.gov.ie).
-const SAC_URL =
-  process.env.PLANVIEW_SAC_URL ??
-  "https://services-eu1.arcgis.com/Jhij7i46ouO8Cc0N/arcgis/rest/services/NPWSDesignatedAreas/FeatureServer/3/query";
+// Map overlays (zoning, flood, conservation, archaeology) as GeoJSON for a
+// viewport. Mirrors server/src/overlays.ts.
+// NPWS designated areas: the npws.ie webservices host is dead; this DHLGH
+// ArcGIS Online mirror is the live public endpoint (CC-BY, via data.gov.ie).
+// Sub-layers: 0=SPA, 1=pNHA, 2=NHA, 3=SAC.
+const NPWS_URL =
+  process.env.PLANVIEW_NPWS_URL ??
+  "https://services-eu1.arcgis.com/Jhij7i46ouO8Cc0N/arcgis/rest/services/NPWSDesignatedAreas/FeatureServer";
+const SAC_URL = process.env.PLANVIEW_SAC_URL ?? `${NPWS_URL}/3/query`;
+const NPWS_SOURCES = [
+  { url: SAC_URL, designation: "Special Area of Conservation" },
+  { url: `${NPWS_URL}/0/query`, designation: "Special Protection Area" },
+  { url: `${NPWS_URL}/2/query`, designation: "Natural Heritage Area" },
+  { url: `${NPWS_URL}/1/query`, designation: "Proposed Natural Heritage Area" },
+];
+// National Monuments Service: Zones of Archaeological Notification (RMP).
+const SMR_ZONE_URL =
+  process.env.PLANVIEW_SMR_ZONE_URL ??
+  "https://services-eu1.arcgis.com/HyjXgkV6KGMSF3jt/arcgis/rest/services/SMRZoneOpenData/FeatureServer/0/query";
 const OVERLAY_CONFIG = {
   zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,GZT_DESC,PLAN_NAME" },
   flood: { url: FLOOD_URL, where: "1=1", outFields: "*" },
-  conservation: { url: SAC_URL, where: "1=1", outFields: "SITECODE,SITE_NAME,URL" },
+  archaeology: { url: SMR_ZONE_URL, where: "1=1", outFields: "ZONE_ID" },
 };
+const CONSERVATION_FIELDS = "SITECODE,SITE_NAME,URL";
 const EMPTY_FC = { type: "FeatureCollection", features: [] };
 
 function classifyZone(text) {
@@ -867,7 +880,7 @@ function ovFloodLabel(props) {
   }
   return "Mapped flood extent";
 }
-function ovTransform(layer, features) {
+function ovTransform(layer, features, designation) {
   return features.map((f) => {
     const p = f.properties ?? {};
     if (layer === "zoning") {
@@ -881,19 +894,20 @@ function ovTransform(layer, features) {
       };
     } else if (layer === "conservation") {
       f.properties = {
-        site_name: ovStr(p.SITE_NAME) || "Special Area of Conservation",
+        site_name: ovStr(p.SITE_NAME) || designation || "Designated site",
         site_code: ovStr(p.SITECODE),
         site_url: ovStr(p.URL),
+        designation: designation ?? "",
       };
+    } else if (layer === "archaeology") {
+      f.properties = { zone_ref: ovStr(p.ZONE_ID) };
     } else {
       f.properties = { flood_label: ovFloodLabel(p) };
     }
     return f;
   });
 }
-async function fetchOverlay(layer, bbox) {
-  const cfg = OVERLAY_CONFIG[layer];
-  if (!cfg) return EMPTY_FC;
+async function ovQueryArcGis(cfg, bbox) {
   const [w, s, e, n] = bbox;
   const offset = Math.max((e - w) / 1000, 0);
   const params = new URLSearchParams({
@@ -914,15 +928,30 @@ async function fetchOverlay(layer, bbox) {
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
     const res = await fetch(`${cfg.url}?${params}`, { signal: controller.signal });
-    if (!res.ok) return EMPTY_FC;
+    if (!res.ok) return [];
     const body = await res.json();
-    if (body.error || body.type !== "FeatureCollection" || !Array.isArray(body.features)) return EMPTY_FC;
-    return { type: "FeatureCollection", features: ovTransform(layer, body.features) };
+    if (body.error || body.type !== "FeatureCollection" || !Array.isArray(body.features)) return [];
+    return body.features;
   } catch {
-    return EMPTY_FC;
+    return [];
   } finally {
     clearTimeout(timer);
   }
+}
+async function fetchOverlay(layer, bbox) {
+  if (layer === "conservation") {
+    const batches = await Promise.all(
+      NPWS_SOURCES.map((src) =>
+        ovQueryArcGis({ url: src.url, where: "1=1", outFields: CONSERVATION_FIELDS }, bbox)
+      )
+    );
+    const features = batches.flatMap((feats, i) => ovTransform(layer, feats, NPWS_SOURCES[i].designation));
+    return { type: "FeatureCollection", features };
+  }
+  const cfg = OVERLAY_CONFIG[layer];
+  if (!cfg) return EMPTY_FC;
+  const features = await ovQueryArcGis(cfg, bbox);
+  return { type: "FeatureCollection", features: ovTransform(layer, features) };
 }
 
 const CONDITIONS_CACHE = new Map();
@@ -2417,7 +2446,7 @@ export default async function handler(req, res) {
     return send(res, 200, { supported: true, flood });
   }
 
-  const om = route.match(/^\/api\/overlays\/(zoning|flood|conservation)$/);
+  const om = route.match(/^\/api\/overlays\/(zoning|flood|conservation|archaeology)$/);
   if (om) {
     const bbox = parseBbox(p.get("bbox"));
     if (!bbox) return send(res, 200, { type: "FeatureCollection", features: [] });

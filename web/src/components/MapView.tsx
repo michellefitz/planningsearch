@@ -6,12 +6,15 @@ import { api, type PointFeatureCollection } from "../api";
 /** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport.
     Flood extents removed 2026-07: the source service now requires a token and
     the OPW publishes no public API — rebuild from their shapefiles (backlog). */
-type OverlayKey = "zoning" | "conservation" | "aca";
+type OverlayKey = "zoning" | "conservation" | "archaeology" | "aca";
 const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; line: string; label: string }> = {
   // ACAs ship as a static file baked from the five councils' development-plan
   // data (see docs/ACA_DATA.md) — loaded once, no viewport queries.
   aca: { fill: "#b45a2d", fillOpacity: 0.3, line: "#8a3f1d", label: "Architectural Conservation Areas" },
-  conservation: { fill: "#2e8f5b", fillOpacity: 0.28, line: "#1d6b41", label: "Natura 2000 (SAC)" },
+  // SAC + SPA + NHA + pNHA merged server-side; designations overlap, so the
+  // fill is lighter than the single-designation layers.
+  conservation: { fill: "#2e8f5b", fillOpacity: 0.22, line: "#1d6b41", label: "Natural heritage (SAC · SPA · NHA)" },
+  archaeology: { fill: "#8e6bbf", fillOpacity: 0.28, line: "#67479a", label: "Archaeological zones" },
   zoning: { fill: "#14b8a6", fillOpacity: 0.22, line: "#0f766e", label: "Zoning" },
 };
 // Overlays are only meaningful (and light enough to fetch) when zoomed in.
@@ -81,14 +84,14 @@ export default function MapView({
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
 
-  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, aca: false });
+  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false });
   const [layersOpen, setLayersOpen] = useState(false);
   const [mapZoom, setMapZoom] = useState(7);
   const overlaysRef = useRef(overlays);
   overlaysRef.current = overlays;
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const zoomRef = useRef(7);
-  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0, aca: 0 });
+  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0, archaeology: 0, aca: 0 });
   // The ACA layer is one static file — fetched at most once, then reused.
   const acaDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
   // Latest overlay-refresh closure, so the map's one-off event handlers can
@@ -213,11 +216,18 @@ export default function MapView({
           } else if (layer === "conservation") {
             const url = String(pr.site_url ?? "").trim();
             html =
-              `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(String(pr.site_name ?? "Special Area of Conservation"))}</strong></div>` +
-              `<span class="ov-pop-tag">Special Area of Conservation</span>` +
+              `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(String(pr.site_name ?? "Designated site"))}</strong></div>` +
+              `<span class="ov-pop-tag">${escapeHtml(String(pr.designation ?? "Designated site"))}</span>` +
               (url.startsWith("https://")
                 ? `<a class="ov-pop-sub" href="${escapeHtml(url)}" target="_blank" rel="noopener">Site details on npws.ie</a>`
                 : "") +
+              `</div>`;
+          } else if (layer === "archaeology") {
+            html =
+              `<div class="ov-popup"><div class="ov-pop-title"><strong>Zone of Archaeological Notification</strong></div>` +
+              `<span class="ov-pop-tag">Recorded monuments${pr.zone_ref ? ` · ${escapeHtml(String(pr.zone_ref))}` : ""}</span>` +
+              `<span class="ov-pop-sub">Works here must be notified to the National Monuments Service</span>` +
+              `<a class="ov-pop-sub" href="https://maps.archaeology.ie/historicenvironment/" target="_blank" rel="noopener">Details on maps.archaeology.ie</a>` +
               `</div>`;
           } else {
             const code = String(pr.zone_code ?? "").trim();
@@ -450,7 +460,7 @@ export default function MapView({
                 {OVERLAY_STYLE[layer].label}
               </label>
             ))}
-            {(overlays.zoning || overlays.conservation) && mapZoom < MIN_OVERLAY_ZOOM && (
+            {(overlays.zoning || overlays.conservation || overlays.archaeology) && mapZoom < MIN_OVERLAY_ZOOM && (
               <p className="overlay-hint">Zoom in to load zoning and SAC layers</p>
             )}
             {overlays.zoning && mapZoom >= MIN_OVERLAY_ZOOM && (
