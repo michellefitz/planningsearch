@@ -535,11 +535,13 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
               dump the full reason wording underneath (it's long and hard to read
               in the panel). Fall back to the raw reasons only when there is no
               summary; the full order is a click away in the documents. */}
+          {/* Red is reserved for refusals — a granted order's summary sits in
+              the standard blue AI-summary box like every other summary. */}
           {state.summary ? (
-            <p className="ai-summary refusal-summary">✦ {state.summary}</p>
+            <p className={`ai-summary${isRefusal ? " refusal-summary" : ""}`}>✦ {state.summary}</p>
           ) : (
             state.reasons.length > 0 && (
-              <div className="ai-summary refusal-summary">
+              <div className={`ai-summary${isRefusal ? " refusal-summary" : ""}`}>
                 <ul className="decision-list">
                   {state.reasons.map((r, i) => (
                     <li key={i}>{r.text}</li>
