@@ -94,6 +94,8 @@ export default function MapView({
   // The ACA layer is one static file — fetched at most once, then reused.
   const acaDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
   const floodDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
+  // The flood file is large (~5 MB gzipped) — surface its fetch in the UI.
+  const [floodLoading, setFloodLoading] = useState(false);
   // Latest overlay-refresh closure, so the map's one-off event handlers can
   // always call the current version (which reads live state via refs).
   const applyRef = useRef<(layer: OverlayKey) => void>(() => {});
@@ -114,6 +116,7 @@ export default function MapView({
       const dataRef = layer === "aca" ? acaDataRef : floodDataRef;
       if (!dataRef.current) {
         const seq = ++seqRef.current[layer];
+        if (layer === "flood") setFloodLoading(true);
         try {
           const fc = layer === "aca"
             ? await fetch("/aca.geojson").then((r) => r.ok ? r.json() as Promise<GeoJSON.FeatureCollection> : null)
@@ -123,6 +126,8 @@ export default function MapView({
           if (seq !== seqRef.current[layer]) return;
         } catch {
           return;
+        } finally {
+          if (layer === "flood") setFloodLoading(false);
         }
       }
       (mapRef.current?.getSource(`ov-${layer}`) as maplibregl.GeoJSONSource | undefined)?.setData(
@@ -182,6 +187,17 @@ export default function MapView({
         ...Object.entries(ZONE_GROUPS).flatMap(([k, v]) => [k, v.color]),
         ZONE_GROUPS.other.color,
       ] as unknown as maplibregl.ExpressionSpecification;
+      // Flood probability bands nest (frequent inside rare), so opacity per
+      // band accumulates toward the likely core: rare fringe stays light.
+      const floodOpacityExpr = [
+        "match",
+        ["get", "band"],
+        "high",
+        0.32,
+        "medium",
+        0.2,
+        0.1,
+      ] as unknown as maplibregl.ExpressionSpecification;
       for (const layer of Object.keys(OVERLAY_STYLE) as OverlayKey[]) {
         const s = OVERLAY_STYLE[layer];
         map.addSource(`ov-${layer}`, { type: "geojson", data: EMPTY_FC as never });
@@ -192,7 +208,7 @@ export default function MapView({
           layout: { visibility: "none" },
           paint: {
             "fill-color": layer === "zoning" ? zoneColorExpr : s.fill,
-            "fill-opacity": s.fillOpacity,
+            "fill-opacity": layer === "flood" ? floodOpacityExpr : s.fillOpacity,
           },
         });
         map.addLayer({
@@ -225,12 +241,22 @@ export default function MapView({
                 : "") +
               `</div>`;
           } else if (layer === "flood") {
-            const type = String(pr.flood_type ?? "").trim();
-            const scenario = String(pr.scenario ?? "").trim();
-            const typeLabel = type === "coastal" ? "Coastal" : type === "fluvial" ? "Fluvial" : "Flood";
+            // The probability bands nest, so a click usually lands in several
+            // features at once — list every band at this point, likeliest first.
+            const bandRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+            const scenarios = Array.from(
+              new Map(
+                (e.features ?? []).map((ft) => {
+                  const p = ft.properties ?? {};
+                  return [String(p.scenario ?? "").trim(), String(p.band ?? "low")];
+                })
+              )
+            )
+              .filter(([sc]) => sc)
+              .sort((a, b) => (bandRank[a[1]] ?? 3) - (bandRank[b[1]] ?? 3));
             html =
               `<div class="ov-popup"><div class="ov-pop-title"><strong>Flood zone</strong></div>` +
-              `<span class="ov-pop-tag">${escapeHtml(typeLabel)}${scenario ? ` · ${escapeHtml(scenario)}` : ""}</span>` +
+              scenarios.map(([sc]) => `<span class="ov-pop-tag">${escapeHtml(sc)}</span>`).join("") +
               `<span class="ov-pop-sub">Indicative — not a site-specific assessment</span>` +
               `<a class="ov-pop-sub" href="https://www.floodinfo.ie" target="_blank" rel="noopener">Details on floodinfo.ie</a>` +
               `</div>`;
@@ -470,10 +496,29 @@ export default function MapView({
                 />
                 <span className="overlay-swatch" style={{ background: OVERLAY_STYLE[layer].fill }} aria-hidden="true" />
                 {OVERLAY_STYLE[layer].label}
+                {layer === "flood" && floodLoading && <span className="overlay-loading"> loading…</span>}
               </label>
             ))}
             {(overlays.zoning || overlays.conservation || overlays.archaeology) && mapZoom < MIN_OVERLAY_ZOOM && (
               <p className="overlay-hint">Zoom in to load zoning, heritage and archaeology layers</p>
+            )}
+            {overlays.flood && (
+              <div className="zone-legend">
+                {[
+                  { a: 0.32, label: "Likely (10–5% AEP)" },
+                  { a: 0.2, label: "Moderate (1–0.5% AEP)" },
+                  { a: 0.1, label: "Rare (0.1% AEP)" },
+                ].map((b) => (
+                  <span key={b.label} className="zone-legend-item">
+                    <span
+                      className="overlay-swatch"
+                      style={{ background: `rgba(59, 130, 246, ${b.a + 0.15})` }}
+                      aria-hidden="true"
+                    />
+                    {b.label}
+                  </span>
+                ))}
+              </div>
             )}
             {overlays.zoning && mapZoom >= MIN_OVERLAY_ZOOM && (
               <div className="zone-legend">
