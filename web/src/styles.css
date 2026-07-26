@@ -2717,3 +2717,624 @@ a.pill:hover {
 .save-action:active { transform: scale(0.97); }
 .save-action-on { color: #e8a13a; border-color: #e8a13a; }
 .save-action em { font-style: normal; font-size: 13px; font-weight: 600; }
+
+/* ---------- Pre-planner ---------- */
+
+.preplan {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.preplan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.preplan-head h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  letter-spacing: -0.014em;
+}
+
+.preplan-sub {
+  margin: 0;
+  color: var(--ink-2);
+  max-width: 56ch;
+}
+
+.preplan-error {
+  color: #a4262c;
+  margin: 8px 0;
+}
+
+.preplan-none {
+  color: var(--ink-3);
+}
+
+.preplan-empty {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  max-width: 56ch;
+}
+
+.preplan-projects {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.preplan-project {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.pp-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pp-label {
+  font-weight: 600;
+}
+
+.pp-address {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.pp-intent {
+  color: var(--ink-3);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pp-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pp-status {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.pp-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: none;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.pp-delete:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+/* New-project form */
+
+.preplan-new h3 {
+  margin: 0 0 16px;
+  font-size: 17px;
+}
+
+.preplan-form {
+  display: grid;
+  gap: 16px;
+  max-width: 620px;
+}
+
+.pf-field {
+  display: grid;
+  gap: 6px;
+}
+
+.pf-field > span {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.pf-hint {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.pf-field input,
+.pf-field textarea {
+  font: inherit;
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  padding: 8px 10px;
+  background: var(--surface);
+}
+
+.pf-field input:focus-visible,
+.pf-field textarea:focus-visible {
+  outline: none;
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px var(--action-ring);
+}
+
+.pf-matches {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  display: grid;
+}
+
+.pf-matches button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  border: none;
+  background: none;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.pf-matches button:hover {
+  background: var(--surface-2);
+}
+
+.pf-searching {
+  color: var(--ink-3);
+  padding: 7px 9px;
+  font-size: 13px;
+}
+
+.preplan-map {
+  height: 300px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.pf-picked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.pf-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: var(--surface-3);
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.pf-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* Generation progress */
+
+.preplan-running h3 {
+  margin: 0 0 4px;
+}
+
+.preplan-running-sub {
+  margin: 0 0 18px;
+  color: var(--ink-2);
+}
+
+.preplan-steps {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-width: 380px;
+}
+
+.preplan-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-3);
+  transition: color var(--t-base) var(--ease);
+}
+
+.preplan-steps li.step-done {
+  color: var(--ink);
+}
+
+.step-tick {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  color: var(--action);
+  background: var(--surface);
+  transition: border-color var(--t-base) var(--ease);
+}
+
+.step-done .step-tick {
+  border-color: var(--action);
+  background: var(--action-tint);
+}
+
+.preplan-current-step {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.preplan-report-bar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+/* ---------- Report document ---------- */
+
+.report {
+  max-width: 760px;
+}
+
+.report-head {
+  border-bottom: 1px solid var(--line-strong);
+  padding-bottom: 16px;
+  margin-bottom: 8px;
+}
+
+.report-kicker {
+  margin: 0 0 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.report-head h2 {
+  margin: 0 0 2px;
+  font-size: 22px;
+  letter-spacing: -0.015em;
+}
+
+.report-sub {
+  margin: 0 0 8px;
+  color: var(--ink-2);
+}
+
+.report-intent {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.report-section {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.report-section h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.report-section h4 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.report-none {
+  color: var(--ink-3);
+  margin: 4px 0;
+}
+
+.report-unavailable {
+  color: var(--ink-3);
+  font-style: italic;
+  margin: 4px 0;
+}
+
+.report-designations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.report-designations li {
+  display: grid;
+  gap: 1px;
+}
+
+.rd-kind {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-3);
+}
+
+.rd-name {
+  font-weight: 600;
+}
+
+.rd-detail {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.rd-meaning {
+  color: var(--ink-2);
+  font-size: 13px;
+  max-width: 64ch;
+}
+
+.report-heritage {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.report-heritage li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.rh-name {
+  font-weight: 500;
+}
+
+.rh-name a {
+  color: var(--action);
+  text-decoration: none;
+}
+
+.rh-name a:hover {
+  text-decoration: underline;
+}
+
+.rh-detail {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.rh-dist {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+.report-ground {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.report-ground li {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 12px;
+}
+
+.rg-label {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.rg-flag {
+  font-weight: 600;
+}
+
+.report-precedents {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.report-precedents th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  font-weight: 600;
+  padding: 4px 10px 6px 0;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.report-precedents td {
+  vertical-align: top;
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.rp-ref {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.rp-dist {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-addr,
+.rp-appeal {
+  display: block;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.report-dives {
+  margin-top: 6px;
+}
+
+.report-dive {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  margin: 8px 0;
+}
+
+.report-dive p {
+  margin: 0;
+}
+
+.rd-doc {
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-bottom: 4px !important;
+  font-weight: 600;
+}
+
+.report-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.report-rates h4 {
+  margin: 0 0 8px;
+}
+
+.report-rates dl {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.report-rates dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+}
+
+.report-rates dt {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.report-rates dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.report-narrative {
+  border-bottom: none;
+}
+
+.report-disclaimer {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  font-style: italic;
+  margin: 0 0 12px;
+}
+
+.report-narrative p,
+.report-narrative ul,
+.report-narrative ol {
+  max-width: 68ch;
+}
+
+.report-narrative .chat-heading {
+  font-weight: 600;
+  margin: 14px 0 4px;
+}
+
+@media (max-width: 640px) {
+  .preplan-head {
+    flex-direction: column;
+  }
+  .preplan-project {
+    flex-direction: column;
+  }
+  .report-ground li {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+/* Print: the report becomes the page. */
+@media print {
+  .app-header,
+  .app-footer,
+  .back-to-map,
+  .no-print {
+    display: none !important;
+  }
+  .account-screen,
+  .preplan-screen {
+    position: static;
+    overflow: visible;
+  }
+  .account-screen-inner {
+    max-width: none;
+    padding: 0;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .report {
+    max-width: none;
+  }
+  .report-section {
+    break-inside: avoid;
+  }
+  .report-dive {
+    background: none;
+    border: 1px solid #ccc;
+  }
+  .rh-name a {
+    color: #000;
+    text-decoration: none;
+  }
+}

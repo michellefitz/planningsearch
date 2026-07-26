@@ -16,6 +16,7 @@ import DetailPanel from "./components/DetailPanel";
 import MapView, { STATUS_STYLE } from "./components/MapView";
 import ChatPanel from "./components/ChatPanel";
 import AccountPanel from "./components/AccountPanel";
+import PrePlannerPanel from "./components/PrePlannerPanel";
 import { accountApi, saveKey, type Me, type SavedApp } from "./accountApi";
 import type { AgentAppRef } from "./agentApi";
 
@@ -32,7 +33,7 @@ export default function App() {
   const [detail, setDetail] = useState<AppDetail | null>(null);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"search" | "ask" | "account">("search");
+  const [mode, setMode] = useState<"search" | "ask" | "account" | "preplan">("search");
   // Mobile only: the layout shows one of map / list at a time (a toggle),
   // rather than squishing both. Ignored at ≥768px, where they sit side by side.
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
@@ -306,6 +307,14 @@ export default function App() {
             <>
               <button
                 type="button"
+                className={`nav-link ${mode === "preplan" ? "nav-link-on" : ""}`}
+                aria-current={mode === "preplan" ? "page" : undefined}
+                onClick={() => setMode("preplan")}
+              >
+                Pre-planner
+              </button>
+              <button
+                type="button"
                 className={`nav-link ${mode === "account" ? "nav-link-on" : ""}`}
                 aria-current={mode === "account" ? "page" : undefined}
                 onClick={() => setMode("account")}
@@ -336,7 +345,7 @@ export default function App() {
           behind it (hidden, not unmounted) so returning keeps its position. */}
       <div
         className={`layout ${mode === "search" && mobileView === "map" ? "m-map" : "m-panel"}${panelCollapsed ? " panel-collapsed" : ""}`}
-        hidden={mode === "account"}
+        hidden={mode === "account" || mode === "preplan"}
       >
         <div className="side-panel">
           <div className="mode-tabs" role="tablist" aria-label="Panel mode">
@@ -488,6 +497,17 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {mode === "preplan" && (
+        <main className="account-screen preplan-screen">
+          <div className="account-screen-inner">
+            <button type="button" className="back-to-map no-print" onClick={() => setMode("search")}>
+              ← Back to map
+            </button>
+            <PrePlannerPanel />
+          </div>
+        </main>
+      )}
 
       {mode === "account" && (
         <main className="account-screen">
