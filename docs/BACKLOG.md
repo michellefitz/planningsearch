@@ -224,3 +224,24 @@ ACAs are a baked static file (docs/ACA_DATA.md). Still to build:
   Static GeoJSON baked from NIFM (fluvial) + NCFHM (coastal) shapefiles,
   client-side overlay and point-in-polygon lookup. If the file size
   impacts initial load, convert to PMTiles vector tiles.
+
+## Pre-planner report (shipped v1, 2026-07-26)
+
+Account-gated projects (location + intent) generating immutable printable
+reports: designations point queries (zoning/NPWS×4/SMR zones/ACA), NIAH +
+SMR points within 250m (first use of those backlog endpoints — the map
+layers themselves are still pending), flood point-in-poly on the baked
+OPW file, GSI groundwater vulnerability
+(`gsi.geodata.gov.ie/.../IE_GSI_Groundwater_Vulnerability_40K_IE26_ITM`),
+precedents within 1km with document deep-dives via the agent reading
+machinery, area stats, one-shot Haiku considerations narrative.
+
+- **Radon**: the EPA ArcGIS host (`gis.epa.ie/arcgis`) is not publicly
+  reachable (probed 2026-07-26) — the section permanently reads "couldn't
+  be checked" with a pointer to epa.ie. Revisit if EPA re-hosts.
+- **v1 out of scope**: re-run diffing ("what changed since last report"),
+  share links / PDF export beyond the print stylesheet, feeding a report
+  into the AI chat as context, geocoding beyond register matches + map pin.
+- **Neon migration**: sensitive env vars can't be pulled locally, so the
+  preplan tables are created by `ensureSchema()` in api/preplan/routes.mjs
+  on first use; scripts/migrate-accounts.mjs carries the same statements.
