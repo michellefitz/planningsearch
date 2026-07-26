@@ -36,6 +36,7 @@ fs.mkdirSync(funcDir, { recursive: true });
 fs.copyFileSync(path.join(root, "api", "index.mjs"), path.join(funcDir, "index.mjs"));
 fs.cpSync(path.join(root, "api", "_data"), path.join(funcDir, "_data"), { recursive: true });
 fs.cpSync(path.join(root, "api", "accounts"), path.join(funcDir, "accounts"), { recursive: true });
+fs.cpSync(path.join(root, "api", "preplan"), path.join(funcDir, "preplan"), { recursive: true });
 fs.writeFileSync(
   path.join(funcDir, ".vc-config.json"),
   JSON.stringify(
