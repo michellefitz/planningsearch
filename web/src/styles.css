@@ -1897,6 +1897,11 @@ body {
   font-size: 0.68rem;
   color: var(--ink-3);
 }
+.overlay-loading {
+  font-size: 0.68rem;
+  color: var(--ink-3);
+  font-style: italic;
+}
 .zone-legend {
   display: flex;
   flex-direction: column;
