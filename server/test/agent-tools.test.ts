@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AGENT_TOOLS, bboxAround, searchFiltersFromToolInput } from "../src/agent/tools.js";
 
 describe("AGENT_TOOLS", () => {
-  it("defines the nine tools from the spec", () => {
+  it("defines the eleven tools from the spec", () => {
     expect(AGENT_TOOLS.map((t) => t.name).sort()).toEqual([
       "count_applications",
       "geocode_location",
@@ -12,6 +12,8 @@ describe("AGENT_TOOLS", () => {
       "get_documents",
       "get_flood_risk",
       "get_zoning",
+      "read_appeal_document",
+      "read_document",
       "search_applications",
     ]);
   });

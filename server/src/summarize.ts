@@ -159,6 +159,35 @@ export async function summariseAppeal(
   return usable ? sanitiseSummary(usable) : null;
 }
 
+const DOC_READ_PROMPT =
+  `You read a document from an Irish planning application file (inspector's report, decision order, ` +
+  `planner's report, submission…) and answer a question about it for a planning research assistant. ` +
+  `Be concrete and specific: report what the document actually says — recommendations, conditions, ` +
+  `reasons, figures, dates, who said what — in plain English a regular person follows. ` +
+  `FORMAT: plain prose only — no Markdown, headings or bullet points. ` +
+  `If the document does not answer the question, say so briefly and state what it does contain. ` +
+  `Use only what the document states — never invent details.`;
+
+/**
+ * Agent tool backend: attach a fetched PDF and answer a question about it
+ * (or summarise it when no question is given). Unlike the summary prompts,
+ * "the document doesn't say" is a legitimate answer here — the agent relays
+ * it — so there is no INSUFFICIENT sentinel.
+ */
+export async function readDocumentWithClaude(
+  pdfBase64: string,
+  context: string,
+  question?: string | null
+): Promise<string | null> {
+  const ask = question?.trim() || "Summarise this document's key points for a general reader.";
+  const content: ContentBlock[] = [
+    { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+    { type: "text", text: `${context}\n\n${ask}` },
+  ];
+  const text = await callClaude(DOC_READ_PROMPT, content, 700, 45_000);
+  return text ? sanitiseSummary(text) : null;
+}
+
 export interface DecisionExtract {
   /** One or two plain-English sentences on the outcome. */
   summary: string | null;

@@ -98,4 +98,89 @@ describe("buildToolExecutor", () => {
     const out = (await run("no_such_tool", {})) as { error: string };
     expect(out.error).toMatch(/unknown tool/i);
   });
+
+  it("read_appeal_document fetches the matching case PDF and answers the question", async () => {
+    const appealRow = { ...ROW, id: 44, appeal_reference: "ABP-319506-26" };
+    const db = { prepare: () => ({ get: (id: number) => (id === 44 ? appealRow : undefined) }) } as never;
+    const run = buildToolExecutor(db, {
+      fetchAppealCase: async () => ({
+        fields: [],
+        documents: [
+          { title: "Board Order", url: "https://abp.example/order.pdf" },
+          { title: "Inspector's Report", url: "https://abp.example/inspector.pdf" },
+        ],
+      }),
+      fetchAppealDocumentBase64: async (url: string) => {
+        expect(url).toBe("https://abp.example/inspector.pdf");
+        return "cGRm";
+      },
+      readDocumentWithClaude: async (_pdf: string, context: string, question?: string) => {
+        expect(context).toContain("ABP-319506-26");
+        expect(question).toBe("What did the inspector recommend?");
+        return "The inspector recommended a grant subject to a reduced dormer.";
+      },
+    } as never);
+    const out = (await run("read_appeal_document", {
+      application_id: 44,
+      document: "inspector",
+      question: "What did the inspector recommend?",
+    })) as { document: string; answer: string; other_documents: string[] };
+    expect(out.document).toBe("Inspector's Report");
+    expect(out.answer).toMatch(/reduced dormer/);
+    expect(out.other_documents).toEqual(["Board Order"]);
+  });
+
+  it("read_appeal_document errors with the available titles when nothing matches", async () => {
+    const appealRow = { ...ROW, id: 44, appeal_reference: "ABP-319506-26" };
+    const db = { prepare: () => ({ get: (id: number) => (id === 44 ? appealRow : undefined) }) } as never;
+    const run = buildToolExecutor(db, {
+      fetchAppealCase: async () => ({
+        fields: [],
+        documents: [{ title: "Board Order", url: "https://abp.example/order.pdf" }],
+      }),
+    } as never);
+    const out = (await run("read_appeal_document", {
+      application_id: 44,
+      document: "environmental impact statement",
+    })) as { error: string; available: string[] };
+    expect(out.error).toMatch(/matches/i);
+    expect(out.available).toEqual(["Board Order"]);
+  });
+
+  it("read_document reads an Agile council PDF by title words", async () => {
+    const fingalRow = { ...ROW, id: 43, authority_id: "fingal", planning_reference: "F23/456", source_url: null };
+    const db = { prepare: () => ({ get: (id: number) => (id === 43 ? fingalRow : undefined) }) } as never;
+    const run = buildToolExecutor(db, {
+      fetchAgileDocumentList: async () => ({
+        files: [{ title: "Site Plan", url: "x" }, { title: "Planner's Report — 12/03/2023", url: "y" }],
+        applicationUrl: "https://example.com/app/1",
+      }),
+      fetchAgileDocument: async (_a: string, _s: null, _r: string, index: number) => {
+        expect(index).toBe(1);
+        return { contentType: "application/pdf", filename: "report.pdf", body: Buffer.from("pdf") };
+      },
+      readDocumentWithClaude: async () => "The planner recommended permission with conditions.",
+    } as never);
+    const out = (await run("read_document", {
+      application_id: 43,
+      title: "planner report",
+      question: "What did the planner recommend?",
+    })) as { document: string; answer: string };
+    expect(out.document).toBe("Planner's Report — 12/03/2023");
+    expect(out.answer).toMatch(/recommended permission/);
+  });
+
+  it("read_document refuses non-PDF documents plainly", async () => {
+    const fingalRow = { ...ROW, id: 43, authority_id: "fingal", planning_reference: "F23/456", source_url: null };
+    const db = { prepare: () => ({ get: (id: number) => (id === 43 ? fingalRow : undefined) }) } as never;
+    const run = buildToolExecutor(db, {
+      fetchAgileDocumentList: async () => ({
+        files: [{ title: "Site Plan", url: "x" }],
+        applicationUrl: "https://example.com/app/1",
+      }),
+      fetchAgileDocument: async () => ({ contentType: "image/tiff", filename: "plan.tif", body: Buffer.from("x") }),
+    } as never);
+    const out = (await run("read_document", { application_id: 43, title: "site plan" })) as { error: string };
+    expect(out.error).toMatch(/not a PDF/i);
+  });
 });

@@ -154,6 +154,51 @@ export const AGENT_TOOLS: AnthropicTool[] = [
     },
   },
   {
+    name: "read_appeal_document",
+    description:
+      "Fetch one document from an appeal case file on An Coimisiún Pleanála — the inspector's report, " +
+      "Board order or Board direction — read it, and answer a question about what it says (or summarise " +
+      "it). Use after get_appeal when the user asks what a case document actually says, e.g. what the " +
+      "inspector recommended. Slow: fetches and reads a full PDF.",
+    input_schema: {
+      type: "object",
+      properties: {
+        application_id: { type: "number" },
+        document: {
+          type: "string",
+          description:
+            "Which document, as words from its title: e.g. 'inspector', 'board order', 'direction'. " +
+            "Omit to read the main decision document.",
+        },
+        question: {
+          type: "string",
+          description: "What to find out from the document. Omit for a general summary.",
+        },
+      },
+      required: ["application_id"],
+    },
+  },
+  {
+    name: "read_document",
+    description:
+      "Fetch one of the council's documents for an application (from the get_documents listing), read " +
+      "it, and answer a question about what it says (or summarise it). Call get_documents first and " +
+      "pass words from the chosen title. Works for PDFs only (most reports and orders are PDFs; " +
+      "drawings often aren't). Slow: fetches and reads a full PDF.",
+    input_schema: {
+      type: "object",
+      properties: {
+        application_id: { type: "number" },
+        title: { type: "string", description: "Words from the document title as listed by get_documents" },
+        question: {
+          type: "string",
+          description: "What to find out from the document. Omit for a general summary.",
+        },
+      },
+      required: ["application_id", "title"],
+    },
+  },
+  {
     name: "geocode_location",
     description:
       "Resolve a placename, street or eircode within the covered counties to approximate coordinates " +

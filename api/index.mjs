@@ -1180,6 +1180,27 @@ const APPEAL_SUMMARY_PROMPT =
   "Use only what the material states — never invent details. " +
   NO_LEAK_RULE;
 
+const DOC_READ_PROMPT =
+  "You read a document from an Irish planning application file (inspector's report, decision order, " +
+  "planner's report, submission…) and answer a question about it for a planning research assistant. " +
+  "Be concrete and specific: report what the document actually says — recommendations, conditions, " +
+  "reasons, figures, dates, who said what — in plain English a regular person follows. " +
+  "FORMAT: plain prose only — no Markdown, headings or bullet points. " +
+  "If the document does not answer the question, say so briefly and state what it does contain. " +
+  "Use only what the document states — never invent details.";
+
+// Agent tool backend: unlike the summary prompts, "the document doesn't say"
+// is a legitimate answer here — the agent relays it — so no INSUFFICIENT gate.
+async function readDocumentWithClaude(pdfBase64, context, question) {
+  const ask = question?.trim() || "Summarise this document's key points for a general reader.";
+  const content = [
+    { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+    { type: "text", text: `${context}\n\n${ask}` },
+  ];
+  const text = await callClaude(DOC_READ_PROMPT, content, 700, 45000);
+  return text ? sanitiseSummary(text) : null;
+}
+
 async function summariseAppeal(context, pdfBase64) {
   if (!context.trim() && !pdfBase64) return null;
   let text;
@@ -1717,6 +1738,15 @@ get_conditions on granted ones, get_conditions on refused ones (reasons), get_ap
 and get_zoning on the closest application to describe the area's designation. Fetch conditions for at most 5 \
 applications per reply. Prefer recent applications (last ~5 years) when plenty exist.
 
+READING DOCUMENTS: You can open and read the actual documents, not just list them. read_appeal_document fetches a \
+document from an An Coimisiún Pleanála case file (inspector's report, Board order, Board direction) and answers a \
+question about what it says — use it when the user asks what the inspector recommended, why the Board decided as it \
+did, or what changed on appeal. read_document does the same for the council's own file: call get_documents first, \
+then pass words from the chosen title (planner's reports, decision orders and submissions are usually PDFs and \
+readable; drawings and maps often are not). Pass the user's actual question in the question field so the answer is \
+specific. These are slow — read at most 2 documents per reply, and only when the register fields and get_conditions \
+don't already answer the question.
+
 SCOPE AND SAMPLING — BE EXPLICIT, NEVER GUESS FROM A HANDFUL: All rates and counts you quote (grant vs refusal, how \
 many domestic, how many commenced) must come from count_applications over the WHOLE set — never inferred from the \
 capped sample. search_applications returns at most 50 rows: that is a SAMPLE for citing individual examples, not the \
@@ -1911,6 +1941,51 @@ const AGENT_TOOLS = [
     },
   },
   {
+    name: "read_appeal_document",
+    description:
+      "Fetch one document from an appeal case file on An Coimisiún Pleanála — the inspector's report, " +
+      "Board order or Board direction — read it, and answer a question about what it says (or summarise " +
+      "it). Use after get_appeal when the user asks what a case document actually says, e.g. what the " +
+      "inspector recommended. Slow: fetches and reads a full PDF.",
+    input_schema: {
+      type: "object",
+      properties: {
+        application_id: { type: "number" },
+        document: {
+          type: "string",
+          description:
+            "Which document, as words from its title: e.g. 'inspector', 'board order', 'direction'. " +
+            "Omit to read the main decision document.",
+        },
+        question: {
+          type: "string",
+          description: "What to find out from the document. Omit for a general summary.",
+        },
+      },
+      required: ["application_id"],
+    },
+  },
+  {
+    name: "read_document",
+    description:
+      "Fetch one of the council's documents for an application (from the get_documents listing), read " +
+      "it, and answer a question about what it says (or summarise it). Call get_documents first and " +
+      "pass words from the chosen title. Works for PDFs only (most reports and orders are PDFs; " +
+      "drawings often aren't). Slow: fetches and reads a full PDF.",
+    input_schema: {
+      type: "object",
+      properties: {
+        application_id: { type: "number" },
+        title: { type: "string", description: "Words from the document title as listed by get_documents" },
+        question: {
+          type: "string",
+          description: "What to find out from the document. Omit for a general summary.",
+        },
+      },
+      required: ["application_id", "title"],
+    },
+  },
+  {
     name: "geocode_location",
     description:
       "Resolve a placename, street or eircode within the covered counties to approximate coordinates " +
@@ -1923,6 +1998,16 @@ const AGENT_TOOLS = [
     },
   },
 ];
+
+/** Pick the listed title that best matches the model's words: prefer a title
+    containing every word, fall back to any word. -1 when nothing matches. */
+function matchDocumentTitle(titles, want) {
+  const words = want.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  if (!words.length) return -1;
+  const all = titles.findIndex((t) => words.every((w) => t.toLowerCase().includes(w)));
+  if (all >= 0) return all;
+  return titles.findIndex((t) => words.some((w) => t.toLowerCase().includes(w)));
+}
 
 function agentBboxAround(lat, lng, km) {
   const dLat = km / 111.32;
@@ -2083,6 +2168,81 @@ async function executeAgentTool(name, input) {
         return { count: result.files.length, files: result.files.map((f) => ({ title: f.title })) };
       }
       return { error: "No document listing available for this council" };
+    }
+    case "read_appeal_document": {
+      const app = getApp();
+      if (!app) return { error: "Application not found" };
+      const url = abpCaseUrl(app.appeal_reference);
+      if (!app.appeal_reference || !url) return { error: "No appeal on this application" };
+      const kase = await fetchAppealCase(url);
+      if (!kase) return { error: "Could not load the appeal case page", case_url: url };
+      const pdfs = (kase.documents ?? []).filter((doc) => PDF_URL_RE.test(doc.url));
+      if (!pdfs.length) return { error: "The case file lists no fetchable PDF documents", case_url: url };
+      const want = typeof input.document === "string" ? input.document.trim() : "";
+      let doc = null;
+      if (want) {
+        const idx = matchDocumentTitle(pdfs.map((d) => d.title), want);
+        doc = idx >= 0 ? pdfs[idx] : null;
+        if (!doc) return { error: "No case document matches that name", available: pdfs.map((d) => d.title) };
+      } else {
+        doc = pickAppealDocument(kase.documents ?? []);
+      }
+      if (!doc) return { error: "No readable case document", available: pdfs.map((d) => d.title) };
+      const pdf = await fetchAppealDocumentBase64(doc.url);
+      if (!pdf) {
+        return {
+          error: "Could not fetch that document (unreachable, not a PDF, or too large to read)",
+          document: doc.title,
+          available: pdfs.map((d) => d.title),
+        };
+      }
+      const context =
+        `Appeal ${app.appeal_reference} to An Coimisiún Pleanála — ` +
+        `${app.address_text ?? app.planning_reference}. Document: ${doc.title}.`;
+      const answer = await readDocumentWithClaude(pdf, context, input.question);
+      if (!answer) return { error: "Fetched the document but could not read it", document: doc.title };
+      return { document: doc.title, other_documents: pdfs.filter((d) => d !== doc).map((d) => d.title), answer };
+    }
+    case "read_document": {
+      const app = getApp();
+      if (!app) return { error: "Application not found" };
+      const want = typeof input.title === "string" ? input.title.trim() : "";
+      if (!want) return { error: "title is required — call get_documents first to see the titles" };
+      const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
+      let fetched;
+      let title;
+      let titles;
+      if (listUrl) {
+        const files = await fetchScannedFileList(listUrl);
+        if (!files) return { error: "Could not load the document list" };
+        titles = files.map((f) => f.title);
+        const idx = matchDocumentTitle(titles, want);
+        if (idx < 0) return { error: "No document matches that title", available: titles };
+        title = titles[idx];
+        fetched = await fetchScannedDocument(listUrl, idx, 10_000_000);
+      } else if (AGILE_CLIENT_BY_AUTHORITY[app.authority_id]) {
+        const result = await fetchAgileDocumentList(app.authority_id, app.source_url, app.planning_reference);
+        if (!result) return { error: "Could not load the document list" };
+        titles = result.files.map((f) => f.title);
+        const idx = matchDocumentTitle(titles, want);
+        if (idx < 0) return { error: "No document matches that title", available: titles };
+        title = titles[idx];
+        fetched = await fetchAgileDocument(app.authority_id, app.source_url, app.planning_reference, idx, 10_000_000);
+      } else {
+        return { error: "No document listing available for this council" };
+      }
+      if (fetched === "too_large") return { error: "That document is too large to read", document: title };
+      if (!fetched) return { error: "Could not fetch the document", document: title };
+      const isPdf = /pdf/i.test(fetched.contentType) || /\.pdf$/i.test(fetched.filename ?? "");
+      if (!isPdf) {
+        return { error: `That document is not a PDF (${fetched.contentType}) — only PDFs can be read`, document: title };
+      }
+      const context =
+        `Council document for planning application ${app.planning_reference} — ` +
+        `${app.address_text ?? app.planning_reference}. Document: ${title}.`;
+      const answer = await readDocumentWithClaude(fetched.body.toString("base64"), context, input.question);
+      if (!answer) return { error: "Fetched the document but could not read it", document: title };
+      return { document: title, answer };
     }
     case "geocode_location": {
       const q = typeof input.location === "string" ? input.location.trim() : "";

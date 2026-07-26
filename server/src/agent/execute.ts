@@ -1,10 +1,16 @@
 import type Database from "better-sqlite3";
 import { aggregateApplications, search as realSearch } from "../search.js";
-import { AGILE_CLIENT_BY_AUTHORITY, fetchAgileConditions, fetchAgileDocumentList } from "../agile.js";
+import {
+  AGILE_CLIENT_BY_AUTHORITY,
+  fetchAgileConditions,
+  fetchAgileDocument,
+  fetchAgileDocumentList,
+} from "../agile.js";
 import { fetchZoning } from "../zoning.js";
 import { fetchFlood } from "../flood.js";
-import { abpCaseUrl, fetchAppealCase } from "../abp.js";
-import { deriveScannedFilesUrl, fetchScannedFileList } from "../documents.js";
+import { abpCaseUrl, fetchAppealCase, fetchAppealDocumentBase64, pickAppealDocument } from "../abp.js";
+import { deriveScannedFilesUrl, fetchScannedDocument, fetchScannedFileList } from "../documents.js";
+import { readDocumentWithClaude } from "../summarize.js";
 import { STATUS_LABELS } from "../normalize.js";
 import { searchFiltersFromToolInput } from "./tools.js";
 
@@ -16,6 +22,10 @@ export interface ToolDeps {
   fetchAppealCase: typeof fetchAppealCase;
   fetchScannedFileList: typeof fetchScannedFileList;
   fetchAgileDocumentList: typeof fetchAgileDocumentList;
+  fetchAppealDocumentBase64: typeof fetchAppealDocumentBase64;
+  fetchScannedDocument: typeof fetchScannedDocument;
+  fetchAgileDocument: typeof fetchAgileDocument;
+  readDocumentWithClaude: typeof readDocumentWithClaude;
 }
 
 const REAL_DEPS: ToolDeps = {
@@ -26,7 +36,23 @@ const REAL_DEPS: ToolDeps = {
   fetchAppealCase,
   fetchScannedFileList,
   fetchAgileDocumentList,
+  fetchAppealDocumentBase64,
+  fetchScannedDocument,
+  fetchAgileDocument,
+  readDocumentWithClaude,
 };
+
+const PDF_URL_RE = /\.pdf($|[?#])/i;
+
+/** Pick the listed title that best matches the model's words: prefer a title
+ *  containing every word, fall back to any word. -1 when nothing matches. */
+export function matchDocumentTitle(titles: string[], want: string): number {
+  const words = want.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  if (!words.length) return -1;
+  const all = titles.findIndex((t) => words.every((w) => t.toLowerCase().includes(w)));
+  if (all >= 0) return all;
+  return titles.findIndex((t) => words.some((w) => t.toLowerCase().includes(w)));
+}
 
 export interface AgentAppSummary {
   id: number;
@@ -169,6 +195,98 @@ export function buildToolExecutor(db: Database.Database, deps: Partial<ToolDeps>
         const files = await d.fetchScannedFileList(listUrl);
         if (!files) return { error: "Could not load the document list" };
         return { count: files.length, files: files.map((f) => ({ title: f.title })) };
+      }
+      case "read_appeal_document": {
+        const row = getRow(input);
+        if (!row) return { error: "Application not found" };
+        const ref = (row.appeal_reference as string | null) ?? null;
+        const url = abpCaseUrl(ref);
+        if (!ref || !url) return { error: "No appeal on this application" };
+        const kase = await d.fetchAppealCase(url);
+        if (!kase) return { error: "Could not load the appeal case page", case_url: url };
+        const pdfs = (kase.documents ?? []).filter((doc) => PDF_URL_RE.test(doc.url));
+        if (!pdfs.length) {
+          return { error: "The case file lists no fetchable PDF documents", case_url: url };
+        }
+        const want = typeof input.document === "string" ? input.document.trim() : "";
+        let doc = null;
+        if (want) {
+          const idx = matchDocumentTitle(pdfs.map((p) => p.title), want);
+          doc = idx >= 0 ? pdfs[idx] : null;
+          if (!doc) {
+            return { error: "No case document matches that name", available: pdfs.map((p) => p.title) };
+          }
+        } else {
+          doc = pickAppealDocument(kase.documents ?? []);
+        }
+        if (!doc) return { error: "No readable case document", available: pdfs.map((p) => p.title) };
+        const pdf = await d.fetchAppealDocumentBase64(doc.url);
+        if (!pdf) {
+          return {
+            error: "Could not fetch that document (unreachable, not a PDF, or too large to read)",
+            document: doc.title,
+            available: pdfs.map((p) => p.title),
+          };
+        }
+        const context =
+          `Appeal ${ref} to An Coimisiún Pleanála — ${String(row.address_text ?? row.planning_reference)}. ` +
+          `Document: ${doc.title}.`;
+        const answer = await d.readDocumentWithClaude(pdf, context, input.question as string | undefined);
+        if (!answer) return { error: "Fetched the document but could not read it", document: doc.title };
+        return {
+          document: doc.title,
+          other_documents: pdfs.filter((p) => p !== doc).map((p) => p.title),
+          answer,
+        };
+      }
+      case "read_document": {
+        const row = getRow(input);
+        if (!row) return { error: "Application not found" };
+        const want = typeof input.title === "string" ? input.title.trim() : "";
+        if (!want) return { error: "title is required — call get_documents first to see the titles" };
+        const authorityId = String(row.authority_id);
+        const sourceUrl = (row.source_url as string | null) ?? null;
+        const reference = String(row.planning_reference);
+        const question = input.question as string | undefined;
+
+        const listUrl = deriveScannedFilesUrl(authorityId, sourceUrl, reference);
+        let fetched;
+        let title: string;
+        let titles: string[];
+        if (listUrl) {
+          const files = await d.fetchScannedFileList(listUrl);
+          if (!files) return { error: "Could not load the document list" };
+          titles = files.map((f) => f.title);
+          const idx = matchDocumentTitle(titles, want);
+          if (idx < 0) return { error: "No document matches that title", available: titles };
+          title = titles[idx];
+          fetched = await d.fetchScannedDocument(listUrl, idx, 10_000_000);
+        } else if (AGILE_CLIENT_BY_AUTHORITY[authorityId]) {
+          const result = await d.fetchAgileDocumentList(authorityId, sourceUrl, reference);
+          if (!result) return { error: "Could not load the document list" };
+          titles = result.files.map((f) => f.title);
+          const idx = matchDocumentTitle(titles, want);
+          if (idx < 0) return { error: "No document matches that title", available: titles };
+          title = titles[idx];
+          fetched = await d.fetchAgileDocument(authorityId, sourceUrl, reference, idx, 10_000_000);
+        } else {
+          return { error: "No document listing available for this council" };
+        }
+        if (fetched === "too_large") return { error: "That document is too large to read", document: title };
+        if (!fetched) return { error: "Could not fetch the document", document: title };
+        const isPdf = /pdf/i.test(fetched.contentType) || /\.pdf$/i.test(fetched.filename ?? "");
+        if (!isPdf) {
+          return {
+            error: `That document is not a PDF (${fetched.contentType}) — only PDFs can be read`,
+            document: title,
+          };
+        }
+        const context =
+          `Council document for planning application ${reference} — ` +
+          `${String(row.address_text ?? reference)}. Document: ${title}.`;
+        const answer = await d.readDocumentWithClaude(fetched.body.toString("base64"), context, question);
+        if (!answer) return { error: "Fetched the document but could not read it", document: title };
+        return { document: title, answer };
       }
       case "geocode_location": {
         const q = typeof input.location === "string" ? input.location.trim() : "";
