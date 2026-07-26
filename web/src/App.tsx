@@ -36,6 +36,8 @@ export default function App() {
   // Mobile only: the layout shows one of map / list at a time (a toggle),
   // rather than squishing both. Ignored at ≥768px, where they sit side by side.
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
+  // Desktop only: tuck the whole panel away for a full-width map.
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   // Shown after the user pans/zooms the map: a one-tap "search this area".
   const [canSearchArea, setCanSearchArea] = useState(false);
@@ -333,7 +335,7 @@ export default function App() {
       {/* The dashboard is a full-screen destination, but the map stays mounted
           behind it (hidden, not unmounted) so returning keeps its position. */}
       <div
-        className={`layout ${mode === "search" && mobileView === "map" ? "m-map" : "m-panel"}`}
+        className={`layout ${mode === "search" && mobileView === "map" ? "m-map" : "m-panel"}${panelCollapsed ? " panel-collapsed" : ""}`}
         hidden={mode === "account"}
       >
         <div className="side-panel">
@@ -421,6 +423,28 @@ export default function App() {
         </div>
 
         <div className="map-wrap">
+          <button
+            type="button"
+            className="panel-collapse-btn"
+            aria-expanded={!panelCollapsed}
+            aria-label={panelCollapsed ? "Show search panel" : "Hide search panel"}
+            title={panelCollapsed ? "Show search panel" : "Hide search panel"}
+            onClick={() => setPanelCollapsed((c) => !c)}
+          >
+            <svg
+              aria-hidden="true"
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M6.5 1.5 3 5l3.5 3.5" />
+            </svg>
+          </button>
           <MapView
             data={mapData}
             selectedId={selectedId}

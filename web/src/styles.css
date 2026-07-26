@@ -354,7 +354,63 @@ body {
     max-height: none;
     border-top: none;
     border-right: 1px solid var(--line);
+    transition: width 240ms var(--ease), padding 240ms var(--ease);
   }
+  /* Pin children to the expanded content width so a collapsing panel clips
+     cleanly instead of reflowing its text mid-transition. */
+  .side-panel > * {
+    min-width: 388px;
+  }
+  .layout.panel-collapsed .side-panel {
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-right: none;
+    overflow: hidden;
+    visibility: hidden;
+    /* Keep the content visible while the width animates shut, then hide it
+       from focus and readers; reopening flips visibility immediately. */
+    transition: width 240ms var(--ease), padding 240ms var(--ease), visibility 0s 240ms;
+  }
+  .panel-collapse-btn {
+    display: inline-flex;
+  }
+}
+
+/* A slim tab on the panel/map seam; the chevron points at what it will do. */
+.panel-collapse-btn {
+  display: none;
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.15rem;
+  height: 3rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-left: none;
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(26, 29, 33, 0.08);
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.panel-collapse-btn:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.panel-collapse-btn svg {
+  transition: transform var(--t-base) var(--ease);
+}
+
+.layout.panel-collapsed .panel-collapse-btn svg {
+  transform: rotate(180deg);
 }
 
 /* The map/list toggle is a mobile affordance; both panes show at ≥768px. */
