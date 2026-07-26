@@ -38,7 +38,7 @@ async function readJsonBody(req) {
   }
 }
 
-async function currentUser(req) {
+export async function currentUser(req) {
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (!token) return null;
   const rows = await sql(
