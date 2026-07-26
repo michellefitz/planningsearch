@@ -14,3 +14,6 @@ api/_data/
 .worktrees/
 .vercel
 .superpowers/
+
+# Raw flood data (large shapefiles, re-downloadable via scripts/flood/download.sh)
+scripts/flood/data/
