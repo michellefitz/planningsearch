@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { api, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
+import { api, fmtDate, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
+import { XIcon } from "./icons";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "./MapView";
 import SaveStar from "./SaveStar";
@@ -1024,7 +1025,7 @@ function EplanningRelated({
               {r.status && STATUS_STYLE[r.status] && (
                 <StatusBadge status={r.status} label={STATUS_STYLE[r.status].label} />
               )}
-              {r.received_date && <span className="related-date">received {r.received_date}</span>}
+              {r.received_date && <span className="related-date">received {fmtDate(r.received_date)}</span>}
             </div>
             {r.description && <p className="related-desc">{r.description}</p>}
           </li>
@@ -1332,7 +1333,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           />
         </div>
         <button type="button" className="sheet-close" onClick={onClose} aria-label="Close application details">
-          ✕
+          <XIcon size={13} />
         </button>
       </div>
 
@@ -1340,7 +1341,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         <h2>{d.address_text ?? d.planning_reference}</h2>
         <p className="result-meta">
           <span className="ref">{d.planning_reference}</span> · {d.authority_name}
-          {d.received_date && ` · received ${d.received_date}`}
+          {d.received_date && ` · received ${fmtDate(d.received_date)}`}
           {d.is_domestic_guess && (
             <span className="tag" title="Best-effort classification, not an official category">
               likely domestic
@@ -1400,7 +1401,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             <li key={i} className={`tl-${step.state} ${step.statutory ? "tl-statutory" : ""}`}>
               <span className="tl-dot" aria-hidden="true" />
               <span className="tl-label">{withGlossary(step.label, glossary)}</span>
-              <span className="tl-date">{step.date ?? "—"}</span>
+              <span className="tl-date">{step.date ? fmtDate(step.date) : "—"}</span>
             </li>
           ))}
         </ol>
@@ -1408,7 +1409,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             this is the one date a member of the public can still act on. */}
         {!d.decision_date && d.submissions_by_date && !isPast(d.submissions_by_date) && (
           <p className="submissions-open">
-            <strong>Open for submissions until {d.submissions_by_date}</strong>
+            <strong>Open for submissions until {fmtDate(d.submissions_by_date)}</strong>
             {(() => {
               const left = daysUntil(d.submissions_by_date);
               return left === 0 ? " — today is the last day" : ` — ${left} day${left === 1 ? "" : "s"} left`;

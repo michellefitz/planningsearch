@@ -11,6 +11,8 @@ interface Props {
 export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
+  // Keyboard cursor into the suggestions; -1 means "typing, nothing chosen".
+  const [active, setActive] = useState(-1);
   const debounceRef = useRef<number>();
 
   useEffect(() => {
@@ -23,6 +25,7 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
       try {
         const { suggestions } = await api.suggest(value);
         setSuggestions(suggestions);
+        setActive(-1);
         setOpen(suggestions.length > 0);
       } catch {
         setSuggestions([]);
@@ -30,6 +33,12 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
     }, 200);
     return () => window.clearTimeout(debounceRef.current);
   }, [value]);
+
+  const take = (s: string) => {
+    onChange(s);
+    setOpen(false);
+    onSubmit(s);
+  };
 
   return (
     <div className="search-bar">
@@ -46,10 +55,31 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
           className="search-input"
           placeholder="Address, area, reference, applicant or keyword…"
           aria-label="Search planning applications across all five authorities"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="search-suggestions"
+          aria-autocomplete="list"
+          aria-activedescendant={open && active >= 0 ? `sugg-${active}` : undefined}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setOpen(suggestions.length > 0)}
           onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+          onKeyDown={(e) => {
+            if (!open || suggestions.length === 0) return;
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setActive((a) => (a + 1) % suggestions.length);
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setActive((a) => (a <= 0 ? suggestions.length - 1 : a - 1));
+            } else if (e.key === "Enter" && active >= 0) {
+              e.preventDefault();
+              take(suggestions[active]);
+            } else if (e.key === "Escape") {
+              setOpen(false);
+              setActive(-1);
+            }
+          }}
           autoComplete="off"
         />
         <button type="submit" className="btn btn-primary">
@@ -78,17 +108,18 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
         </button>
       </form>
       {open && (
-        <ul className="suggestions" role="listbox" aria-label="Search suggestions">
-          {suggestions.map((s) => (
-            <li key={s} role="option" aria-selected="false">
+        <ul className="suggestions" id="search-suggestions" role="listbox" aria-label="Search suggestions">
+          {suggestions.map((s, i) => (
+            <li key={s} id={`sugg-${i}`} role="option" aria-selected={i === active}>
               <button
                 type="button"
+                tabIndex={-1}
+                className={i === active ? "sugg-active" : ""}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  onChange(s);
-                  setOpen(false);
-                  onSubmit(s);
+                  take(s);
                 }}
+                onMouseEnter={() => setActive(i)}
               >
                 {s}
               </button>

@@ -1,4 +1,4 @@
-import { DEFAULT_STATUSES, type Meta, type SearchState } from "../api";
+import { DEFAULT_STATUSES, fmtDate, type Meta, type SearchState } from "../api";
 import { STATUS_STYLE } from "./MapView";
 import MultiSelect from "./MultiSelect";
 
@@ -11,9 +11,6 @@ interface Props {
 function toggle(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
-
-const fmtDate = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric" });
 
 interface Applied {
   key: string;

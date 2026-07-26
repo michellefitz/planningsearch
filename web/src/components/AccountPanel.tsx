@@ -3,6 +3,8 @@ import { accountApi, type Me, type SavedApp, type SavedList } from "../accountAp
 import type { PointFeatureCollection } from "../api";
 import { StatusBadge } from "./ResultsList";
 import MapView from "./MapView";
+import { PencilIcon, XIcon } from "./icons";
+import { fmtDate } from "../api";
 
 interface Props {
   me: Me | null;
@@ -66,9 +68,9 @@ function RegisterRow({
   const open = () => void onOpenApp(s.authority_id, s.planning_reference);
   // The most decision-relevant date wins the single date slot.
   const date = s.app?.decision_date
-    ? `decided ${s.app.decision_date}`
+    ? `decided ${fmtDate(s.app.decision_date)}`
     : s.app?.received_date
-      ? `received ${s.app.received_date}`
+      ? `received ${fmtDate(s.app.received_date)}`
       : null;
 
   return (
@@ -161,7 +163,7 @@ function RegisterRow({
             }
           }}
         >
-          ✕
+          <XIcon />
         </button>
       </span>
     </div>
@@ -254,7 +256,7 @@ function ListSectionHead({
           title="Rename list"
           onClick={() => { setName(list.name); setEditing(true); }}
         >
-          ✎
+          <PencilIcon />
         </button>
         <button
           type="button"
@@ -262,7 +264,7 @@ function ListSectionHead({
           title="Delete list"
           onClick={() => setConfirming(true)}
         >
-          ✕
+          <XIcon />
         </button>
       </div>
     </div>

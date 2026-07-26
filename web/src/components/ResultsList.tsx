@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import type { AppSummary } from "../api";
+import { fmtDate, type AppSummary } from "../api";
 import type { SavedApp } from "../accountApi";
 import { saveKey } from "../accountApi";
 import { STATUS_STYLE } from "./MapView";
@@ -153,7 +153,7 @@ export default function ResultsList({
               <p className="result-desc">{r.description}</p>
               <p className="result-meta">
                 <span className="ref">{r.planning_reference}</span> · {r.authority_short_name}
-                {r.received_date && ` · received ${r.received_date}`}
+                {r.received_date && ` · received ${fmtDate(r.received_date)}`}
                 {r.distance_km != null && ` · ${r.distance_km} km away`}
                 {r.is_domestic_guess && (
                   <span className="tag" title="Best-effort classification, not an official category">

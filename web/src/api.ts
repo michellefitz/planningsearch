@@ -202,6 +202,17 @@ export function searchParams(
   return p;
 }
 
+/** One date voice for display: "2026-05-12" → "12 May 2026". Anything that
+    isn't an ISO date passes through untouched. Inputs keep ISO. */
+export function fmtDate(iso: string | null | undefined): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso ?? "";
+  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-IE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);

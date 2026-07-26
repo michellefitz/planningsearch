@@ -617,7 +617,8 @@ body {
 }
 
 .suggestions button:hover,
-.suggestions button:focus {
+.suggestions button:focus,
+.suggestions button.sugg-active {
   background: var(--surface-2);
 }
 
@@ -802,7 +803,8 @@ body {
   flex: none;
 }
 
-/* The one date a member of the public can still act on — flagged, not buried. */
+/* The one date a member of the public can still act on — flagged, not buried.
+   The tint alone says "notice"; the bold deadline inside carries the urgency. */
 .submissions-open {
   margin: 0.6rem 0 0;
   padding: 0.5rem 0.7rem;
@@ -810,7 +812,6 @@ body {
   line-height: 1.5;
   color: var(--ink);
   background: var(--action-tint);
-  border-left: 3px solid var(--action);
   border-radius: 6px;
 }
 
@@ -1033,14 +1034,11 @@ body {
   width: 100%;
   text-align: left;
   border: 0;
-  border-left: 2px solid transparent;
   background: none;
   padding: 0.65rem 0.6rem 0.7rem;
   cursor: pointer;
   font: inherit;
-  transition:
-    background var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease);
+  transition: background var(--t-fast) var(--ease);
 }
 
 .result-card:hover,
@@ -1048,9 +1046,9 @@ body {
   background: var(--surface-2);
 }
 
+/* Selection is the tint — no stripe needed on top of it. */
 .result-selected,
 .result-selected:hover {
-  border-left-color: var(--action);
   background: var(--action-tint);
 }
 
@@ -1299,7 +1297,8 @@ body {
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 50%;
-  font-size: 0.85rem;
+  display: inline-grid;
+  place-items: center;
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
@@ -1771,7 +1770,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  border: 1px solid rgba(26, 29, 33, 0.08);
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1785,7 +1784,7 @@ body {
   box-shadow: 0 1px 3px rgba(26, 29, 33, 0.08);
   transition: color 120ms ease, border-color 120ms ease, transform var(--t-base) var(--ease);
 }
-.layers-btn:hover { color: var(--ink); border-color: rgba(26, 29, 33, 0.16); }
+.layers-btn:hover { color: var(--ink); border-color: color-mix(in srgb, var(--ink) 16%, transparent); }
 .layers-btn:active { transform: scale(0.97); }
 .layers-btn-on { color: var(--action); border-color: var(--action-ring); }
 .layers-count {
@@ -2619,7 +2618,7 @@ a.pill:hover {
 .saved-bell:hover { color: var(--ink); background: var(--surface-2); }
 .saved-bell-on { color: var(--action); }
 .saved-list-select { padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; font-family: inherit; color: var(--ink-2); background: var(--surface); cursor: pointer; min-width: 0; max-width: 90px; }
-.saved-remove { border: 0; background: none; cursor: pointer; font-size: 12px; padding: 4px 6px; border-radius: 4px; color: var(--ink-3); transition: color 120ms ease, background 120ms ease; }
+.saved-remove { border: 0; background: none; cursor: pointer; font-size: 12px; padding: 4px 6px; border-radius: 4px; color: var(--ink-3); transition: color 120ms ease, background 120ms ease; display: inline-flex; align-items: center; }
 .saved-remove:hover { color: #dc2626; background: #fef2f2; }
 
 /* Mobile register: address leads, status and figures share the second line,
