@@ -6,13 +6,20 @@ export function getFloodData(): Promise<GeoJSON.FeatureCollection | null> {
   if (pending) return pending;
   pending = fetch("/flood.geojson")
     .then((res) => {
-      if (!res.ok) return null;
+      if (!res.ok) {
+        pending = null;
+        return null;
+      }
       return res.json() as Promise<GeoJSON.FeatureCollection>;
     })
     .then((fc) => {
-      cache = fc;
+      if (fc) cache = fc;
+      else pending = null;
       return fc;
     })
-    .catch(() => null);
+    .catch(() => {
+      pending = null;
+      return null;
+    });
   return pending;
 }
