@@ -45,6 +45,8 @@ import {
 } from "./agile.js";
 import { runAgent, type ChatTurn } from "./agent/agent.js";
 import { buildToolExecutor } from "./agent/execute.js";
+import { generateReport } from "./preplan/report.js";
+import { buildReportDeps } from "./preplan/deps.js";
 
 function csv(v: unknown): string[] | undefined {
   if (typeof v !== "string" || !v.trim()) return undefined;
@@ -889,6 +891,33 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       }
     } catch {
       reply.raw.write(`data: ${JSON.stringify({ type: "error", message: "Agent crashed" })}\n\n`);
+    } finally {
+      reply.raw.end();
+    }
+  });
+
+  // Pre-planner report generation, ungated for local development — accounts
+  // and persistence live only on the deployed api side.
+  app.post("/api/preplan/generate", async (req, reply) => {
+    const body = req.body as { lat?: number; lng?: number; address?: string; intent?: string } | null;
+    const lat = Number(body?.lat);
+    const lng = Number(body?.lng);
+    const intent = typeof body?.intent === "string" ? body.intent.trim() : "";
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !intent) {
+      return reply.code(400).send({ error: "lat, lng and intent are required" });
+    }
+    const input = { lat, lng, address: String(body?.address ?? "").trim(), intent };
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    try {
+      for await (const ev of generateReport(input, buildReportDeps(db))) {
+        reply.raw.write(`data: ${JSON.stringify(ev)}\n\n`);
+      }
+    } catch {
+      reply.raw.write(`data: ${JSON.stringify({ type: "error", message: "Report generation crashed" })}\n\n`);
     } finally {
       reply.raw.end();
     }
