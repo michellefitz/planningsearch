@@ -184,6 +184,42 @@
 - **Pre-existing:** MapView stale onSelect closure; agent request abort not
   wired through.
 
+## Map layers (from 2026-07-26 open-data research)
+
+Shipped from that research: natural heritage (SAC/SPA/NHA/pNHA merged from
+NPWS `services-eu1.arcgis.com/Jhij7i46ouO8Cc0N/.../NPWSDesignatedAreas`,
+sub-layers 0=SPA 1=pNHA 2=NHA 3=SAC) and Zones of Archaeological
+Notification (`services-eu1.arcgis.com/HyjXgkV6KGMSF3jt/.../SMRZoneOpenData`).
+ACAs are a baked static file (docs/ACA_DATA.md). Still to build:
+
+- **NIAH buildings layer.** National Inventory of Architectural Heritage —
+  ~50k surveyed buildings with build date, description, original/current
+  use and rating; the state inventory behind most RPS entries. Verified
+  live endpoint (same DHLGH org as the SMR layers):
+  `services-eu1.arcgis.com/HyjXgkV6KGMSF3jt/.../NIAHBuildingsOpenData/FeatureServer/0`
+  — point data, so it wants a dot style and a higher min-zoom (~15) rather
+  than the polygon-fill pattern; rich popup content (NAME, ORIGINAL_TYPE,
+  IN_USE_AS_TYPE, DESCRIPTION, REG_NO → buildingsofireland.ie).
+- **Recorded monuments (SMR points).** Pairs with the archaeology zones —
+  says *what* the monument is. Verified live:
+  `services-eu1.arcgis.com/HyjXgkV6KGMSF3jt/.../SMROpenData/FeatureServer/0`
+  (MONUMENT_CLASS, SMRS ref, WEB_NOTES, WEBSITE_LINK deep link). Could
+  render only when the zones layer is on, or drive a richer zone popup.
+- **Record of Protected Structures (RPS).** The most consulted heritage
+  constraint (Section 57), but per-council patchwork like ACAs — no
+  national dataset. Fingal has a live FeatureServer
+  (`services5.arcgis.com/CI1e5PKQXvJgmJK8/.../Fingal_County_Council_Development_Plan_2017_to_2023_Record_Protected_Structures/FeatureServer/0`);
+  DCC/SDCC/DLR/Kildare need the same per-council hunt → bake static, the
+  docs/ACA_DATA.md treatment. NIAH above is ~80% of the signal for far
+  less work, so do it first.
+- **Parked (research said not yet):** airport noise/safety zones
+  (Fingal-only, buried in dev-plan appendices), SDZ/LAP boundaries (few
+  and stable — better as search facets), TPOs and protected views (no
+  consistent open data), GSI geology/landslide + EPA historic landfills
+  (real factors for large developments, niche for our domestic-leaning
+  audience). Bonus found on the DHLGH org: National Park boundaries,
+  Ancient/Long-Established Woodland (ALEW), UNESCO sites.
+
 - **Flood extents layer removed 2026-07-25 — rebuild from OPW open data.**
   The ArcGIS service the overlay and the per-application flood lookup used
   (`services7.arcgis.com/aopigSLPh2SnT3cX/.../Flood_Maps`) now returns
