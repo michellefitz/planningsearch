@@ -281,7 +281,9 @@ export function pickAgileDecision(d: Record<string, unknown>): string | null {
   let best: string | null = null;
   for (const [key, value] of Object.entries(d)) {
     if (typeof value !== "string" || !DECISION_KEY_RE.test(key)) continue;
-    if (/appeal/i.test(key) || /date/i.test(key)) continue;
+    // "levelOfDecisionDescription" is WHO decided ("Approved Officer"), not the
+    // outcome — its "Approved…" wording would map a refusal to granted.
+    if (/appeal/i.test(key) || /date/i.test(key) || /level/i.test(key)) continue;
     const v = value.trim();
     if (!v || /^\d{4}-\d{2}-\d{2}/.test(v)) continue;
     if (v.length > (best?.length ?? 0)) best = v;

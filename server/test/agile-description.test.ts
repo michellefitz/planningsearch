@@ -24,3 +24,38 @@ describe("pickDescription", () => {
     expect(pickDescription({ statusDescription: "Decided", decisionText: "Refused" })).toBeNull();
   });
 });
+
+// Real DLR payload (D22A/0364) supplied 2026-07-27 — the tenant's actual keys.
+import { pickAgileDecision, pickAgileStatus } from "../src/agile.js";
+
+const DLR = {
+  reference: "D22A/0364",
+  proposal: "Permission for development. The development will consist of",
+  fullProposal:
+    "Permission for development. The development will consist of the construction of a ground floor extension (40m2) at the rear of the property and alterations to the front elevation, widening of existing vehicular entrance and provision of new gate to front including all associated site works to existing two storey semi-detached dwelling.",
+  decisionText: "GRANT PERMISSION",
+  decisionDate: "2022-09-19T00:00:00",
+  statusDescription: "Decision made",
+  statusDescriptionOwner: "Decision made",
+  statusDescriptionNonOwner: "Decision made",
+  applicationType: "Permission",
+  levelOfDecisionCode: "AO",
+  levelOfDecisionDescription: "Approved Officer",
+  developmentCategory: "",
+};
+
+describe("DLR payload (real tenant keys)", () => {
+  it("description = fullProposal, not the truncated proposal", () => {
+    expect(pickDescription(DLR)).toBe(DLR.fullProposal);
+  });
+
+  it("decision = decisionText, never the level-of-decision fields", () => {
+    expect(pickAgileDecision(DLR)).toBe("GRANT PERMISSION");
+    // A short refusal must not lose to "Approved Officer" (who decided ≠ outcome).
+    expect(pickAgileDecision({ ...DLR, decisionText: "REFUSED" })).toBe("REFUSED");
+  });
+
+  it("status = the stage description", () => {
+    expect(pickAgileStatus(DLR)).toBe("Decision made");
+  });
+});
