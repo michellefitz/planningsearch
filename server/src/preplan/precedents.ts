@@ -8,6 +8,10 @@ export interface PrecedentSourceRow {
   authority_id: string;
   planning_reference: string;
   description: string | null;
+  /** Baked one-line AI summary when the dataset has one — preferred display text. */
+  ai_summary?: string | null;
+  source_url?: string | null;
+  status_label?: string | null;
   status: string | null;
   decision: string | null;
   decision_date: string | null;
@@ -45,6 +49,10 @@ export function intentTokens(intent: string): string[] {
 
 export const PRECEDENT_RADIUS_M = 1000;
 
+// Invalid/incomplete applications never got a planning judgement, so they say
+// nothing about how this proposal would fare.
+const IRRELEVANT_STATUSES = new Set(["invalid", "incomplete"]);
+
 export function scorePrecedent(row: PrecedentSourceRow, tokens: string[], distM: number): { score: number; hits: string[] } {
   const desc = (row.description ?? "").toLowerCase();
   const hits = tokens.filter((t) => desc.includes(t));
@@ -62,6 +70,7 @@ export function selectPrecedents(
   const scored: ScoredPrecedent[] = [];
   for (const row of rows) {
     if (row.lat == null || row.lng == null) continue;
+    if (row.status && IRRELEVANT_STATUSES.has(row.status)) continue;
     const distance_m = Math.round(haversineMeters(lat, lng, row.lat, row.lng));
     if (distance_m > PRECEDENT_RADIUS_M) continue;
     const { score, hits } = scorePrecedent(row, tokens, distance_m);

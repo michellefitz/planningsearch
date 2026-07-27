@@ -98,7 +98,12 @@ function buildDeps(host, ctx) {
       for (const r of nearby) counts.set(r.authority_id, (counts.get(r.authority_id) ?? 0) + 1);
       const authorityId = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
       const authority = authorityId ? apps.filter((a) => a.authority_id === authorityId) : [];
-      return { nearby, authority };
+      // geom_polygon can be tens of KB per row — never let it into the report.
+      const label = ({ geom_polygon: _g, ...r }) => ({
+        ...r,
+        status_label: ctx.bundle.statuses?.[r.status] ?? r.status,
+      });
+      return { nearby: nearby.map(label), authority, authority_id: authorityId ?? null };
     },
     async readPrecedentDocument(p, question) {
       const tool = p.appeal_reference ? "read_appeal_document" : "read_document";

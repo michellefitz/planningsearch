@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { buildToolExecutor } from "../agent/execute.js";
+import { STATUS_LABELS } from "../normalize.js";
 import { callClaude } from "../summarize.js";
 import {
   getDesignations,
@@ -36,8 +37,8 @@ async function loadStaticGeojson(name: "aca" | "flood"): Promise<StaticGeojson> 
 }
 
 const ROW_COLUMNS =
-  "id, authority_id, planning_reference, description, status, decision, decision_date, " +
-  "received_date, address_text, lat, lng, appeal_reference";
+  "id, authority_id, planning_reference, description, ai_summary, source_url, status, decision, " +
+  "decision_date, received_date, address_text, lat, lng, appeal_reference";
 
 type DbRow = PrecedentSourceRow & { id: number };
 
@@ -67,7 +68,11 @@ export function buildReportDeps(db: Database.Database): ReportDeps {
             .prepare(`SELECT ${ROW_COLUMNS} FROM applications WHERE authority_id = ?`)
             .all(authorityId) as DbRow[])
         : [];
-      return { nearby, authority };
+      const label = (r: DbRow) => ({
+        ...r,
+        status_label: (STATUS_LABELS as Record<string, string>)[r.status ?? ""] ?? r.status,
+      });
+      return { nearby: nearby.map(label), authority, authority_id: authorityId ?? null };
     },
 
     async readPrecedentDocument(p: ScoredPrecedent, question: string) {

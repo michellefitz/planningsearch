@@ -53,6 +53,16 @@ describe("selectPrecedents", () => {
     const rows = Array.from({ length: 20 }, (_, i) => row({ planning_reference: `r${i}`, lat: 53.3814 }));
     expect(selectPrecedents(rows, base.lat, base.lng, "extension", 8)).toHaveLength(8);
   });
+
+  it("drops invalid and incomplete applications", () => {
+    const rows = [
+      row({ planning_reference: "ok", lat: 53.3814 }),
+      row({ planning_reference: "inv", status: "invalid", lat: 53.3814 }),
+      row({ planning_reference: "inc", status: "incomplete", lat: 53.3814 }),
+    ];
+    const out = selectPrecedents(rows, base.lat, base.lng, "extension");
+    expect(out.map((p) => p.planning_reference)).toEqual(["ok"]);
+  });
 });
 
 describe("deepDiveCandidates", () => {

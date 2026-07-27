@@ -54,6 +54,8 @@ export interface HeritageItem {
   name: string;
   distance_m: number | null;
   detail: string;
+  /** SMR web notes — what the monument actually is, when the service says. */
+  notes?: string;
   url?: string;
 }
 
@@ -249,11 +251,13 @@ export async function getHeritagePoints(lat: number, lng: number, deps: PointDep
         ? sort(
             smr.value.map((f) => {
               const p = f.properties ?? {};
+              const notes = str(p.WEB_NOTES);
               return {
                 ref: str(p.SMRS) || str(p.ENTITY_ID),
                 name: str(p.CLASSDESC) || str(p.CLASS_CODE) || "Recorded monument",
                 distance_m: itemDistance(lat, lng, f),
                 detail: str(p.TOWNLAND),
+                notes: notes ? (notes.length > 280 ? `${notes.slice(0, 277)}…` : notes) : undefined,
                 url: str(p.WEBSITE_LINK) || undefined,
               };
             })

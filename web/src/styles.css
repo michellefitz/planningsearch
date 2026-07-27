@@ -2776,8 +2776,20 @@ a.pill:hover {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 0;
+  padding: 14px 8px;
+  margin: 0 -8px;
   border-top: 1px solid var(--line);
+}
+
+.preplan-project-clickable {
+  cursor: pointer;
+  border-radius: var(--r-md);
+  transition: background-color 140ms ease;
+}
+
+.preplan-project-clickable:hover,
+.preplan-project-clickable:focus-visible {
+  background: var(--surface-2);
 }
 
 .pp-main {
@@ -3174,60 +3186,121 @@ a.pill:hover {
   font-weight: 600;
 }
 
-.report-precedents {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.report-precedents th {
-  text-align: left;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.report-hint {
   color: var(--ink-3);
-  font-weight: 600;
-  padding: 4px 10px 6px 0;
-  border-bottom: 1px solid var(--line-strong);
+  font-size: 12.5px;
+  margin: 0 0 10px;
 }
 
-.report-precedents td {
-  vertical-align: top;
-  padding: 8px 10px 8px 0;
-  border-bottom: 1px solid var(--line);
+.report-prec-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.report-prec {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.report-prec-clickable {
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.report-prec-clickable:hover,
+.report-prec-clickable:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+.rp-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .rp-ref {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.rp-ref a {
+  color: var(--action);
+  text-decoration: none;
+}
+
+.rp-ref a:hover {
+  text-decoration: underline;
 }
 
 .rp-dist {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  margin-left: auto;
 }
 
-.rp-addr,
-.rp-appeal {
-  display: block;
+.rp-appeal-pill {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.rp-summary {
+  margin: 0;
+  font-size: 13.5px;
+  max-width: 76ch;
+}
+
+.rp-addr {
+  margin: 0;
   color: var(--ink-3);
   font-size: 12px;
 }
 
 .report-dives {
-  margin-top: 6px;
+  margin-top: 14px;
 }
 
 .report-dive {
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: var(--surface-2);
   border-radius: var(--r-md);
-  margin: 8px 0;
+  margin: 10px 0;
 }
 
 .report-dive p {
   margin: 0;
+}
+
+.rd-extract p {
+  margin: 0 0 8px;
+  max-width: 72ch;
+}
+
+.rd-extract p:last-child {
+  margin-bottom: 0;
+}
+
+.rd-extract ul,
+.rd-extract ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  max-width: 70ch;
 }
 
 .rd-doc {
@@ -3270,6 +3343,43 @@ a.pill:hover {
   margin: 0;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
+}
+
+.report-overview {
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  border-bottom: none;
+}
+
+.report-overview p {
+  max-width: 70ch;
+  font-size: 14.5px;
+}
+
+.report-overview p:last-child {
+  margin-bottom: 0;
+}
+
+.rh-notes {
+  margin: 2px 0 6px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  max-width: 72ch;
+}
+
+.report-plan {
+  max-width: 68ch;
+}
+
+.report-plan a {
+  color: var(--action);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.report-plan a:hover {
+  text-decoration: underline;
 }
 
 .report-narrative {
@@ -3334,11 +3444,18 @@ a.pill:hover {
   .report-section {
     break-inside: avoid;
   }
-  .report-dive {
+  .report-dive,
+  .report-overview {
     background: none;
     border: 1px solid #ccc;
   }
-  .rh-name a {
+  .report-prec {
+    border-color: #ccc;
+    break-inside: avoid;
+  }
+  .rh-name a,
+  .rp-ref a,
+  .report-plan a {
     color: #000;
     text-decoration: none;
   }

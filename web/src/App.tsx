@@ -504,7 +504,16 @@ export default function App() {
             <button type="button" className="back-to-map no-print" onClick={() => setMode("search")}>
               ← Back to map
             </button>
-            <PrePlannerPanel />
+            <PrePlannerPanel
+              onOpenApp={async (authorityId, reference) => {
+                try {
+                  const { id } = await api.resolve(authorityId, reference);
+                  await select(id);
+                } catch {
+                  setError("That application is no longer in the current dataset.");
+                }
+              }}
+            />
           </div>
         </main>
       )}

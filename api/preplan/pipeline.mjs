@@ -232,11 +232,13 @@ export async function getHeritagePoints(lat, lng, deps) {
         ? sort(
             smr.value.map((f) => {
               const p = f.properties ?? {};
+              const notes = str(p.WEB_NOTES);
               return {
                 ref: str(p.SMRS) || str(p.ENTITY_ID),
                 name: str(p.CLASSDESC) || str(p.CLASS_CODE) || "Recorded monument",
                 distance_m: itemDistance(lat, lng, f),
                 detail: str(p.TOWNLAND),
+                notes: notes ? (notes.length > 280 ? `${notes.slice(0, 277)}…` : notes) : undefined,
                 url: str(p.WEBSITE_LINK) || undefined,
               };
             })
@@ -293,11 +295,16 @@ export function intentTokens(intent) {
 
 export const PRECEDENT_RADIUS_M = 1000;
 
+// Invalid/incomplete applications never got a planning judgement, so they say
+// nothing about how this proposal would fare.
+const IRRELEVANT_STATUSES = new Set(["invalid", "incomplete"]);
+
 export function selectPrecedents(rows, lat, lng, intent, limit = 8) {
   const tokens = intentTokens(intent);
   const scored = [];
   for (const row of rows) {
     if (row.lat == null || row.lng == null) continue;
+    if (row.status && IRRELEVANT_STATUSES.has(row.status)) continue;
     const distance_m = Math.round(haversineMeters(lat, lng, row.lat, row.lng));
     if (distance_m > PRECEDENT_RADIUS_M) continue;
     const desc = (row.description ?? "").toLowerCase();
@@ -359,6 +366,31 @@ export function areaStats(authorityRows, lat, lng) {
 
 // ---------- report generator ----------
 
+// County development plan landing pages, verified live 2026-07-27. The plan
+// is the document a proposal is actually judged against — always link it.
+export const LOCAL_PLANS = {
+  "dublin-city": {
+    name: "Dublin City Development Plan 2022–2028",
+    url: "https://www.dublincity.ie/residential/planning/strategic-planning/dublin-city-development-plan",
+  },
+  fingal: {
+    name: "Fingal Development Plan 2023–2029",
+    url: "https://www.fingal.ie/planning",
+  },
+  dlr: {
+    name: "Dún Laoghaire-Rathdown County Development Plan 2022–2028",
+    url: "https://www.dlrcoco.ie/planning",
+  },
+  "south-dublin": {
+    name: "South Dublin County Development Plan 2022–2028",
+    url: "https://www.sdcc.ie/en/devplan2022/",
+  },
+  kildare: {
+    name: "Kildare County Development Plan 2023–2029",
+    url: "https://kildarecoco.ie/AllServices/Planning/DevelopmentPlansLocalAreaPlans/KildareCountyDevelopmentPlan2023-2029/",
+  },
+};
+
 export const DEEP_DIVE_QUESTION =
   "Summarise what was decided and why. List the key conditions imposed (or the reasons for refusal), " +
   "and note anything about the site, design or neighbours that drove the outcome.";
@@ -373,12 +405,15 @@ Rules:
   not checked.
 - You are NOT predicting a decision and NOT giving professional advice. Never
   state or imply a likelihood of permission.
-- Structure: **Site constraints** (what the designations mean for this intent),
+- Structure: **Overview** (2-3 sentences: the headline of what this research
+  found for this site and intent — a person should get the gist from this
+  alone), **Site constraints** (what the designations mean for this intent),
   **What nearby decisions show** (themes from precedents and their documents,
   cited by planning reference), **Likely condition themes**, **Worth checking
   before applying** (exempt-development thresholds, a pre-planning meeting with
-  the council, relevant development plan chapters).
-- Plain English, no legalese. 350-550 words. Markdown with the four bold
+  the council, and the specific chapters of the local development plan named in
+  the evidence pack that bear on this proposal).
+- Plain English, no legalese. 350-550 words. Markdown with the five bold
   headings above only.`;
 
 const unavailable = (reason) => ({ unavailable: true, reason });
@@ -417,6 +452,15 @@ export async function* generateReport(input, deps) {
       return areaStats(rows.authority, input.lat, input.lng);
     }),
     "area statistics could not be computed"
+  );
+  track(
+    "local_plan",
+    rowsPromise.then((rows) => {
+      const plan = rows?.authority_id ? LOCAL_PLANS[rows.authority_id] : null;
+      if (!plan) throw new Error("no plan known");
+      return { authority_id: rows.authority_id, ...plan };
+    }),
+    "the local development plan could not be identified"
   );
 
   while (pending.size) {

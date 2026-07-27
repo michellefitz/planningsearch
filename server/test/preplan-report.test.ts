@@ -33,6 +33,7 @@ function deps(over: Partial<ReportDeps> = {}): ReportDeps {
     getRows: async () => ({
       nearby: [row({}), row({ planning_reference: "23/2", appeal_reference: "ABP-1" })],
       authority: [row({})],
+      authority_id: "kildare",
     }),
     readPrecedentDocument: async () => ({ document: "Inspector's report", answer: "Recommended grant." }),
     synthesise: async () => "**Site constraints**\n\nNone of note.",
@@ -47,11 +48,11 @@ async function collect(d: ReportDeps): Promise<PreplanEvent[]> {
 }
 
 describe("generateReport", () => {
-  it("emits progress, all five sections, narrative, done — in a valid order", async () => {
+  it("emits progress, all six sections, narrative, done — in a valid order", async () => {
     const events = await collect(deps());
     expect(events[0]).toMatchObject({ type: "progress" });
     const sectionNames = events.filter((e) => e.type === "section").map((e) => (e as { name: string }).name);
-    for (const name of ["designations", "heritage_points", "flood_ground", "precedents", "area_stats"]) {
+    for (const name of ["designations", "heritage_points", "flood_ground", "precedents", "area_stats", "local_plan"]) {
       expect(sectionNames).toContain(name);
     }
     const last = events[events.length - 1];
@@ -63,8 +64,20 @@ describe("generateReport", () => {
       "designations",
       "flood_ground",
       "heritage_points",
+      "local_plan",
       "precedents",
     ]);
+    expect(done.sections.local_plan).toMatchObject({ authority_id: "kildare", url: expect.stringContaining("kildare") });
+  });
+
+  it("local_plan is unavailable when the authority has no known plan link", async () => {
+    const events = await collect(
+      deps({
+        getRows: async () => ({ nearby: [row({})], authority: [row({})], authority_id: "nowhere" }),
+      })
+    );
+    const done = events[events.length - 1] as Extract<PreplanEvent, { type: "done" }>;
+    expect(done.sections.local_plan).toMatchObject({ unavailable: true });
   });
 
   it("attaches deep-dive extracts to the precedents section", async () => {

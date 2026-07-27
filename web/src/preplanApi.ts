@@ -38,6 +38,7 @@ export interface HeritageItem {
   name: string;
   distance_m: number | null;
   detail: string;
+  notes?: string;
   url?: string;
 }
 
@@ -46,6 +47,9 @@ export interface PrecedentItem {
   authority_id: string;
   planning_reference: string;
   description: string | null;
+  ai_summary?: string | null;
+  status_label?: string | null;
+  source_url?: string | null;
   status: string | null;
   decision: string | null;
   decision_date: string | null;
@@ -85,6 +89,7 @@ export interface ReportSections {
     | Unavailable;
   precedents?: { items: PrecedentItem[]; deep_dives: DeepDive[] } | Unavailable;
   area_stats?: { authority: RateBlock; within_2km: RateBlock } | Unavailable;
+  local_plan?: { authority_id: string; name: string; url: string } | Unavailable;
 }
 
 export interface PreplanReport {
