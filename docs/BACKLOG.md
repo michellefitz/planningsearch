@@ -245,3 +245,26 @@ machinery, area stats, one-shot Haiku considerations narrative.
 - **Neon migration**: sensitive env vars can't be pulled locally, so the
   preplan tables are created by `ensureSchema()` in api/preplan/routes.mjs
   on first use; scripts/migrate-accounts.mjs carries the same statements.
+
+## Agile detail harvest → dataset enrichment (backlogged 2026-07-27)
+
+The agile portals' per-application detail (GET /application/{id}) carries
+fields the national dataset lacks or truncates: fullProposal, case officer
+(officerName), Eircode (postcode), applicant/agent names, live status and
+decision. Today we fetch it lazily per detail-panel open (/enrich) and
+backfill a few columns. Instead, run a regular scraping job across all
+applications for the four agile councils (DLR, Fingal, Dublin City, South
+Dublin) — low thousands per authority, so one polite nightly/weekly sweep
+is small.
+
+- Store officer_name as a first-class column → enables "which officers
+  grant vs refuse" style analytics and an officer facet/search.
+- Replace truncated descriptions wholesale (kills the Fingal-style AI
+  summary failures at the root instead of per-open).
+- Backfill Eircodes en masse (national dataset ~2% populated).
+- Respect the tenants: throttle, resume, cache agile ids (resolveAgileId
+  is the slow step); reuse pickDescription/pickOfficer/pickAgileDecision
+  from server/src/agile.ts.
+- Watch decision-flip safety: the ingest write path must use the same
+  CORRECTABLE_BAKED/TERMINAL_LIVE rules as /enrich so a stale portal read
+  never clobbers a fresh national decision.
