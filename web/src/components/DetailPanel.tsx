@@ -716,16 +716,58 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
  * appeal outcome where one supersedes it), the plain-English summaries, the
  * full conditions or refusal reasons, and the appeal.
  */
+/**
+ * Copy (or, on mobile, share) the application's own address. The panel is a
+ * real URL now, so a link into a WhatsApp group or an email lands someone
+ * straight on the property rather than on the map.
+ */
+function ShareLink({ detail: d }: { detail: AppDetail }) {
+  const [copied, setCopied] = useState(false);
+  const share = async () => {
+    const url = window.location.href;
+    const title = d.address_text ?? d.planning_reference;
+    // Native share sheet where there is one; clipboard everywhere else.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text: `${title} — planning application`, url });
+        return;
+      } catch {
+        // cancelled or unsupported — fall through to copying
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // clipboard blocked — the address bar already shows the link
+    }
+  };
+  return (
+    <button
+      type="button"
+      className="sheet-share"
+      onClick={share}
+      aria-label="Copy a link to this application"
+      title="Copy a link to this application"
+    >
+      {copied ? "Link copied" : "Share"}
+    </button>
+  );
+}
+
 function DecisionSection({
   detail: d,
   conditions,
   conditionsLoading,
+  conditionsFailed,
   refusalSummary,
   refusalLoading,
 }: {
   detail: AppDetail;
   conditions: DecisionConditions | null;
   conditionsLoading: boolean;
+  conditionsFailed: boolean;
   refusalSummary: string | null;
   refusalLoading: boolean;
 }) {
@@ -776,8 +818,16 @@ function DecisionSection({
       ) : (
         d.status === "granted" &&
         d.decision_date && (
+          // Evidence, not proof — the permission number on a notice is typed by
+          // the submitter, many domestic works need no notice at all, and BCMS
+          // records only begin in 2014. Absence must not read as a finding.
           <p className="commencement-line commencement-none">
-            No commencement notice on file — work does not appear to have started.
+            No matching commencement notice found.{" "}
+            <span className="hint">
+              Not proof that work hasn't started: notices aren't required for all works,
+              the permission number on a notice is typed by the submitter, and building
+              control records begin in 2014.
+            </span>
           </p>
         )
       )}
@@ -795,7 +845,21 @@ function DecisionSection({
           <span />
         </div>
       )}
-      {conditions && <ConditionGroups conditions={conditions} />}
+      {conditions && conditions.items.length > 0 && <ConditionGroups conditions={conditions} />}
+      {/* Three distinct outcomes, never collapsed into a blank space: the
+          council recorded none, or we couldn't reach the council at all. */}
+      {!conditionsLoading && conditions && conditions.items.length === 0 && (
+        <p className="section-note">
+          The council's register records no conditions or reasons for this decision.
+        </p>
+      )}
+      {!conditionsLoading && conditionsFailed && (
+        <p className="section-note section-note-warn">
+          Couldn't load the conditions from {d.authority_name} just now — this does{" "}
+          <strong>not</strong> mean there are none. Check the council's portal using the link
+          above.
+        </p>
+      )}
       {scannedOrderOnly && <DecisionOrderSummary detail={d} />}
       <AppealBlock detail={d} />
     </section>
@@ -1061,6 +1125,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const timeline = buildTimeline(d);
   const [conditions, setConditions] = useState<DecisionConditions | null>(null);
   const [conditionsLoading, setConditionsLoading] = useState(false);
+  // A council portal that didn't answer must never look like a permission with
+  // no conditions attached — those are opposite facts. Track the outcome of the
+  // fetch, not just whether we ended up with rows.
+  const [conditionsFailed, setConditionsFailed] = useState(false);
   const [refusalSummary, setRefusalSummary] = useState<string | null>(null);
   const [refusalLoading, setRefusalLoading] = useState(false);
   const [enrich, setEnrich] = useState<{
@@ -1091,6 +1159,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
 
   useEffect(() => {
     setConditions(null);
+    setConditionsFailed(false);
     setRefusalSummary(null);
     setRefusalLoading(false);
     setEnrich(null);
@@ -1176,14 +1245,19 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     }
     if (hasConditionsSource) {
       setConditionsLoading(true);
+      setConditionsFailed(false);
       // Conditions and enrich hit the same council portal, and conditions can
       // take 10s+ — hold it back until the summary has painted.
       enrichDone
         .then(() => {
           if (cancelled) return;
           return api.conditions(d.id).then((res) => {
-            if (cancelled || !res.conditions?.items.length) return;
-            setConditions(res.conditions);
+            if (cancelled) return;
+            // Store the result even when empty: "the council recorded none" is
+            // a real answer and must render differently from a failed lookup.
+            setConditions(res.conditions ?? null);
+            if (!res.conditions) setConditionsFailed(true);
+            if (!res.conditions?.items.length) return;
             // The plain-English refusal line is generated on its own endpoint
             // so the conditions render immediately — fetch it once we know
             // there are refusal reasons to summarise.
@@ -1201,7 +1275,9 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             }
           });
         })
-        .catch(() => {})
+        .catch(() => {
+          if (!cancelled) setConditionsFailed(true);
+        })
         .finally(() => {
           if (!cancelled) setConditionsLoading(false);
         });
@@ -1359,9 +1435,12 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             completionDate={d.completion_date}
           />
         </div>
-        <button type="button" className="sheet-close" onClick={onClose} aria-label="Close application details">
-          <XIcon size={13} />
-        </button>
+        <div className="sheet-actions">
+          <ShareLink detail={d} />
+          <button type="button" className="sheet-close" onClick={onClose} aria-label="Close application details">
+            <XIcon size={13} />
+          </button>
+        </div>
       </div>
 
       <header className="detail-header">
@@ -1417,6 +1496,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         detail={d}
         conditions={conditions}
         conditionsLoading={conditionsLoading}
+        conditionsFailed={conditionsFailed}
         refusalSummary={refusalSummary}
         refusalLoading={refusalLoading}
       />
@@ -1570,28 +1650,61 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         // addresses make same-address matching meaningless.
         <EplanningRelated detail={d} onSelectRelated={onSelectRelated} />
       ) : (
-        d.related.length > 0 && (
-          <section aria-labelledby="related-h">
-            <h3 id="related-h">Other applications at this address</h3>
+        <section aria-labelledby="related-h">
+          <h3 id="related-h">Other applications at this address</h3>
+          {d.related.length > 0 ? (
             <ul className="related-list">
               {d.related.map((r) => (
-                <li key={r.id}>
-                  <button type="button" className="link-btn ref" onClick={() => onSelectRelated(r.id)}>
-                    {r.planning_reference}
-                  </button>{" "}
-                  — {r.description?.slice(0, 80)}…
+                <li key={r.id} className="related-item">
+                  <div className="related-top">
+                    <button
+                      type="button"
+                      className="link-btn ref"
+                      onClick={() => onSelectRelated(r.id)}
+                    >
+                      {r.planning_reference}
+                    </button>
+                    {r.status && STATUS_STYLE[r.status] && (
+                      <StatusBadge status={r.status} label={STATUS_STYLE[r.status].label} />
+                    )}
+                    {r.received_date && (
+                      <span className="related-date">received {fmtDate(r.received_date)}</span>
+                    )}
+                    {r.decision_date && (
+                      <span className="related-date">decided {fmtDate(r.decision_date)}</span>
+                    )}
+                  </div>
+                  {r.description && <p className="related-desc">{r.description}</p>}
                 </li>
               ))}
             </ul>
-          </section>
-        )
+          ) : (
+            <p className="section-note">None found recorded at this address.</p>
+          )}
+          {/* Absence here is weaker evidence than it looks, and saying so is the
+              difference between a viewer and a trap. */}
+          <p className="caveat">
+            Matched on the address as each application recorded it, so a differently-worded
+            address won't be linked. Earlier applications outside the register window held here
+            won't appear either — check the council's portal for a property's full history.
+          </p>
+        </section>
       )}
 
       <footer className="detail-footer">
         <p className="caveat">
-          Data as of {d.last_synced?.slice(0, 10) ?? "unknown"}. This is a viewer over public
-          register data — the {d.authority_name} register (and An Coimisiún Pleanála for appeals)
-          is the authoritative source.
+          {/* source_updated_at is when the register itself was last loaded;
+              last_synced is only when we built. Prefer the honest one. */}
+          Register data as of {meta?.source_updated_at ?? d.last_synced?.slice(0, 10) ?? "unknown"}.
+          This is a viewer over public register data — the {d.authority_name} register (and An
+          Coimisiún Pleanála for appeals) is the authoritative source.
+        </p>
+        {/* Printed pages leave the screen behind, so they have to carry their
+            own provenance: when, from where, and how current. */}
+        <p className="print-stamp">
+          Printed {fmtDate(new Date().toISOString().slice(0, 10))} from {window.location.href} ·
+          register data as of {meta?.source_updated_at ?? "unknown"} · PlanView is a viewer over
+          public register data; the {d.authority_name} register is authoritative.
         </p>
       </footer>
     </aside>

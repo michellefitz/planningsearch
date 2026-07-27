@@ -59,6 +59,9 @@ export function normalizeAddress(s: string): string {
   // addresses carry it, PPR's address column doesn't). Applied to both sides.
   n = n.replace(new RegExp(EIRCODE_IN_TEXT.source, "g"), " ");
   n = n.replace(/\b(CO|COUNTY)\s+(KILDARE|DUBLIN|WICKLOW|MEATH)\b/g, " ");
+  // "No. 31 Mount Prospect Drive" is the same house as "31 Mount Prospect
+  // Drive" — a standalone NO before a digit is always "number".
+  n = n.replace(/\bNO\s+(?=\d)/g, " ");
   n = n.replace(/\s+/g, " ").trim();
   // A trailing bare county name adds nothing ("... NAAS KILDARE").
   n = n.replace(/\s(KILDARE|DUBLIN)$/g, "");

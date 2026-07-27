@@ -32,6 +32,41 @@ function trigrams(s) {
 }
 const TRI = new Map(BUNDLE.applications.map((a) => [a.id, trigrams(HAYSTACK.get(a.id))]));
 
+/**
+ * Normalised address key — mirrors normalizeAddress() in server/src/ingest/ppr.ts.
+ * Council staff type these free-hand, so "31 Mount Prospect Drive, Dublin 3",
+ * "31, Mount Prospect Dr." and "No. 31 Mount Prospect Drive" are one property.
+ * Exact string equality split a house's history into unrelated halves.
+ */
+function addressKey(s) {
+  if (!s) return "";
+  let n = String(s).toUpperCase();
+  n = n.replace(/[^A-Z0-9 ]/g, " ");
+  n = n.replace(/\b(D6W|[A-Z]\d{2})\s?[A-Z0-9]{4}\b/g, " ");
+  n = n.replace(/\b(CO|COUNTY)\s+(KILDARE|DUBLIN|WICKLOW|MEATH)\b/g, " ");
+  // "No. 31 ..." is the same house as "31 ..." — a standalone NO before a
+  // digit is always "number".
+  n = n.replace(/\bNO\s+(?=\d)/g, " ");
+  n = n.replace(/\s+/g, " ").trim();
+  n = n.replace(/\s(KILDARE|DUBLIN)$/g, "");
+  return n.trim();
+}
+
+/** authority_id + normalised address -> application ids, built once per cold start. */
+let ADDRESS_INDEX = null;
+function addressIndex() {
+  if (ADDRESS_INDEX) return ADDRESS_INDEX;
+  ADDRESS_INDEX = new Map();
+  for (const a of BUNDLE.applications) {
+    if (!a.address_text) continue;
+    const key = a.authority_id + "|" + addressKey(a.address_text);
+    const list = ADDRESS_INDEX.get(key);
+    if (list) list.push(a.id);
+    else ADDRESS_INDEX.set(key, [a.id]);
+  }
+  return ADDRESS_INDEX;
+}
+
 function haversineKm(aLat, aLng, bLat, bLng) {
   const R = 6371;
   const dLat = ((bLat - aLat) * Math.PI) / 180;
@@ -1587,6 +1622,44 @@ function applyFilters(rows, p) {
   });
 }
 
+/**
+ * Does this query look like a planning reference — "3456/25", "D25A/0123",
+ * "WEB1234/25", "211277"? Reference-shaped queries must never fall back to
+ * fuzzy matching: a "close match" on a reference is a *different property*,
+ * and someone who typed a reference wants that file or nothing.
+ */
+function looksLikeReference(q) {
+  const s = q.trim();
+  if (!s || /\s/.test(s)) return false;
+  if (!/^[A-Za-z0-9/\-.]+$/.test(s)) return false;
+  return (s.match(/\d/g)?.length ?? 0) >= 2;
+}
+
+/**
+ * Field-weighted relevance: a reference match beats an address match, which
+ * beats an applicant, which beats a passing mention in the description.
+ * Mirrors the BM25 column weights the SQLite backend uses — without it, exact
+ * matches came back in bundle order, so a road-name search was arbitrary.
+ */
+function relevanceScore(app, tokens) {
+  const fields = [
+    [String(app.planning_reference ?? "").toLowerCase(), 12],
+    [String(app.address_text ?? "").toLowerCase(), 8],
+    [String(app.applicant_name ?? "").toLowerCase(), 4],
+    [String(app.description ?? "").toLowerCase(), 1],
+  ];
+  let score = 0;
+  for (const t of tokens) {
+    for (const [text, weight] of fields) {
+      if (text.includes(t)) {
+        score += weight;
+        break; // strongest field wins for this token
+      }
+    }
+  }
+  return score;
+}
+
 function runSearch(p) {
   let rows = applyFilters(BUNDLE.applications, p);
   let fuzzy = false;
@@ -1598,7 +1671,14 @@ function runSearch(p) {
       return tokens.every((t) => h.includes(t));
     });
     if (exact.length) {
-      rows = exact.map((a) => ({ ...a, match_quality: "exact" }));
+      // Relevance is the default order for a keyword search; an explicit date
+      // sort below overrides it.
+      rows = exact
+        .map((a) => ({ a, s: relevanceScore(a, tokens) }))
+        .sort((x, y) => y.s - x.s)
+        .map((x) => ({ ...x.a, match_quality: "exact" }));
+    } else if (looksLikeReference(q)) {
+      rows = [];
     } else {
       fuzzy = true;
       const qt = trigrams(q);
@@ -2734,16 +2814,16 @@ export default async function handler(req, res) {
     if (!app) return send(res, 404, { error: "Application not found" });
     // Kildare (eplanning) addresses are townlands, so same-address matching is
     // meaningless — its real related applications load on demand from /related.
+    const relatedIds =
+      app.authority_id === "kildare" || !app.address_text
+        ? []
+        : (addressIndex().get(app.authority_id + "|" + addressKey(app.address_text)) ?? []);
     const related =
-      app.authority_id === "kildare"
+      relatedIds.length === 0
         ? []
         : BUNDLE.applications
-            .filter(
-              (a) =>
-                a.id !== id &&
-                a.authority_id === app.authority_id &&
-                a.address_text === app.address_text
-            )
+            .filter((a) => a.id !== id && relatedIds.includes(a.id))
+            .sort((x, y) => (y.received_date ?? "").localeCompare(x.received_date ?? ""))
             .slice(0, 10)
             .map((a) => ({
               id: a.id,

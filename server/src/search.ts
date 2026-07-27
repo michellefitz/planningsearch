@@ -71,6 +71,22 @@ export function buildFtsQuery(q: string): string | null {
     .join(" ");
 }
 
+/**
+ * Does this query look like a planning reference — "3456/25", "D25A/0123",
+ * "WEB1234/25", "211277", "ABP-319506-23"?
+ *
+ * Reference-shaped queries must never fall back to fuzzy matching: a "close
+ * match" on a reference is a *different property*, and someone who typed a
+ * reference wants that file or nothing. Better to return no results than a
+ * plausible-looking wrong one.
+ */
+export function looksLikeReference(q: string): boolean {
+  const s = q.trim();
+  if (!s || /\s/.test(s)) return false;
+  if (!/^[A-Za-z0-9/\-.]+$/.test(s)) return false;
+  return (s.match(/\d/g)?.length ?? 0) >= 2;
+}
+
 /** Trigram OR-query for the typo-tolerant fallback (PRD F1.3). */
 export function buildTrigramQuery(q: string): string | null {
   const compact = q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -185,15 +201,18 @@ export function search(
   let fuzzy = false;
 
   if (f.q?.trim()) {
+    const sort = f.sort ?? "relevance";
     const ftsQuery = buildFtsQuery(f.q);
     if (ftsQuery) {
-      ({ rows, total } = runFtsSearch(db, "fts_apps", ftsQuery, where, fetchLimit, offset));
+      ({ rows, total } = runFtsSearch(db, "fts_apps", ftsQuery, where, fetchLimit, offset, sort));
     }
-    if (rows.length === 0) {
+    if (rows.length === 0 && !looksLikeReference(f.q)) {
       // No exact/prefix hits: fall back to trigram matching so typos still land.
+      // Not for reference-shaped queries though — "close matches" on a planning
+      // reference means a different property, which is worse than no answer.
       const triQuery = buildTrigramQuery(f.q);
       if (triQuery) {
-        ({ rows, total } = runFtsSearch(db, "fts_tri", triQuery, where, fetchLimit, offset));
+        ({ rows, total } = runFtsSearch(db, "fts_tri", triQuery, where, fetchLimit, offset, sort));
         fuzzy = rows.length > 0;
         rows.forEach((r) => (r.match_quality = "fuzzy"));
       }
@@ -309,13 +328,48 @@ function orderClause(sort: NonNullable<SearchFilters["sort"]>): string {
   }
 }
 
+/**
+ * Relevance weights for the four indexed columns (reference, address, applicant,
+ * description). Unweighted BM25 normalises by document length, so the shortest
+ * record wins and a passing mention of a road in a long description outranks the
+ * property actually on that road. A reference match should beat an address
+ * match, which should beat an applicant, which should beat a description.
+ */
+const BM25_RANK: Record<"fts_apps" | "fts_tri", string> = {
+  fts_apps: "bm25(fts_apps, 12.0, 8.0, 4.0, 1.0)",
+  fts_tri: "bm25(fts_tri)", // single haystack column — nothing to weight
+};
+
+/**
+ * Ordering for a keyword search. Relevance is the default because the user is
+ * searching for something; an explicit date choice is honoured, with relevance
+ * as the tiebreak so equal-dated rows still come back best-first.
+ */
+function ftsOrderClause(
+  table: "fts_apps" | "fts_tri",
+  sort: NonNullable<SearchFilters["sort"]>
+): string {
+  const rank = BM25_RANK[table];
+  switch (sort) {
+    case "decision":
+      return `ORDER BY a.decision_date IS NULL, a.decision_date DESC, ${rank}`;
+    case "received":
+      return `ORDER BY a.received_date IS NULL, a.received_date DESC, ${rank}`;
+    case "distance": // applied in JS once coordinates are known
+    case "relevance":
+    default:
+      return `ORDER BY ${rank}`;
+  }
+}
+
 function runFtsSearch(
   db: Database.Database,
   table: "fts_apps" | "fts_tri",
   match: string,
   where: WhereClause,
   limit: number,
-  offset: number
+  offset: number,
+  sort: NonNullable<SearchFilters["sort"]>
 ): { rows: SearchResultRow[]; total: number } {
   const base = `
     FROM ${table} f
@@ -328,7 +382,8 @@ function runFtsSearch(
   ).c;
   const rows = db
     .prepare(
-      `SELECT ${RESULT_COLUMNS}, bm25(${table}) AS rank ${base} ORDER BY rank LIMIT @limit OFFSET @offset`
+      `SELECT ${RESULT_COLUMNS}, ${BM25_RANK[table]} AS rank ${base} ` +
+        `${ftsOrderClause(table, sort)} LIMIT @limit OFFSET @offset`
     )
     .all({ ...params, limit, offset }) as SearchResultRow[];
   return { rows, total };

@@ -79,10 +79,13 @@ export function SecondaryPills({
       <span
         key="commenced"
         className={`pill pill-commenced${built ? " pill-built" : ""}`}
+        // Matched on the permission number the submitter typed onto the notice,
+        // so it can attach the wrong site; on a phased scheme one completed
+        // notice among several reads as "Built".
         title={
           built
-            ? "A completion certificate is on file with building control"
-            : "A commencement notice was filed with building control for this permission"
+            ? "A completion certificate is on file with building control, matched on the permission number cited on the notice"
+            : "A commencement notice was filed with building control, matched on the permission number cited on the notice"
         }
       >
         {built ? "Built" : future ? "Commencing" : "Commenced"}
@@ -143,6 +146,17 @@ export default function ResultsList({
                   No appealUrl here: the card is a <button>, so an anchor pill
                   would be invalid markup (it links from the sheet). */}
               <div className="result-pills">
+                {/* A fuzzy hit is a *different* property that reads similarly —
+                    it must never look like an exact one on a card someone may
+                    screenshot or quote. */}
+                {r.match_quality === "fuzzy" && (
+                  <span
+                    className="pill pill-fuzzy"
+                    title="Not an exact match — your search returned no exact hits, so this is a close-looking result. Check the reference and address before relying on it."
+                  >
+                    Close match
+                  </span>
+                )}
                 <StatusBadge status={r.status} label={r.status_label} />
                 <SecondaryPills
                   appealReference={r.appeal_reference}

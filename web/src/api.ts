@@ -174,7 +174,10 @@ export const EMPTY_SEARCH: SearchState = {
   receivedFrom: "",
   receivedTo: "",
   useMapArea: false,
-  sort: "received",
+  // Relevance by default: with a keyword it means best-match-first, and with no
+  // keyword both backends fall through to newest-first. Defaulting to "received"
+  // made every keyword search date-ordered, burying the thing you searched for.
+  sort: "relevance",
 };
 
 export function searchParams(
