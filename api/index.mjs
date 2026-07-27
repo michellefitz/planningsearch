@@ -681,6 +681,19 @@ function normaliseEircode(raw) {
   return m ? `${m[1]} ${m[2]}` : null;
 }
 
+// The case officer's name ("officerName", tenant naming varies) — skip their
+// contact fields and the separate planning-manager role.
+function pickOfficer(d) {
+  let best = null;
+  for (const [key, value] of Object.entries(d)) {
+    if (typeof value !== "string" || !/officer/i.test(key)) continue;
+    if (/email|tel|phone/i.test(key)) continue;
+    const v = value.trim();
+    if (v && v.length > (best?.length ?? 0)) best = v;
+  }
+  return best;
+}
+
 async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false) {
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   if (!client) return null;
@@ -697,6 +710,7 @@ async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false
     decision: pickAgileDecision(d),
     description: pickDescription(d),
     eircode: normaliseEircode(d.postcode),
+    officer: pickOfficer(d),
     ...(debug ? { keys: Object.keys(d) } : {}),
   };
   PARTIES_CACHE.set(cacheKey, detail);
@@ -2863,6 +2877,7 @@ export default async function handler(req, res) {
       // The national dataset's postcode is ~2% populated; the agile register
       // often has the real Eircode.
       eircode: app.eircode ?? detail?.eircode ?? null,
+      officer_name: detail?.officer ?? null,
       // Present only when the live portal outcome supersedes the baked status,
       // so the panel can correct the badge.
       status: useLiveStatus ? liveStatus : null,

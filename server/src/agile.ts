@@ -205,6 +205,8 @@ export async function fetchAgileConditions(
 export interface AgileDetail {
   applicant: string | null;
   agent: string | null;
+  /** Case officer's name ("officerName") — who assessed/decided the case. */
+  officer: string | null;
   /** The portal's current status wording (raw). The national dataset lags —
    *  it can still say "Validation" after the council has declared an
    *  application invalid — so the live portal value is the truer one. */
@@ -242,6 +244,19 @@ const DESCRIPTION_KEY_RE = /descript|proposal|development/i;
 // ("On 24 Jun 2025, a decision REFUSE PERMISSION was made…") is longer than
 // the real proposal and was winning the longest-string contest.
 const NOT_DESCRIPTION_KEY_RE = /status|decision/i;
+
+// The case officer's name ("officerName", tenant naming varies) — skip their
+// contact fields and the separate planning-manager role.
+export function pickOfficer(d: Record<string, unknown>): string | null {
+  let best: string | null = null;
+  for (const [key, value] of Object.entries(d)) {
+    if (typeof value !== "string" || !/officer/i.test(key)) continue;
+    if (/email|tel|phone/i.test(key)) continue;
+    const v = value.trim();
+    if (v && v.length > (best?.length ?? 0)) best = v;
+  }
+  return best;
+}
 
 export function pickDescription(d: Record<string, unknown>): string | null {
   let best: string | null = null;
@@ -314,6 +329,7 @@ export async function fetchAgileDetail(
   return {
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
+    officer: pickOfficer(d),
     status: pickAgileStatus(d),
     decision: pickAgileDecision(d),
     description: pickDescription(d),

@@ -26,7 +26,7 @@ describe("pickDescription", () => {
 });
 
 // Real DLR payload (D22A/0364) supplied 2026-07-27 — the tenant's actual keys.
-import { pickAgileDecision, pickAgileStatus } from "../src/agile.js";
+import { pickAgileDecision, pickAgileStatus, pickOfficer } from "../src/agile.js";
 
 const DLR = {
   reference: "D22A/0364",
@@ -57,5 +57,14 @@ describe("DLR payload (real tenant keys)", () => {
 
   it("status = the stage description", () => {
     expect(pickAgileStatus(DLR)).toBe("Decision made");
+  });
+});
+
+describe("pickOfficer", () => {
+  it("finds the case officer, skipping contact fields (DLR payload)", () => {
+    expect(
+      pickOfficer({ officerName: "Oliver Reid", officerTelephone: "", officerEmail: "oreid@DLRCOCO.IE" })
+    ).toBe("Oliver Reid");
+    expect(pickOfficer({ officerEmail: "x@y.ie" })).toBeNull();
   });
 });

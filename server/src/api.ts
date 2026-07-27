@@ -854,6 +854,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       agent_name: agent,
       description,
       eircode,
+      officer_name: detail?.officer ?? null,
       // Present only when the live portal outcome supersedes the baked status,
       // so the panel can correct the badge without disturbing the rest.
       status: useLiveStatus ? liveStatus : null,

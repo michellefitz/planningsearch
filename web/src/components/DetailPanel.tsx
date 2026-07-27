@@ -1069,6 +1069,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     agent_name: string | null;
     description?: string | null;
     eircode?: string | null;
+    officer_name?: string | null;
     status?: string | null;
     status_raw?: string | null;
     status_label?: string | null;
@@ -1479,6 +1480,12 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           <dd>{agent ?? "—"}</dd>
           <dt>Decision</dt>
           <dd>{d.decision ?? "Not yet decided"}</dd>
+          {enrich?.officer_name && (
+            <>
+              <dt>Case officer</dt>
+              <dd>{enrich.officer_name}</dd>
+            </>
+          )}
           {d.appeal_decision ? (
             <>
               <dt>Appeal decision</dt>
