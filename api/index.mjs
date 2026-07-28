@@ -1627,7 +1627,11 @@ function parseBbox(v) {
   return parts;
 }
 function parseNear(p) {
-  const lat = Number(p.get("lat")), lng = Number(p.get("lng"));
+  // Absent params must stay absent: Number(null) is 0, which put "near" at
+  // lat/lng 0,0 and annotated every result with a ~5,950 km distance.
+  const latRaw = p.get("lat"), lngRaw = p.get("lng");
+  if (!latRaw || !lngRaw) return null;
+  const lat = Number(latRaw), lng = Number(lngRaw);
   return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 }
 
