@@ -8,7 +8,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AUTHORITIES } from "./config/authorities.js";
-import { APPLICATION_TYPE_LABELS, GLOSSARY, mapLiveStatus, STATUS_LABELS } from "./normalize.js";
+import {
+  APPLICATION_TYPE_LABELS, GLOSSARY, mapLiveStatus, normalizeApplicationType, STATUS_LABELS,
+} from "./normalize.js";
 import { generateSeedRecords } from "./seed.js";
 import { featureToRecord, fetchAllSince, SERVICE_URL } from "./ingest/arcgis.js";
 import { buildPprIndex, lookupPpr } from "./ingest/ppr.js";
@@ -211,7 +213,7 @@ async function main() {
         console.log("Fetching agile enrichment (Neon agile_enrichment) …");
         const rows = await neonSql(
           `select authority_id, planning_reference, full_description, applicant_name,
-                  agent_name, officer_name, eircode, live_status, live_decision
+                  agent_name, officer_name, eircode, application_type, live_status, live_decision
            from agile_enrichment where not resolve_failed`
         );
         const byKey = new Map(apps.map((a) => [`${a.authority_id}|${a.planning_reference}`, a]));
@@ -220,7 +222,7 @@ async function main() {
         // a stale harvest must never clobber a fresher national decision.
         const CORRECTABLE_BAKED = new Set(["unknown", "pending", "further_info", "incomplete"]);
         const TERMINAL_LIVE = new Set(["granted", "refused", "invalid", "withdrawn"]);
-        const applied = { description: 0, applicant: 0, agent: 0, officer: 0, eircode: 0, status: 0 };
+        const applied = { description: 0, applicant: 0, agent: 0, officer: 0, eircode: 0, type: 0, status: 0 };
         for (const r of rows) {
           const app = byKey.get(`${r.authority_id}|${r.planning_reference}`);
           if (!app) continue;
@@ -245,6 +247,15 @@ async function main() {
             app.eircode = r.eircode as string;
             applied.eircode++;
           }
+          // The portal's applicationType is the council's own record — use it
+          // to reclassify apps the national feed left as "other".
+          if (r.application_type && app.application_type === "other") {
+            const t = normalizeApplicationType(r.application_type as string);
+            if (t !== "other") {
+              app.application_type = t;
+              applied.type++;
+            }
+          }
           if (r.live_status || r.live_decision) {
             const liveStatus = mapLiveStatus(
               r.live_status as string | null,
@@ -263,7 +274,7 @@ async function main() {
           }
         }
         console.log(
-          `Agile enrichment: ${rows.length} rows; applied — description ${applied.description}, applicant ${applied.applicant}, agent ${applied.agent}, officer ${applied.officer}, eircode ${applied.eircode}, status ${applied.status}.`
+          `Agile enrichment: ${rows.length} rows; applied — description ${applied.description}, applicant ${applied.applicant}, agent ${applied.agent}, officer ${applied.officer}, eircode ${applied.eircode}, type ${applied.type}, status ${applied.status}.`
         );
       } catch (err) {
         console.error("Agile enrichment merge failed — bundle ships without it:", err);

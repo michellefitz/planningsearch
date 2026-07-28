@@ -132,6 +132,39 @@ describe("normalizeApplicationType", () => {
     expect(normalizeApplicationType("Extension of Duration")).toBe("extension_of_duration");
     expect(normalizeApplicationType("weird")).toBe("other");
   });
+
+  // Every distinct ApplicationType observed in the national feed for the five
+  // authorities since 2012 (surveyed 2026-07-28), plus the agile portal's
+  // spelling, must classify — the register said "other" for 1,500+ of these.
+  it("maps every observed national-feed value", () => {
+    expect(normalizeApplicationType("Declaration of Exemption Sect. 5")).toBe("exemption_declaration");
+    expect(normalizeApplicationType("Declaration of Exemption Section 5")).toBe("exemption_declaration");
+    expect(normalizeApplicationType("Dec Under Section 5               ")).toBe("exemption_declaration");
+    expect(normalizeApplicationType("Section 179A Social Housing Exemption")).toBe("council_development");
+    expect(normalizeApplicationType("Application Under Part 8")).toBe("council_development");
+    expect(normalizeApplicationType("Application Under Part 10")).toBe("council_development");
+    expect(normalizeApplicationType("SDZ Application")).toBe("strategic");
+    expect(normalizeApplicationType("SDZ Application Clonburris")).toBe("strategic");
+    expect(normalizeApplicationType("Strategic Housing Development     ")).toBe("strategic");
+    expect(normalizeApplicationType("SHD3-Application to ABP")).toBe("strategic");
+    expect(normalizeApplicationType("LRD Application                   ")).toBe("strategic");
+    expect(normalizeApplicationType("LRD3-Application")).toBe("strategic");
+    expect(normalizeApplicationType("Strategic Infrastructure Application")).toBe("strategic");
+    expect(normalizeApplicationType("Permission and Retention          ")).toBe("retention");
+    expect(normalizeApplicationType("PERMISSION CONSEQUENT")).toBe("permission_consequent");
+    expect(normalizeApplicationType("Perm.consequent on Grant of Outline Perm")).toBe("permission_consequent");
+    expect(normalizeApplicationType("Permission & Perm. consq. on Grant of OP")).toBe("permission_consequent");
+    expect(normalizeApplicationType("Permission on Foot of Outline Permission")).toBe("permission_consequent");
+    expect(normalizeApplicationType("Perm. following Grant of Outline Perm.")).toBe("permission_consequent");
+    expect(normalizeApplicationType("Further Extension of Duration of Permission")).toBe("extension_of_duration");
+    expect(normalizeApplicationType("EXTENSION OF DURATION")).toBe("extension_of_duration");
+    expect(normalizeApplicationType("TEMPORARY PERMISSION")).toBe("permission");
+    // Part 5 certs and oddities stay "other" — no false positives.
+    expect(normalizeApplicationType("Cert under Part 5 of 2000 Act as amended")).toBe("other");
+    expect(normalizeApplicationType("Quarry Registration")).toBe("other");
+    expect(normalizeApplicationType("Compliance with Conditions        ")).toBe("other");
+    expect(normalizeApplicationType("N/A")).toBe("other");
+  });
 });
 
 describe("deriveApplicationType", () => {
