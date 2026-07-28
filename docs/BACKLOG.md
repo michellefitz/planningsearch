@@ -1,5 +1,78 @@
 # Backlog
 
+## Round-2 persona review (2026-07-28 evening) — post-data-deepening
+
+Same three personas re-ran after the 2012+ backfill, harvest, type/status
+taxonomy and report upgrades shipped. Fixed same evening: GRANT/REFUSE
+CERTIFICATE OF EXEMPTION misclassifying as granted (169 apps). New findings,
+by urgency:
+
+- **Map payload regression (P0).** `/api/map/applications` ignores `limit`
+  and now returns all ~94k geocoded rows — 22.7 MB on first load and on
+  every search (the old 5-year window was acting as an accidental cap).
+  Hostile on mobile. Fix: viewport/zoom-bounded response, server-side
+  clustering, or vector tiles (client clustering exists but only after the
+  full download).
+- **Per-council coverage floors, unstated (P0 for trust).** The national
+  feed's depth is uneven: Fingal/DLR/South Dublin reach 2012, **Kildare
+  starts 2017, Dublin City 2019**. Nothing states this, so a zero-result
+  historical search reads as "no precedent/history exists" — the
+  absence-of-evidence trap for both the architect and the solicitor.
+  Compute earliest received_date per authority at export, expose in
+  /api/meta, and show it in: search empty state, "Other applications at
+  this address", the agent system prompt, and the report footer. Also
+  investigate: DCC LRD applications (LRD6xxx) appear absent from the feed
+  entirely (strategic facet = 0 for DCC); consider a DCC top-up like
+  Kildare's.
+- **Time-blindness with 14 years of data (P1, one theme, several sites).**
+  Search relevance has no recency term (2014 outranks 2024 on "Celbridge
+  extension"); the report's "How this area decides" stats and precedent
+  scoring are unbounded (blend development-plan eras, precedent rows render
+  no dates); decision-date filter exists in the API but not the UI. Fix as
+  one pass: recency decay in relevanceScore + selectPrecedents, decision
+  date on report precedent rows, window the area stats (last ~5-7y,
+  labelled), "Decided between" fields + quick date presets in FiltersBar.
+- **Heritage on the property sheet, ungated (P1).** Still absent (round-1
+  repeat, now with evidence the code exists: preplan getDesignations/
+  getHeritagePoints). Also relabel NIAH in the report — it currently says
+  "Protected & listed buildings (NIAH)", but NIAH is a survey, not the
+  statutory RPS; that label invites professional reliance errors.
+- **Section 5 polish (P1).** Coverage is DLR + South Dublin only (Fingal 1,
+  DCC/Kildare 0) — say so when the filter returns zero for a council;
+  "Cannot Determine" / "Referred to An Coimisiún Pleanála" deserve a
+  distinct label instead of unknown; "S5 REQ AI"/"Request Additional
+  Information" decisions should map to further_info.
+- **Harvest throughput (P1).** ~300-600 apps/night against ~79k agile apps
+  = the better part of a year to fill; newest-first means the archive fills
+  last, and truncated pre-harvest descriptions systematically under-retrieve
+  old precedents in keyword search. Run a one-off bulk backfill (repeated
+  invocations or a longer-running worker), and add a "not yet harvested"
+  hint where applicant/agent render as "—".
+- **Search haystack (P2).** Add agent_name + eircode to haystackOf once
+  harvested (applicant already there); extend the no-fuzzy guard to
+  Eircode-shaped queries now (one regex — "W23 Y2W8" currently fuzzy-matches
+  a D15 address; "W23" alone false-hits FW23B references).
+- **Export (P2, architect's #3).** CSV of search results and saved lists;
+  PDF of the report with a methodology/appendix block (sources, dates
+  checked, radius); reuse the detail sheet's print provenance footer on the
+  report (it currently lacks the "data as of" stamp).
+- **Smaller round-2 items (P3):** glossary tooltips dead on touch (abbr
+  title) and missing from filter chips; three statuses share the letter D
+  (exempt/not_exempt/decided) and exempt-green equals granted-green;
+  API silently ignores unknown params (type=part8 returned all 94k rows,
+  HTTP 200); report's permanent "Radon: couldn't be checked" row reads as
+  breakage; domestic-only row for report rate blocks; per-list digest
+  grouping + list CSV; area-watch shape notes — accept polygon/saved-site
+  not just radius, reuse the "submissions open until X" string, key
+  reminders off decision_due_date + FI clock restarts.
+- **Round-2 improvements verified live** (for morale at grooming): 2013
+  DLR records serve full conditions, planner's report + decision letter,
+  applicant/agent/officer via enrich; same-day freshness; shareable URLs +
+  print provenance on the detail sheet ("file-worthy"); refusals
+  auto-summarise in plain English; the upgraded report structure "lands"
+  for both consumer and professional personas; both professionals now say
+  they'd use it today, and the architect would pay €40-60/month as-is.
+
 ## Next up (persona review, 2026-07-28)
 
 Three persona reviews (homeowner / architect / conveyancing solicitor) ran
