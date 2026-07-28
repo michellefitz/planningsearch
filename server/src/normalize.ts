@@ -18,10 +18,13 @@ export type CanonicalStatus =
   // Part granted, part refused ("Split Decision" / "Grant Permission & Refuse
   // Permission") — a distinct outcome, not a clean grant or refusal.
   | "split"
-  // A finished case whose outcome isn't a permission grant/refuse — chiefly
-  // Section 5 declarations of exemption ("Declared Exempt" / "Declared Not
-  // Exempt" / "Declared to be Development"). Kept out of granted/refused so it
-  // doesn't skew permission grant rates.
+  // Section 5 declaration outcomes — the exemption analogue of granted and
+  // refused. Kept out of granted/refused so they don't skew permission grant
+  // rates.
+  | "exempt"
+  | "not_exempt"
+  // A finished case whose outcome isn't a grant/refuse or an exemption ruling
+  // (e.g. "Declared to be Development", "Cannot Determine").
   | "decided"
   | "unknown";
 
@@ -35,6 +38,8 @@ export const STATUS_LABELS: Record<CanonicalStatus, string> = {
   incomplete: "Incomplete",
   appealed: "Under appeal",
   split: "Split decision",
+  exempt: "Declared exempt",
+  not_exempt: "Declared not exempt",
   decided: "Decided",
   unknown: "Unknown",
 };
@@ -92,9 +97,17 @@ function decisionToStatus(decision: string | null | undefined): CanonicalStatus 
   if (/withdraw/i.test(dec)) return "withdrawn";
   // Truncated national Decision text: "…DECLARED INVALID" arrives as "…INVA".
   if (/invalid|declared\s+inv/i.test(dec)) return "invalid";
-  // Section 5 exemption declarations ("Declared Exempt/Not Exempt", "Declared
-  // to be Development") — a real outcome, but not a permission grant/refuse.
-  if (/exempt|declar|is\s+(not\s+)?development/i.test(dec)) return "decided";
+  // Section 5 exemption declarations. "Not exempt" is stripped before testing
+  // for "exempt" (it contains the word); both present = part yes, part no —
+  // the exemption analogue of a split decision.
+  const notExempt = /not\s+exempt/i.test(dec);
+  const isExempt = /exempt/i.test(dec.replace(/not\s+exempt/gi, ""));
+  if (isExempt && notExempt) return "split";
+  if (notExempt) return "not_exempt";
+  if (isExempt) return "exempt";
+  // Other declaration outcomes ("Declared to be Development") — a real
+  // outcome, but not a grant/refuse or a clean exemption ruling.
+  if (/declar|is\s+(not\s+)?development/i.test(dec)) return "decided";
   return null;
 }
 
@@ -289,6 +302,10 @@ export const GLOSSARY: Record<string, string> = {
     "Approval in principle only — detailed drawings come later in a follow-up application.",
   "section 5 declaration":
     "A formal ruling from the council on whether particular works need planning permission or are exempt. Not a permission — a declaration of what the law already allows.",
+  "declared exempt":
+    "The council formally ruled that the works described do not need planning permission.",
+  "declared not exempt":
+    "The council formally ruled that the works described do need planning permission — like a refusal of the exemption sought.",
   "council development":
     "Development by the local authority itself (roads, housing, parks), approved by the elected members under Part 8 rather than through a planning application.",
   "strategic development":

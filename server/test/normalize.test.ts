@@ -105,11 +105,13 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("Decision", "GRANT PERMISSION")).toBe("granted");
   });
 
-  it("maps a Section 5 exemption declaration to decided, not granted/refused", () => {
-    // ED26/0037: status "Decision", decision "DECLARED NOT EXEMPT" — a real
-    // outcome, but not a permission grant/refuse, so it gets its own bucket.
-    expect(normalizeStatus("Decision", "DECLARED NOT EXEMPT")).toBe("decided");
-    expect(normalizeStatus("Decision", "DECLARED EXEMPT")).toBe("decided");
+  it("maps Section 5 declarations to exempt / not_exempt, not granted/refused", () => {
+    // The exemption analogue of granted and refused — distinct outcomes so the
+    // map and badges can colour them (green D / red D), still outside the
+    // permission grant-rate buckets.
+    expect(normalizeStatus("Decision", "DECLARED NOT EXEMPT")).toBe("not_exempt");
+    expect(normalizeStatus("Decision", "DECLARED EXEMPT")).toBe("exempt");
+    expect(normalizeStatus("Decision", "Declared Exempt & Declared Not Exempt")).toBe("split");
     expect(normalizeStatus("Decided", "Declared to be Development")).toBe("decided");
     // A truncated "declared invalid" is still invalid, not decided.
     expect(normalizeStatus("Decision", "APPLICATION DECLARED INVA")).toBe("invalid");

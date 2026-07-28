@@ -50,6 +50,8 @@ export const STATUS_STYLE: Record<string, { color: string; letter: string; label
   incomplete: { color: "#b45309", letter: "!", label: "Incomplete" },
   appealed: { color: "#ea580c", letter: "A", label: "Under appeal" },
   split: { color: "#db2777", letter: "S", label: "Split decision" },
+  exempt: { color: "#16a34a", letter: "D", label: "Declared exempt" },
+  not_exempt: { color: "#dc2626", letter: "D", label: "Declared not exempt" },
   decided: { color: "#0d9488", letter: "D", label: "Decided" },
   unknown: { color: "#64748b", letter: "?", label: "Unknown" },
 };
