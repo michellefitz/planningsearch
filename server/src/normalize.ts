@@ -168,6 +168,9 @@ export type CanonicalApplicationType =
   | "outline"
   | "permission_consequent"
   | "extension_of_duration"
+  | "exemption_declaration"
+  | "council_development"
+  | "strategic"
   | "other";
 
 export const APPLICATION_TYPE_LABELS: Record<CanonicalApplicationType, string> = {
@@ -176,16 +179,28 @@ export const APPLICATION_TYPE_LABELS: Record<CanonicalApplicationType, string> =
   outline: "Outline permission",
   permission_consequent: "Permission consequent on outline",
   extension_of_duration: "Extension of duration",
+  exemption_declaration: "Section 5 declaration (exemption)",
+  council_development: "Council development (Part 8)",
+  strategic: "Strategic development (SHD / LRD / SDZ)",
   other: "Other",
 };
 
+// Patterns cover every ApplicationType string observed in the national feed
+// for the five authorities since 2012 (surveyed 2026-07-28). Order matters:
+// hybrids like "Permission and Retention" must not fall through to
+// "permission", and "Perm. consequent on Grant of Outline Perm" must hit
+// consequent before outline.
 export function normalizeApplicationType(raw: string | null | undefined): CanonicalApplicationType {
   const s = `${raw ?? ""}`.toLowerCase();
   if (!s) return "other";
   if (/retention/.test(s)) return "retention";
+  if (/consequent|consq|on foot of outline|following grant of outline/.test(s))
+    return "permission_consequent";
   if (/outline/.test(s)) return "outline";
-  if (/consequent/.test(s)) return "permission_consequent";
   if (/extension\s+of\s+duration|extend.*duration/.test(s)) return "extension_of_duration";
+  if (/section\s*179a|part\s*(8|10)\b/.test(s)) return "council_development";
+  if (/section\s*5|declaration of exemption|exemption/.test(s)) return "exemption_declaration";
+  if (/\bshd|\blrd|\bsdz|strategic housing|strategic infrastructure/.test(s)) return "strategic";
   if (/permission|full/.test(s)) return "permission";
   return "other";
 }
@@ -272,6 +287,12 @@ export const GLOSSARY: Record<string, string> = {
     "Permission sought for something already built or in use without planning permission.",
   "outline permission":
     "Approval in principle only — detailed drawings come later in a follow-up application.",
+  "section 5 declaration":
+    "A formal ruling from the council on whether particular works need planning permission or are exempt. Not a permission — a declaration of what the law already allows.",
+  "council development":
+    "Development by the local authority itself (roads, housing, parks), approved by the elected members under Part 8 rather than through a planning application.",
+  "strategic development":
+    "Large-scale schemes decided under special routes: Strategic Housing Development (decided by the national board), Large-scale Residential Development, or development in a Strategic Development Zone.",
   "an bord pleanála":
     "The national planning appeals board. Either the applicant or a third party can appeal a council decision to it.",
   observation:

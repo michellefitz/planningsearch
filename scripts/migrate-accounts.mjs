@@ -81,12 +81,14 @@ const STATEMENTS = [
     agent_name text,
     officer_name text,
     eircode text,
+    application_type text,
     live_status text,
     live_decision text,
     resolve_failed boolean not null default false,
     fetched_at timestamptz not null default now(),
     primary key (authority_id, planning_reference)
   )`,
+  `alter table agile_enrichment add column if not exists application_type text`,
   `create index if not exists agile_enrichment_fetched_idx
      on agile_enrichment (fetched_at)`,
   `create table if not exists preplan_reports (

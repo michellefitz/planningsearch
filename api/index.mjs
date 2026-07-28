@@ -776,6 +776,8 @@ async function fetchAgileDetailById(authorityId, id, debug = false) {
     description: pickDescription(d),
     eircode: normaliseEircode(d.postcode),
     officer: pickOfficer(d),
+    application_type:
+      typeof d.applicationType === "string" && d.applicationType.trim() ? d.applicationType.trim() : null,
     ...(debug ? { keys: Object.keys(d) } : {}),
   };
 }

@@ -31,12 +31,16 @@ function ensureSchema() {
       agent_name text,
       officer_name text,
       eircode text,
+      application_type text,
       live_status text,
       live_decision text,
       resolve_failed boolean not null default false,
       fetched_at timestamptz not null default now(),
       primary key (authority_id, planning_reference)
     )`);
+    await sql(
+      `alter table agile_enrichment add column if not exists application_type text`
+    );
     await sql(
       `create index if not exists agile_enrichment_fetched_idx on agile_enrichment (fetched_at)`
     );
@@ -98,8 +102,8 @@ async function harvestOne(ctx, item) {
   await sql(
     `insert into agile_enrichment
        (authority_id, planning_reference, agile_id, full_description, applicant_name,
-        agent_name, officer_name, eircode, live_status, live_decision, resolve_failed)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)
+        agent_name, officer_name, eircode, application_type, live_status, live_decision, resolve_failed)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false)
      on conflict (authority_id, planning_reference) do update set
        agile_id = excluded.agile_id,
        full_description = excluded.full_description,
@@ -107,6 +111,7 @@ async function harvestOne(ctx, item) {
        agent_name = excluded.agent_name,
        officer_name = excluded.officer_name,
        eircode = excluded.eircode,
+       application_type = excluded.application_type,
        live_status = excluded.live_status,
        live_decision = excluded.live_decision,
        resolve_failed = false,
@@ -120,6 +125,7 @@ async function harvestOne(ctx, item) {
       d.agent,
       d.officer,
       d.eircode,
+      d.application_type,
       d.status,
       d.decision,
     ]
