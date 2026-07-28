@@ -55,6 +55,7 @@ function csv(v: unknown): string[] | undefined {
 }
 
 function num(v: unknown): number | undefined {
+  if (v == null || v === "") return undefined; // Number("")/Number(null) are 0
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
