@@ -127,6 +127,32 @@ describe("generateReport", () => {
     expect(done.sections.area_stats).toMatchObject({ unavailable: true });
   });
 
+  it("fills missing ai_summary from the batched summariser", async () => {
+    const events = await collect(
+      deps({
+        summarisePrecedents: async (items) =>
+          Object.fromEntries(items.map((it) => [it.planning_reference, "A short summary."])),
+      })
+    );
+    const done = events[events.length - 1] as Extract<PreplanEvent, { type: "done" }>;
+    const prec = done.sections.precedents as { items: Array<{ ai_summary?: string | null }> };
+    expect(prec.items.every((p) => p.ai_summary === "A short summary.")).toBe(true);
+  });
+
+  it("a throwing summariser leaves items untouched and never sinks the report", async () => {
+    const events = await collect(
+      deps({
+        summarisePrecedents: async () => {
+          throw new Error("boom");
+        },
+      })
+    );
+    const done = events[events.length - 1] as Extract<PreplanEvent, { type: "done" }>;
+    const prec = done.sections.precedents as { items: Array<{ ai_summary?: string | null }> };
+    expect(prec.items.every((p) => p.ai_summary == null)).toBe(true);
+    expect(done.type).toBe("done");
+  });
+
   it("null narrative still finishes with done", async () => {
     const events = await collect(deps({ synthesise: async () => null }));
     const done = events[events.length - 1] as Extract<PreplanEvent, { type: "done" }>;

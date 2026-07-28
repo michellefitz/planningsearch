@@ -3243,6 +3243,41 @@ a.pill:hover {
   margin: 0 0 10px;
 }
 
+.report-prec-map {
+  margin: 0 0 12px;
+}
+
+.report-prec-map img {
+  display: block;
+  width: 100%;
+  max-width: 660px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.report-prec-map figcaption {
+  color: var(--ink-3);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.rp-num {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #e11d48;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
 .report-prec-list {
   list-style: none;
   margin: 0;
@@ -3588,6 +3623,12 @@ a.pill:hover {
   .report-prec {
     border-color: #ccc;
     break-inside: avoid;
+  }
+  .report-prec-map {
+    break-inside: avoid;
+  }
+  .report-prec-map img {
+    border-color: #ccc;
   }
   .rh-name a,
   .rp-ref a,

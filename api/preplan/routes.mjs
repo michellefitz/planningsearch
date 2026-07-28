@@ -5,7 +5,13 @@
  */
 import { sql } from "../accounts/db.mjs";
 import { currentUser } from "../accounts/routes.mjs";
-import { generateReport, PREPLAN_SYNTHESIS_PROMPT, PRECEDENT_RADIUS_M, haversineMeters } from "./pipeline.mjs";
+import {
+  generateReport,
+  PREPLAN_SYNTHESIS_PROMPT,
+  PRECEDENT_SUMMARY_PROMPT,
+  PRECEDENT_RADIUS_M,
+  haversineMeters,
+} from "./pipeline.mjs";
 import { getDesignations, getFloodGround, getHeritagePoints } from "./pipeline.mjs";
 
 export function isPreplanRoute(route) {
@@ -112,6 +118,11 @@ function buildDeps(host, ctx) {
       const result = await ctx.executeAgentTool(tool, input);
       if (!result || result.error || !result.document || !result.answer) return null;
       return { document: result.document, answer: result.answer };
+    },
+    async summarisePrecedents(items) {
+      const raw = await ctx.callClaude(PRECEDENT_SUMMARY_PROMPT, JSON.stringify(items), 1000, 30000);
+      const match = raw?.match(/\{[\s\S]*\}/);
+      return match ? JSON.parse(match[0]) : null;
     },
     synthesise: (packJson) => ctx.callClaude(PREPLAN_SYNTHESIS_PROMPT, packJson, 900, 60000),
   };
