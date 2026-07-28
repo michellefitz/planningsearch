@@ -203,3 +203,38 @@ describe("suggest", () => {
     expect(suggestions.some((s) => s.includes("Maynooth"))).toBe(true);
   });
 });
+
+describe("keyword search honours the sort control", () => {
+  // Regression: runFtsSearch used to end `ORDER BY rank` unconditionally, so
+  // orderClause was only ever reached for the empty-query branch. Every
+  // keyword search silently ignored the sort dropdown.
+  it("orders by received date when asked, not by relevance", () => {
+    const { results } = search(db, { q: "extension", sort: "received" });
+    const dates = results.map((r) => r.received_date).filter(Boolean) as string[];
+    expect(dates.length).toBeGreaterThan(1);
+    expect([...dates].sort((a, b) => b.localeCompare(a))).toEqual(dates);
+  });
+
+  it("orders by decision date when asked", () => {
+    const { results } = search(db, { q: "extension", sort: "decision" });
+    const dates = results.map((r) => r.decision_date).filter(Boolean) as string[];
+    if (dates.length > 1) {
+      expect([...dates].sort((a, b) => b.localeCompare(a))).toEqual(dates);
+    }
+  });
+});
+
+describe("fuzzy fallback is suppressed for reference-shaped queries", () => {
+  // A "close match" on a planning reference is a different property — worse
+  // than no answer for anyone quoting it.
+  it("returns nothing rather than close matches for an unknown reference", () => {
+    const { results, fuzzy } = search(db, { q: "9999/99" });
+    expect(fuzzy).toBe(false);
+    expect(results).toHaveLength(0);
+  });
+
+  it("still falls back for prose queries", () => {
+    const { fuzzy } = search(db, { q: "extensoin" });
+    expect(fuzzy).toBe(true);
+  });
+});

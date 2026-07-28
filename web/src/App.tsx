@@ -20,6 +20,25 @@ import PrePlannerPanel from "./components/PrePlannerPanel";
 import { accountApi, saveKey, type Me, type SavedApp } from "./accountApi";
 import type { AgentAppRef } from "./agentApi";
 
+/**
+ * An open application is a real, shareable address: /application/{council}/{ref}.
+ * The reference is percent-encoded because Irish references contain slashes
+ * ("3456/25"). Vercel's SPA fallback serves index.html for any path, so a link
+ * pasted cold resolves on load.
+ */
+const appPath = (authorityId: string, reference: string): string =>
+  `/application/${encodeURIComponent(authorityId)}/${encodeURIComponent(reference)}`;
+
+const parseAppPath = (pathname: string): { authorityId: string; reference: string } | null => {
+  const m = pathname.match(/^\/application\/([^/]+)\/(.+?)\/?$/);
+  if (!m) return null;
+  try {
+    return { authorityId: decodeURIComponent(m[1]), reference: decodeURIComponent(m[2]) };
+  } catch {
+    return null;
+  }
+};
+
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [state, setState] = useState<SearchState>(EMPTY_SEARCH);
@@ -48,11 +67,17 @@ export default function App() {
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const nearRef = useRef<{ lat: number; lng: number } | null>(null);
   const searchSeq = useRef(0);
+  // True while we're applying a URL (initial load or back/forward), so the
+  // selection effect doesn't push a duplicate history entry straight back.
+  const applyingUrl = useRef(false);
   // Desktop sheet close: keep it mounted with a closing class so the slide-out
   // can play, then unmount. Mobile dismiss animates in DetailPanel's drag code.
   const [sheetClosing, setSheetClosing] = useState(false);
   const sheetCloseTimer = useRef<number | null>(null);
   const closeSheet = useCallback(() => {
+    // Closing the sheet returns to the previous address, so Back and the close
+    // button agree with each other.
+    if (parseAppPath(window.location.pathname)) history.pushState(null, "", "/");
     if (window.matchMedia("(max-width: 767px)").matches) {
       setDetail(null);
       setSelectedId(null);
@@ -150,6 +175,11 @@ export default function App() {
     try {
       const d = await api.detail(id);
       setDetail(d);
+      // Give the open application its own history entry so it can be linked,
+      // bookmarked and dismissed with the browser's Back button.
+      const url = appPath(d.authority_id, d.planning_reference);
+      if (applyingUrl.current) history.replaceState(null, "", url);
+      else if (window.location.pathname !== url) history.pushState(null, "", url);
       if (d.lat != null && d.lng != null) setFlyTo({ lat: d.lat, lng: d.lng });
       const save = savedByKey.get(saveKey(d.authority_id, d.planning_reference));
       if (save?.has_update) {
@@ -236,9 +266,48 @@ export default function App() {
           setError("That application is no longer in the current dataset.");
         }
       }
+      // A shared/bookmarked /application/... link resolves on load. The legacy
+      // #app= form (used by digest emails) is rewritten to it above, so the
+      // canonical address is what ends up in the bar either way.
+      const fromPath = parseAppPath(window.location.pathname);
+      if (fromPath && !appMatch) {
+        applyingUrl.current = true;
+        try {
+          const { id } = await api.resolve(fromPath.authorityId, fromPath.reference);
+          await select(id);
+        } catch {
+          setError("That application is no longer in the current dataset.");
+          history.replaceState(null, "", "/");
+        } finally {
+          applyingUrl.current = false;
+        }
+      }
       if (hash) history.replaceState(null, "", window.location.pathname);
     })();
   }, []);
+
+  // Back/forward between an open application and the map.
+  useEffect(() => {
+    const onPop = async () => {
+      const target = parseAppPath(window.location.pathname);
+      if (!target) {
+        setDetail(null);
+        setSelectedId(null);
+        return;
+      }
+      applyingUrl.current = true;
+      try {
+        const { id } = await api.resolve(target.authorityId, target.reference);
+        await select(id);
+      } catch {
+        setError("That application is no longer in the current dataset.");
+      } finally {
+        applyingUrl.current = false;
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [select]);
 
   useEffect(() => {
     const pending = localStorage.getItem("pv_pending_save");

@@ -49,6 +49,41 @@ function triIndex() {
   return TRI_INDEX;
 }
 
+/**
+ * Normalised address key — mirrors normalizeAddress() in server/src/ingest/ppr.ts.
+ * Council staff type these free-hand, so "31 Mount Prospect Drive, Dublin 3",
+ * "31, Mount Prospect Dr." and "No. 31 Mount Prospect Drive" are one property.
+ * Exact string equality split a house's history into unrelated halves.
+ */
+function addressKey(s) {
+  if (!s) return "";
+  let n = String(s).toUpperCase();
+  n = n.replace(/[^A-Z0-9 ]/g, " ");
+  n = n.replace(/\b(D6W|[A-Z]\d{2})\s?[A-Z0-9]{4}\b/g, " ");
+  n = n.replace(/\b(CO|COUNTY)\s+(KILDARE|DUBLIN|WICKLOW|MEATH)\b/g, " ");
+  // "No. 31 ..." is the same house as "31 ..." — a standalone NO before a
+  // digit is always "number".
+  n = n.replace(/\bNO\s+(?=\d)/g, " ");
+  n = n.replace(/\s+/g, " ").trim();
+  n = n.replace(/\s(KILDARE|DUBLIN)$/g, "");
+  return n.trim();
+}
+
+/** authority_id + normalised address -> application ids, built once per cold start. */
+let ADDRESS_INDEX = null;
+function addressIndex() {
+  if (ADDRESS_INDEX) return ADDRESS_INDEX;
+  ADDRESS_INDEX = new Map();
+  for (const a of BUNDLE.applications) {
+    if (!a.address_text) continue;
+    const key = a.authority_id + "|" + addressKey(a.address_text);
+    const list = ADDRESS_INDEX.get(key);
+    if (list) list.push(a.id);
+    else ADDRESS_INDEX.set(key, [a.id]);
+  }
+  return ADDRESS_INDEX;
+}
+
 function haversineKm(aLat, aLng, bLat, bLng) {
   const R = 6371;
   const dLat = ((bLat - aLat) * Math.PI) / 180;
@@ -613,15 +648,30 @@ function pickAgileStatus(d) {
 // a decision-ish key, distinct from the status stage; reading it lets
 // mapLiveStatus defer to the outcome. Skip date/appeal keys; longest wins.
 const DECISION_KEY_RE = /decision/i;
+/** Keys that carry *who* or *how* decided rather than *what* was decided. */
+const DECISION_ROLE_KEY_RE = /appeal|date|level|officer|planner|maker|author|staff|user|\bby\b/i;
+/**
+ * A decision is an outcome. Requiring the value to read like one is the only
+ * reliable filter: the agile payload has several "…decision…" keys and no
+ * documented winner, so picking the longest string chose "Senior Planner West"
+ * (the decision maker, 19 chars) over "GRANT PERMISSION" (16) — which then
+ * reached users as "Decision issued: Senior Planner West".
+ */
+const DECISION_OUTCOME_RE =
+  /\b(grant|refus|approv|reject|withdraw|invalid|declar|exempt|permission|split|uphold|overturn|conditional)/i;
+
 function pickAgileDecision(d) {
   let best = null;
   for (const [key, value] of Object.entries(d)) {
     if (typeof value !== "string" || !DECISION_KEY_RE.test(key)) continue;
-    // "levelOfDecisionDescription" is WHO decided ("Approved Officer"), not the
-    // outcome — its "Approved…" wording would map a refusal to granted.
-    if (/appeal/i.test(key) || /date/i.test(key) || /level/i.test(key)) continue;
+    if (DECISION_ROLE_KEY_RE.test(key)) continue;
     const v = value.trim();
     if (!v || /^\d{4}-\d{2}-\d{2}/.test(v)) continue;
+    // No outcome vocabulary, no decision — better to report nothing than a
+    // person's job title.
+    if (!DECISION_OUTCOME_RE.test(v)) continue;
+    // Among genuine outcomes the longest wins, so a split decision
+    // ("GRANT PERMISSION AND REFUSE PERMISSION") beats a truncated one.
     if (v.length > (best?.length ?? 0)) best = v;
   }
   return best;
@@ -1613,6 +1663,44 @@ function applyFilters(rows, p) {
   });
 }
 
+/**
+ * Does this query look like a planning reference — "3456/25", "D25A/0123",
+ * "WEB1234/25", "211277"? Reference-shaped queries must never fall back to
+ * fuzzy matching: a "close match" on a reference is a *different property*,
+ * and someone who typed a reference wants that file or nothing.
+ */
+function looksLikeReference(q) {
+  const s = q.trim();
+  if (!s || /\s/.test(s)) return false;
+  if (!/^[A-Za-z0-9/\-.]+$/.test(s)) return false;
+  return (s.match(/\d/g)?.length ?? 0) >= 2;
+}
+
+/**
+ * Field-weighted relevance: a reference match beats an address match, which
+ * beats an applicant, which beats a passing mention in the description.
+ * Mirrors the BM25 column weights the SQLite backend uses — without it, exact
+ * matches came back in bundle order, so a road-name search was arbitrary.
+ */
+function relevanceScore(app, tokens) {
+  const fields = [
+    [String(app.planning_reference ?? "").toLowerCase(), 12],
+    [String(app.address_text ?? "").toLowerCase(), 8],
+    [String(app.applicant_name ?? "").toLowerCase(), 4],
+    [String(app.description ?? "").toLowerCase(), 1],
+  ];
+  let score = 0;
+  for (const t of tokens) {
+    for (const [text, weight] of fields) {
+      if (text.includes(t)) {
+        score += weight;
+        break; // strongest field wins for this token
+      }
+    }
+  }
+  return score;
+}
+
 function runSearch(p) {
   let rows = applyFilters(BUNDLE.applications, p);
   let fuzzy = false;
@@ -1624,7 +1712,14 @@ function runSearch(p) {
       return tokens.every((t) => h.includes(t));
     });
     if (exact.length) {
-      rows = exact.map((a) => ({ ...a, match_quality: "exact" }));
+      // Relevance is the default order for a keyword search; an explicit date
+      // sort below overrides it.
+      rows = exact
+        .map((a) => ({ a, s: relevanceScore(a, tokens) }))
+        .sort((x, y) => y.s - x.s)
+        .map((x) => ({ ...x.a, match_quality: "exact" }));
+    } else if (looksLikeReference(q)) {
+      rows = [];
     } else {
       fuzzy = true;
       const qt = trigrams(q);
@@ -2770,16 +2865,16 @@ export default async function handler(req, res) {
     if (!app) return send(res, 404, { error: "Application not found" });
     // Kildare (eplanning) addresses are townlands, so same-address matching is
     // meaningless — its real related applications load on demand from /related.
+    const relatedIds =
+      app.authority_id === "kildare" || !app.address_text
+        ? []
+        : (addressIndex().get(app.authority_id + "|" + addressKey(app.address_text)) ?? []);
     const related =
-      app.authority_id === "kildare"
+      relatedIds.length === 0
         ? []
         : BUNDLE.applications
-            .filter(
-              (a) =>
-                a.id !== id &&
-                a.authority_id === app.authority_id &&
-                a.address_text === app.address_text
-            )
+            .filter((a) => a.id !== id && relatedIds.includes(a.id))
+            .sort((x, y) => (y.received_date ?? "").localeCompare(x.received_date ?? ""))
             .slice(0, 10)
             .map((a) => ({
               id: a.id,

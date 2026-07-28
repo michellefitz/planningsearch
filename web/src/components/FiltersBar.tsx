@@ -163,10 +163,10 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
             onChange={(e) => onChange({ ...state, sort: e.target.value })}
             aria-label="Sort results"
           >
+            <option value="relevance">Best match</option>
             <option value="received">Date received</option>
             <option value="decision">Decision date</option>
             <option value="distance">Distance</option>
-            <option value="relevance">Relevance</option>
           </select>
         </label>
       </fieldset>

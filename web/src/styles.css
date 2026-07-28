@@ -2283,6 +2283,57 @@ a.pill:hover {
 .pill-type {
   --pc: #4f46e5;
 }
+/* Amber, so an inexact result is visibly not an exact one at a glance. */
+.pill-fuzzy {
+  --pc: #b45309;
+}
+
+/* Provenance line that exists only on paper. */
+.print-stamp {
+  display: none;
+}
+
+.sheet-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: none;
+}
+
+.sheet-share {
+  padding: 0.28rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 550;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.sheet-share:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* "We found none" and "we couldn't look" must read differently. */
+.section-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.section-note-warn {
+  padding: 0.5rem 0.7rem;
+  background: #fffaf0;
+  border-left: 3px solid #b45309;
+  border-radius: 6px;
+  color: var(--ink);
+}
 .pill-appeal {
   --pc: #ea580c;
 }
@@ -3424,6 +3475,91 @@ a.pill:hover {
   .back-to-map,
   .no-print {
     display: none !important;
+  }
+
+  /* ---- Detail panel: print the application as a document ----
+     The sheet is a fixed, half-width, independently-scrolling overlay, so
+     without this Ctrl-P yields a clipped column of page one. When an
+     application is open it becomes the whole printed page; everything behind
+     it is chrome. */
+  .detail-sheet {
+    position: static !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+    animation: none !important;
+  }
+
+  /* With the sheet printing, the app behind it would otherwise print first. */
+  body:has(.detail-sheet) .layout,
+  body:has(.detail-sheet) .sheet-backdrop,
+  body:has(.detail-sheet) .account-screen,
+  body:has(.detail-sheet) .preplan-screen {
+    display: none !important;
+  }
+
+  .sheet-top,
+  .sheet-close,
+  .sheet-share,
+  .sheet-grabber,
+  .detail-sheet .media-row,
+  .detail-sheet .action-row {
+    display: none !important;
+  }
+
+  /* Collapsed conditions and document lists must print open — they're the
+     substance of the record. */
+  .detail-sheet details {
+    display: block !important;
+  }
+  .detail-sheet details > summary {
+    list-style: none;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+  }
+  .detail-sheet details > summary::marker,
+  .detail-sheet details > summary::-webkit-details-marker {
+    display: none;
+  }
+  .detail-sheet details > *:not(summary) {
+    display: revert !important;
+  }
+  .detail-desc.clamped {
+    -webkit-line-clamp: unset !important;
+    overflow: visible !important;
+  }
+
+  .detail-sheet section {
+    break-inside: avoid;
+  }
+  .detail-sheet h2 {
+    font-size: 16pt;
+  }
+
+  /* A printed page is read away from the screen: show where links point. */
+  .detail-sheet a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 8pt;
+    color: #444;
+    word-break: break-all;
+  }
+
+  .print-stamp {
+    display: block;
+    margin-top: 0.6rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #ccc;
+    font-size: 8pt;
+    line-height: 1.5;
+    color: #444;
+    word-break: break-word;
   }
   .account-screen,
   .preplan-screen {

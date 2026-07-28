@@ -112,10 +112,43 @@ function summarize(field, oldV, newV) {
   }
 }
 
+/**
+ * Compare a field for *meaning*, not for text.
+ *
+ * The baseline and the daily snapshot come from different sources — the
+ * national dataset, and (for agile councils) the council's own portal — so the
+ * same outcome is routinely worded differently: "GRANT PERMISSION" vs "Grant
+ * Permission". Comparing raw strings turned that into "Decision updated" every
+ * time the overlay flipped, which is a change in spelling, not in the world.
+ */
+const DECISION_OUTCOME_RE =
+  /\b(grant|refus|approv|reject|withdraw|invalid|declar|exempt|permission|split|uphold|overturn|conditional)/i;
+
+function comparable(field, value) {
+  if (value == null) return null;
+  if (field === "decision" || field === "appeal_decision") {
+    // Anything without outcome vocabulary isn't a decision — a portal field
+    // holding a job title or a stage name should never be announced as one.
+    // Treated as unknown, which the null rule below then declines to alert on.
+    if (!DECISION_OUTCOME_RE.test(String(value))) return null;
+    return normalizeStatus(null, value);
+  }
+  return typeof value === "string" ? value.trim() : value;
+}
+
 export function diffSnapshots(prev, next) {
   if (prev == null) return [];
   const changed = new Set(
-    SNAPSHOT_FIELDS.filter((f) => (prev[f] ?? null) !== (next[f] ?? null))
+    SNAPSHOT_FIELDS.filter((f) => {
+      const before = comparable(f, prev[f] ?? null);
+      const after = comparable(f, next[f] ?? null);
+      if (before === after) return false;
+      // A value disappearing is nearly always a source that didn't answer —
+      // BCMS down, a portal timeout — not a real-world event. Never alert on
+      // it; the snapshot still records the new state.
+      if (after == null) return false;
+      return true;
+    })
   );
   if (changed.has("decision")) changed.delete("status");
   for (const [child, parent] of Object.entries(PAIRED)) {

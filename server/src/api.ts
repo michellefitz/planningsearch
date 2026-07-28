@@ -47,6 +47,7 @@ import { runAgent, type ChatTurn } from "./agent/agent.js";
 import { buildToolExecutor } from "./agent/execute.js";
 import { generateReport } from "./preplan/report.js";
 import { buildReportDeps } from "./preplan/deps.js";
+import { normalizeAddress } from "./ingest/ppr.js";
 
 function csv(v: unknown): string[] | undefined {
   if (typeof v !== "string" || !v.trim()) return undefined;
@@ -651,16 +652,37 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     // council publishes genuine related applications, loaded on demand from
     // /related instead.
     const isEplanning = AUTHORITY_BY_ID.get(String(row.authority_id))?.sourceSystem === "eplanning";
-    const related = isEplanning
-      ? []
-      : db
+    // Match on the *normalised* address, not the raw string. Council staff type
+    // these free-hand, so "31 Mount Prospect Drive, Dublin 3", "31, Mount
+    // Prospect Dr." and "No. 31 Mount Prospect Drive" are the same property and
+    // exact equality silently split a house's history into unrelated halves.
+    let related: unknown[] = [];
+    if (!isEplanning && row.address_text) {
+      const key = normalizeAddress(String(row.address_text));
+      if (key) {
+        const candidates = db
           .prepare(
-            `SELECT id, planning_reference, description, status, received_date, decision_date
-             FROM applications
-             WHERE id != @id AND authority_id = @authority_id AND address_text = @address_text
-             ORDER BY received_date DESC LIMIT 10`
+            `SELECT id, address_text FROM applications
+             WHERE id != @id AND authority_id = @authority_id AND address_text IS NOT NULL`
           )
-          .all({ id, authority_id: row.authority_id, address_text: row.address_text });
+          .all({ id, authority_id: row.authority_id }) as Array<{
+          id: number;
+          address_text: string;
+        }>;
+        const matchIds = candidates
+          .filter((c) => normalizeAddress(c.address_text) === key)
+          .map((c) => c.id);
+        if (matchIds.length) {
+          related = db
+            .prepare(
+              `SELECT id, planning_reference, description, status, received_date, decision_date
+               FROM applications WHERE id IN (${matchIds.map(() => "?").join(",")})
+               ORDER BY received_date IS NULL, received_date DESC LIMIT 10`
+            )
+            .all(...matchIds);
+        }
+      }
+    }
 
     // Slow upstream work (AI summary, party backfill) lives on /enrich so
     // the sheet renders immediately; cached values still come through here.

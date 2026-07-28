@@ -103,10 +103,41 @@ describe("diffSnapshots", () => {
     expect(events[0]).toMatchObject({ event_type: "further_info", summary: "Further information requested" });
   });
 
-  it("value cleared falls back to the cleared wording", () => {
+  it("a value disappearing raises no alert — it means a source didn't answer", () => {
+    // Previously emitted "appeal status cleared". But nothing in the register
+    // un-lodges an appeal or un-files a commencement notice; a field going
+    // empty is a portal timeout or a bundle built while BCMS was down. The
+    // snapshot still records the new state, we just don't email about it.
     const prev = { ...BASE, status: "granted", appeal_status: "Open" };
-    const events = diffSnapshots(prev, { ...BASE, status: "granted" });
+    expect(diffSnapshots(prev, { ...BASE, status: "granted" })).toHaveLength(0);
+  });
+
+  it("ignores decision rewordings that mean the same outcome", () => {
+    // The baseline is national-feed wording; the daily snapshot is the
+    // council portal's. "GRANT PERMISSION" and "Grant Permission" are one
+    // decision described twice, not a change.
+    const prev = { ...BASE, status: "granted", decision: "GRANT PERMISSION" };
+    const next = { ...BASE, status: "granted", decision: "Grant Permission" };
+    expect(diffSnapshots(prev, next)).toHaveLength(0);
+  });
+
+  it("never announces a non-outcome as a decision", () => {
+    // Belt and braces behind the pickAgileDecision fix: a portal field holding
+    // the decision *maker* must not reach anyone as "Decision issued".
+    const prev = { ...BASE, status: "granted", decision: "GRANT PERMISSION" };
+    const next = { ...BASE, status: "granted", decision: "Senior Planner West" };
+    expect(diffSnapshots(prev, next)).toHaveLength(0);
+  });
+
+  it("still reports a genuine change of outcome", () => {
+    const prev = { ...BASE, status: "granted", decision: "GRANT PERMISSION" };
+    const next = {
+      ...BASE,
+      status: "split",
+      decision: "GRANT PERMISSION AND REFUSE PERMISSION",
+    };
+    const events = diffSnapshots(prev, next);
     expect(events).toHaveLength(1);
-    expect(events[0].summary).toBe("appeal status cleared");
+    expect(events[0].summary).toContain("Decision updated");
   });
 });

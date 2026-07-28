@@ -385,13 +385,23 @@ async function handleCron(req, res, ctx) {
         next.completion_date = prev.completion_date ?? null;
       }
       if (AGILE.has(t.authority_id) && app?.source_url) {
+        let overlaid = false;
         try {
           const live = await ctx.fetchAgileDetail(t.authority_id, app.source_url, t.planning_reference);
           const mapped = live ? ctx.mapLiveStatus(live) : null;
           if (mapped && mapped !== "unknown") next.status = mapped;
           if (live?.decision) next.decision = live.decision;
+          overlaid = Boolean(live);
         } catch {
-          // agile portal down: national snapshot still stands
+          // Portal unreachable — fall through to the carry-forward below.
+        }
+        // The baseline for an agile council is portal-derived. Substituting the
+        // national wording when the portal is down reads as a change, and the
+        // next successful run reads as a change back: a flaky council portal
+        // would alert forever. Carry the previous values instead.
+        if (!overlaid && prev) {
+          if (prev.status != null) next.status = prev.status;
+          if (prev.decision != null) next.decision = prev.decision;
         }
       }
       if (prev) {

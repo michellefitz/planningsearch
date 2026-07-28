@@ -106,6 +106,31 @@ in order:
   even post-backfill each surface should say what window/sources it covers —
   the solicitor's completeness question never fully goes away.
 
+- **Per-application link previews + SEO metadata (parked 2026-07-27 — decision
+  needed first).** An open application is now a real URL
+  (`/application/{council}/{reference}`), but every one of them shares the
+  static `index.html`, so a link pasted into WhatsApp/Slack/LinkedIn shows a
+  generic PlanView card and Google sees one title for the whole site. Crawlers
+  don't run JS, so the address and status — which only exist after hydration —
+  are invisible to them.
+  **The job:** route `/application/*` through the API function in
+  `.vercel/output/config.json` (copy `index.html` into the `.func` at build
+  time), look the record up in the in-memory bundle, and inject `<title>`,
+  `og:title` (address), `og:description` (status · type · council · decision
+  date), `og:url` and `twitter:card` into the head before serving. The SPA
+  hydrates over it unchanged. Optionally an `og:image` — a Mapbox static map of
+  the site, reusing the aerial-thumbnail URL builder — which is what actually
+  makes a card get clicked. Care: HTML-escape the address (council free text),
+  serve identical HTML to people and crawlers (no cloaking), cache hard with
+  `s-maxage` since routing HTML through a function is slower than static, and
+  fall through to the plain shell on an unknown reference. Same work unlocks
+  useful search titles; `sitemap.xml`/`robots.txt` follow. ~half a day, plus a
+  couple of hours for the image.
+  **Open question before building:** this makes a PlanView page for every
+  private home address publicly indexable. It's all public register data and
+  competitors already index it, but someone's address could then surface in a
+  Google search — a deliberate choice, not a technical default. Decide the
+  indexing policy (all / none / `noindex` on domestic) before shipping.
 
 - **Street View picks side/back streets (parked 2026-07-24).** Our coordinate is
   the *site centroid* (eplanning's grid reference / the national feed's point),
