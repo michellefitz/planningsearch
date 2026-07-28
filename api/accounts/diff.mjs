@@ -46,17 +46,18 @@ export function normalizeStatus(raw, decision) {
     if (!dec) return null;
     if (/split\s*decision/i.test(dec) || (/grant|approv|conditional/i.test(dec) && /refus|reject/i.test(dec)))
       return "split";
+    // Section 5 outcomes — before grant/refuse: councils phrase certificates
+    // as "GRANT/REFUSE CERTIFICATE OF EXEMPTION". Mirrors normalize.ts.
+    if (/exempt/i.test(dec)) {
+      const no = /not\s+exempt|refus|reject/i.test(dec);
+      const yes = /exempt/i.test(dec.replace(/not\s+exempt/gi, "")) && !/refus|reject/i.test(dec);
+      if (yes && no) return "split";
+      return no ? "not_exempt" : "exempt";
+    }
     if (/refus|reject/i.test(dec)) return "refused";
     if (/grant|approv|conditional/i.test(dec)) return "granted";
     if (/withdraw/i.test(dec)) return "withdrawn";
     if (/invalid|declared\s+inv/i.test(dec)) return "invalid";
-    // Section 5 declarations: strip "not exempt" before testing for "exempt"
-    // (it contains the word); both present = split. Mirrors normalize.ts.
-    const notExempt = /not\s+exempt/i.test(dec);
-    const isExempt = /exempt/i.test(dec.replace(/not\s+exempt/gi, ""));
-    if (isExempt && notExempt) return "split";
-    if (notExempt) return "not_exempt";
-    if (isExempt) return "exempt";
     if (/declar|is\s+(not\s+)?development/i.test(dec)) return "decided";
     return null;
   };

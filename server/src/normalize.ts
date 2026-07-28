@@ -92,19 +92,21 @@ function decisionToStatus(decision: string | null | undefined): CanonicalStatus 
   // so a split (which contains both words) isn't classified as just refused.
   if (/split\s*decision/i.test(dec) || (/grant|approv|conditional/i.test(dec) && /refus|reject/i.test(dec)))
     return "split";
+  // Section 5 outcomes — before the grant/refuse tests, because councils
+  // phrase certificates as "GRANT/REFUSE CERTIFICATE OF EXEMPTION". "Not
+  // exempt" is stripped before testing for "exempt" (it contains the word);
+  // exempt + not-exempt together = part yes, part no — a split.
+  if (/exempt/i.test(dec)) {
+    const no = /not\s+exempt|refus|reject/i.test(dec);
+    const yes = /exempt/i.test(dec.replace(/not\s+exempt/gi, "")) && !/refus|reject/i.test(dec);
+    if (yes && no) return "split";
+    return no ? "not_exempt" : "exempt";
+  }
   if (/refus|reject/i.test(dec)) return "refused";
   if (/grant|approv|conditional/i.test(dec)) return "granted";
   if (/withdraw/i.test(dec)) return "withdrawn";
   // Truncated national Decision text: "…DECLARED INVALID" arrives as "…INVA".
   if (/invalid|declared\s+inv/i.test(dec)) return "invalid";
-  // Section 5 exemption declarations. "Not exempt" is stripped before testing
-  // for "exempt" (it contains the word); both present = part yes, part no —
-  // the exemption analogue of a split decision.
-  const notExempt = /not\s+exempt/i.test(dec);
-  const isExempt = /exempt/i.test(dec.replace(/not\s+exempt/gi, ""));
-  if (isExempt && notExempt) return "split";
-  if (notExempt) return "not_exempt";
-  if (isExempt) return "exempt";
   // Other declaration outcomes ("Declared to be Development") — a real
   // outcome, but not a grant/refuse or a clean exemption ruling.
   if (/declar|is\s+(not\s+)?development/i.test(dec)) return "decided";

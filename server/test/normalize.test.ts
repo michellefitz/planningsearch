@@ -112,6 +112,11 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("Decision", "DECLARED NOT EXEMPT")).toBe("not_exempt");
     expect(normalizeStatus("Decision", "DECLARED EXEMPT")).toBe("exempt");
     expect(normalizeStatus("Decision", "Declared Exempt & Declared Not Exempt")).toBe("split");
+    // DLR phrases certificates with grant/refuse verbs — still exemption
+    // outcomes, not permission grants/refusals.
+    expect(normalizeStatus("Decision", "GRANT CERTIFICATE OF EXEMPTION")).toBe("exempt");
+    expect(normalizeStatus("Decision", "GRANT CERT OF EXEMPTION (<=4 unit)")).toBe("exempt");
+    expect(normalizeStatus("Decision", "REFUSE CERTIFICATE OF EXEMPTION")).toBe("not_exempt");
     expect(normalizeStatus("Decided", "Declared to be Development")).toBe("decided");
     // A truncated "declared invalid" is still invalid, not decided.
     expect(normalizeStatus("Decision", "APPLICATION DECLARED INVA")).toBe("invalid");
