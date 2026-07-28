@@ -54,6 +54,8 @@ export interface PrecedentItem {
   decision: string | null;
   decision_date: string | null;
   address_text: string | null;
+  lat?: number | null;
+  lng?: number | null;
   distance_m: number;
   keyword_hits: string[];
   appeal_reference?: string | null;

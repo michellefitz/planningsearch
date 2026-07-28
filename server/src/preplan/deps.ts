@@ -13,7 +13,7 @@ import {
   type StaticGeojson,
 } from "./point-data.js";
 import { PRECEDENT_RADIUS_M, type PrecedentSourceRow, type ScoredPrecedent } from "./precedents.js";
-import { PREPLAN_SYNTHESIS_PROMPT, type ReportDeps } from "./report.js";
+import { PRECEDENT_SUMMARY_PROMPT, PREPLAN_SYNTHESIS_PROMPT, type ReportDeps } from "./report.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -86,6 +86,12 @@ export function buildReportDeps(db: Database.Database): ReportDeps {
         | null;
       if (!result || result.error || !result.document || !result.answer) return null;
       return { document: result.document, answer: result.answer };
+    },
+
+    async summarisePrecedents(items) {
+      const raw = await callClaude(PRECEDENT_SUMMARY_PROMPT, JSON.stringify(items), 1000, 30_000);
+      const match = raw?.match(/\{[\s\S]*\}/);
+      return match ? (JSON.parse(match[0]) as Record<string, string>) : null;
     },
 
     synthesise: (packJson) => callClaude(PREPLAN_SYNTHESIS_PROMPT, packJson, 900, 60_000),

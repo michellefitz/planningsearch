@@ -2,6 +2,7 @@ import { fmtDate } from "../api";
 import { renderMarkdown } from "../markdown";
 import type {
   HeritageItem,
+  PrecedentItem,
   PreplanReport,
   RateBlock,
   Unavailable,
@@ -11,6 +12,27 @@ import { StatusBadge } from "./ResultsList";
 
 function isUnavailable(v: unknown): v is Unavailable {
   return typeof v === "object" && v !== null && (v as Unavailable).unavailable === true;
+}
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+
+/** Static minimap of the precedents: numbered rose pins matching the list below,
+ *  a larger blue pin for the site itself, auto-fit to the markers. A plain <img>
+ *  so it prints. Null (no map) without a token or when items carry no coords. */
+function precedentsMapUrl(report: PreplanReport, items: PrecedentItem[]): string | null {
+  if (!MAPBOX_TOKEN || report.lat == null || report.lng == null) return null;
+  const c = (n: number) => n.toFixed(5);
+  const pins = items
+    .slice(0, 8)
+    .map((p, i) => (p.lat != null && p.lng != null ? `pin-s-${i + 1}+e11d48(${c(p.lng)},${c(p.lat)})` : null))
+    .filter((s): s is string => s !== null);
+  if (!pins.length) return null;
+  // Site pin last so it draws on top of any overlapping precedent pin.
+  const overlays = [...pins, `pin-l+2563eb(${c(report.lng)},${c(report.lat)})`].join(",");
+  return (
+    `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlays}/auto/660x360@2x` +
+    `?padding=60&access_token=${MAPBOX_TOKEN}`
+  );
 }
 
 /** Split the narrative's leading **Overview** section from the rest, so the
@@ -109,6 +131,8 @@ export default function ReportView({
   const stats = s.area_stats;
   const localPlan = s.local_plan;
   const { overview, rest: narrative } = splitNarrative(report.narrative);
+  const precMapUrl =
+    !isUnavailable(precedents) && precedents ? precedentsMapUrl(report, precedents.items) : null;
 
   return (
     <article className="report">
@@ -190,8 +214,21 @@ export default function ReportView({
         ) : (
           <>
             <p className="report-hint no-print">Click an application to open its full record.</p>
+            {precMapUrl && (
+              <figure className="report-prec-map">
+                <img
+                  src={precMapUrl}
+                  alt="Map of the site and the numbered nearby applications"
+                  loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.parentElement!.style.display = "none";
+                  }}
+                />
+                <figcaption>Blue pin: this site. Numbered pins match the applications below.</figcaption>
+              </figure>
+            )}
             <ul className="report-prec-list">
-              {precedents.items.map((p) => (
+              {precedents.items.map((p, i) => (
                 <li key={`${p.authority_id}-${p.planning_reference}`}>
                   <div
                     className={`report-prec${onOpenApp ? " report-prec-clickable" : ""}`}
@@ -206,6 +243,7 @@ export default function ReportView({
                     }}
                   >
                     <div className="rp-top">
+                      {precMapUrl && i < 8 && <span className="rp-num">{i + 1}</span>}
                       <span className="rp-ref">
                         {p.planning_reference}
                         {p.source_url && (
@@ -305,26 +343,22 @@ export default function ReportView({
         )}
       </section>
 
-      {!isUnavailable(localPlan) && localPlan && (
-        <section className="report-section">
-          <h3>The plan this would be judged against</h3>
-          <p className="report-plan">
-            Applications here are decided under the{" "}
-            <a href={localPlan.url} target="_blank" rel="noopener noreferrer">
-              {localPlan.name} ↗
-            </a>
-            . The “Things to consider” section below points at the chapters most relevant to your
-            proposal — worth reading before you apply.
-          </p>
-        </section>
-      )}
-
       <section className="report-section report-narrative">
-        <h3>Things to consider</h3>
+        <h3>Considerations</h3>
         <p className="report-disclaimer">
           Informational considerations drawn from the data above — not professional advice, and not a
           prediction of any decision.
         </p>
+        {!isUnavailable(localPlan) && localPlan && (
+          <p className="report-plan">
+            Applications here are decided under the{" "}
+            <a href={localPlan.url} target="_blank" rel="noopener noreferrer">
+              {localPlan.name} ↗
+            </a>{" "}
+            — the points below draw on the data in this report and point at the chapters most
+            relevant to your proposal.
+          </p>
+        )}
         {narrative ? (
           renderMarkdown(narrative, 0)
         ) : (

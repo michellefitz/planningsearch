@@ -392,10 +392,20 @@ export const LOCAL_PLANS = {
 };
 
 export const DEEP_DIVE_QUESTION =
-  "Summarise what was decided and why. List the key conditions imposed (or the reasons for refusal), " +
-  "and note anything about the site, design or neighbours that drove the outcome.";
+  "Answer with exactly this structure and nothing else — no preamble, no closing remarks. " +
+  "**Outcome**: one sentence — what was decided and the core reason. " +
+  "**Key conditions**: at most 5 short bullets naming the themes of the conditions imposed, not verbatim " +
+  "clauses; always call out any condition concerning flood risk, heritage/conservation or ground/site " +
+  "conditions specifically. " +
+  "**Refusal reasons**: short bullets — include this heading only if the application was refused or split.";
 
-export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Things to consider" section of a pre-planning research report
+export const PRECEDENT_SUMMARY_PROMPT = `You are given a JSON array of nearby planning applications, each with a
+planning_reference and a description copied verbatim from an Irish planning register.
+For each one write a 1-2 sentence plain-English summary of what was applied for —
+no legalese, no register boilerplate, no addresses.
+Reply with only a JSON object mapping each planning_reference to its summary. No other text.`;
+
+export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Considerations" section of a pre-planning research report
 for a member of the public in Ireland. You are given a JSON evidence pack gathered
 for their site plus their stated intention.
 
@@ -472,6 +482,22 @@ export async function* generateReport(input, deps) {
 
   const precedents = sections.precedents;
   if (Array.isArray(precedents?.items) && precedents.items.length) {
+    const unsummarised = precedents.items.filter((p) => !p.ai_summary && p.description);
+    if (unsummarised.length && deps.summarisePrecedents) {
+      yield { type: "progress", step: "Summarising the nearby applications…" };
+      try {
+        const summaries = await deps.summarisePrecedents(
+          unsummarised.map((p) => ({ planning_reference: p.planning_reference, description: p.description }))
+        );
+        for (const p of unsummarised) {
+          const s = summaries?.[p.planning_reference];
+          if (typeof s === "string" && s.trim()) p.ai_summary = s.trim();
+        }
+        yield { type: "section", name: "precedents", data: precedents };
+      } catch {
+        // Raw descriptions still render; a failed summary batch only costs polish.
+      }
+    }
     const dives = [];
     for (const cand of deepDiveCandidates(precedents.items)) {
       yield { type: "progress", step: `Reading the decision documents for ${cand.planning_reference}…` };
