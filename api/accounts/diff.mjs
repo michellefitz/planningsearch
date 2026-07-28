@@ -17,6 +17,8 @@ export const STATUS_LABELS = {
   incomplete: "Incomplete",
   appealed: "Under appeal",
   split: "Split decision",
+  exempt: "Declared exempt",
+  not_exempt: "Declared not exempt",
   decided: "Decided",
   unknown: "Unknown",
 };
@@ -48,7 +50,14 @@ export function normalizeStatus(raw, decision) {
     if (/grant|approv|conditional/i.test(dec)) return "granted";
     if (/withdraw/i.test(dec)) return "withdrawn";
     if (/invalid|declared\s+inv/i.test(dec)) return "invalid";
-    if (/exempt|declar|is\s+(not\s+)?development/i.test(dec)) return "decided";
+    // Section 5 declarations: strip "not exempt" before testing for "exempt"
+    // (it contains the word); both present = split. Mirrors normalize.ts.
+    const notExempt = /not\s+exempt/i.test(dec);
+    const isExempt = /exempt/i.test(dec.replace(/not\s+exempt/gi, ""));
+    if (isExempt && notExempt) return "split";
+    if (notExempt) return "not_exempt";
+    if (isExempt) return "exempt";
+    if (/declar|is\s+(not\s+)?development/i.test(dec)) return "decided";
     return null;
   };
   const fromRules = () => {

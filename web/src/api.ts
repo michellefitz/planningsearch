@@ -161,6 +161,8 @@ export const DEFAULT_STATUSES = [
   "withdrawn",
   "appealed",
   "split",
+  "exempt",
+  "not_exempt",
   "decided",
   "unknown",
 ];
