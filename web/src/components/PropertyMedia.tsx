@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 
-/** Google Maps satellite view centred on the property, via the documented Maps
- *  URLs API (basemap=satellite) — the legacy `?q=…&t=k` hack no longer switches
- *  to aerial, so it opened a plain map instead. This opens *consumer* Google
- *  Maps (google.com/maps), which is unaffected by the EEA Platform terms. */
+/** Google Maps satellite view with a pin on the property. The documented Maps
+ *  URLs API has no pin+satellite combination (map_action=map centres without a
+ *  marker, so the click-through lost the property the thumbnail's pin marked),
+ *  so this uses a place URL with the satellite layer in the data param
+ *  (`!3m1!1e3`) — long-stable, and if Google drops the param it degrades to a
+ *  pinned roadmap rather than breaking. Consumer Google Maps (google.com/maps),
+ *  unaffected by the EEA Platform terms. */
 export const aerialUrl = (lat: number, lng: number): string =>
-  `https://www.google.com/maps/@?api=1&map_action=map&center=${lat},${lng}&zoom=19&basemap=satellite`;
+  `https://www.google.com/maps/place/${lat},${lng}/@${lat},${lng},19z/data=!3m1!1e3`;
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 
