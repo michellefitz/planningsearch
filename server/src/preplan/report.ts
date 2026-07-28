@@ -39,12 +39,40 @@ export interface ReportDeps {
   getHeritagePoints(lat: number, lng: number): Promise<HeritageSection>;
   getFloodGround(lat: number, lng: number): Promise<FloodGroundSection>;
   /** Candidate rows within the precedent radius plus the deciding authority's rows. */
-  getRows(lat: number, lng: number): Promise<{ nearby: PrecedentSourceRow[]; authority: PrecedentSourceRow[] }>;
+  getRows(
+    lat: number,
+    lng: number
+  ): Promise<{ nearby: PrecedentSourceRow[]; authority: PrecedentSourceRow[]; authority_id?: string | null }>;
   /** Read the most decision-relevant document behind one precedent. Null when nothing readable. */
   readPrecedentDocument(p: ScoredPrecedent, question: string): Promise<{ document: string; answer: string } | null>;
   /** One synthesis call; returns the narrative markdown or null. */
   synthesise(packJson: string): Promise<string | null>;
 }
+
+/** County development plan landing pages, verified live 2026-07-27. The plan
+ *  is the document a proposal is actually judged against — always link it. */
+export const LOCAL_PLANS: Record<string, { name: string; url: string }> = {
+  "dublin-city": {
+    name: "Dublin City Development Plan 2022–2028",
+    url: "https://www.dublincity.ie/residential/planning/strategic-planning/dublin-city-development-plan",
+  },
+  fingal: {
+    name: "Fingal Development Plan 2023–2029",
+    url: "https://www.fingal.ie/planning",
+  },
+  dlr: {
+    name: "Dún Laoghaire-Rathdown County Development Plan 2022–2028",
+    url: "https://www.dlrcoco.ie/planning",
+  },
+  "south-dublin": {
+    name: "South Dublin County Development Plan 2022–2028",
+    url: "https://www.sdcc.ie/en/devplan2022/",
+  },
+  kildare: {
+    name: "Kildare County Development Plan 2023–2029",
+    url: "https://kildarecoco.ie/AllServices/Planning/DevelopmentPlansLocalAreaPlans/KildareCountyDevelopmentPlan2023-2029/",
+  },
+};
 
 export const DEEP_DIVE_QUESTION =
   "Summarise what was decided and why. List the key conditions imposed (or the reasons for refusal), " +
@@ -60,12 +88,15 @@ Rules:
   not checked.
 - You are NOT predicting a decision and NOT giving professional advice. Never
   state or imply a likelihood of permission.
-- Structure: **Site constraints** (what the designations mean for this intent),
+- Structure: **Overview** (2-3 sentences: the headline of what this research
+  found for this site and intent — a person should get the gist from this
+  alone), **Site constraints** (what the designations mean for this intent),
   **What nearby decisions show** (themes from precedents and their documents,
   cited by planning reference), **Likely condition themes**, **Worth checking
   before applying** (exempt-development thresholds, a pre-planning meeting with
-  the council, relevant development plan chapters).
-- Plain English, no legalese. 350-550 words. Markdown with the four bold
+  the council, and the specific chapters of the local development plan named in
+  the evidence pack that bear on this proposal).
+- Plain English, no legalese. 350-550 words. Markdown with the five bold
   headings above only.`;
 
 const unavailable = (reason: string) => ({ unavailable: true as const, reason });
@@ -104,6 +135,15 @@ export async function* generateReport(input: PreplanInput, deps: ReportDeps): As
       return areaStats(rows.authority, input.lat, input.lng);
     }),
     "area statistics could not be computed"
+  );
+  track(
+    "local_plan",
+    rowsPromise.then((rows) => {
+      const plan = rows?.authority_id ? LOCAL_PLANS[rows.authority_id] : null;
+      if (!plan) throw new Error("no plan known");
+      return { authority_id: rows!.authority_id, ...plan };
+    }),
+    "the local development plan could not be identified"
   );
 
   while (pending.size) {

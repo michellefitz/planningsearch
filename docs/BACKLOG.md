@@ -1,5 +1,111 @@
 # Backlog
 
+## Next up (persona review, 2026-07-28)
+
+Three persona reviews (homeowner / architect / conveyancing solicitor) ran
+2026-07-28. Fixed same day: search `distance_km` cross-request pollution,
+"applicant" dropped from the search placeholder (bundle has no applicant data
+yet — restore once the agile harvest bakes it in), digest unsubscribe link +
+List-Unsubscribe header. Since shipped: full 2012 backfill, nightly data
+refresh, agile detail harvest (2026-07-28, see entry below). Queued next,
+in order:
+
+- **Area-watch alerts.** Promoted from "Accounts follow-ups" below — the #1
+  ask for the homeowner persona and #3 for the architect. Watch a saved map
+  circle/estate/site; digest gains "New in your watched area: [address] —
+  submissions open until [date]". Add date-proximity events on the existing
+  cron rails while in there: "decision due in 7 days" (decision_due_date is
+  ~94% populated), "submissions close Friday", and "commencement notice
+  filed" (a completion-undertaking trigger for solicitors mid-conveyance).
+- **Place-first search.** All three personas start from a *place*, the
+  search starts from register text. Verified failures: "Celbridge" returns a
+  Lucan result first (matches "Celbridge Road"); typo "Celbrige" trigram-
+  matches Adamstown with no did-you-mean; Eircodes match the ~2%-populated
+  register field only. Build: place-level suggest tier (towns/estates/
+  streets extracted from addresses → set map bounds, not raw address rows),
+  geocode address/Eircode queries with no register hits and fly the map
+  there with "Search this area" armed, did-you-mean chip before the trigram
+  fallback, and radius-around-a-pin search in the UI (backend `near` +
+  agent's radius_km already support it).
+
+## From the persona review (2026-07-28) — to prioritise at next grooming
+
+- **Planning History Report (conveyancing) — this answers the open "job of
+  the report" question in the property-report entry below.** The solicitor
+  persona's verdict: the pre-planner is "the wrong report written on exactly
+  the right machine" — immutable date-stamped snapshots, print CSS, cited
+  sources are precisely what a solicitor's file needs, but he has no
+  "intent", he has a subject property. Reuse the preplan chassis, drop the
+  intent field, assemble: every application at/within 50 m (all statuses,
+  with an explicit search-window/coverage statement — the job is proving a
+  negative), implementation status per permission (commencement/completion/
+  expiry — rated the single most valuable data in the product), conditions +
+  decision orders linked, RPS/ACA/flood findings each with dataset name and
+  version date, PPR sale history, prepared-for/report-ID block, "not a
+  statutory search" wording. ~80% reassembly of existing endpoints. Would
+  pay €25–75 per report as a billable outlay. Architect wants the same
+  chassis with clean PDF export + own branding.
+- **Flood-data licence blocks charging.** OPW NIFM/NCFHM extents are
+  CC-BY-NC-ND (scripts/flood/README.md) — resolve (licence, alternative
+  source, or drop from paid outputs) before any report is monetised.
+- **Statutory heritage in the detail panel.** Property information row has
+  zoning/flood/PPR but no ACA or protected-structure check; homeowner and
+  solicitor both flagged it. NIAH (used by the pre-planner) is a survey, not
+  the statutory RPS — label accordingly. ACA polygons already exist
+  (loadStaticGeojson("aca")); RPS is the per-council hunt described under
+  Map layers below.
+- **Enforcement registers.** Half the solicitor's risk question
+  ("unauthorised development?") is structurally unanswerable — at minimum an
+  honest "not covered, contact the council" note in the property view;
+  ingestion is a roadmap item.
+- **PPR three-state display.** "No information available" conflates "no
+  recorded sale" with "couldn't match this address" (townland addresses are
+  excluded from matching by design). Say which case applies, link
+  propertypriceregister.ie for variants.
+- **Professional search facets** (architect's #2; converts him to a €30–50/mo
+  subscriber): development-TYPE classifier (extension / attic / new
+  dwelling(s) / change of use / demolition / shopfront) as filter chips —
+  classify descriptions offline at export, extending the is_domestic_guess
+  approach; decision-date range + explicit outcome facet (granted / refused /
+  granted-on-appeal / refused-on-appeal) — API already supports
+  decisionFrom/To, UI doesn't expose it; CSV export of the filtered set
+  (signed-in gated); indexed conditions/refusal-reason text search (unique
+  in the market — cache conditions at export for decided agile apps).
+- **Pre-planner reach + depth.** Show the nav item signed-out (it's the
+  strongest signup motivator and currently invisible until signed in);
+  rename toward "Check my project"; add a first-class "Might this be
+  exempt?" section (40 m² rule etc. — the single most valuable paragraph for
+  a homeowner); reverse-geocode dropped pins so the report header shows an
+  address, not coordinates; precedent knobs for professionals (radius /
+  refusals-only / pick which precedents get deep-dived); a professional mode
+  citing plan policy numbers; PDF export beyond window.print().
+- **Agent (Ask) improvements.** Tool schemas lack `authority`,
+  `application_type`, and decision-date params (the prompt says same-
+  authority matters but gives the model no way to filter by it); chat is
+  ephemeral — persist conversations per account, "save this answer to
+  project X".
+- **Detail panel polish.** Raw uppercase decision strings and raw ISO dates
+  leak (decisionDate, appeal_decision_date, expiry_date bypass fmtDate);
+  zoning "No information available" should distinguish "no zoning
+  designation at this point" (rural/unzoned) from "couldn't check" — the
+  ReportView copy already does this; tag development-contribution and
+  prior-to-occupation conditions (what survives into a sale); print-friendly
+  full application record (only .report has @media print today);
+  related-applications is exact address-string equality — add a ≤50 m
+  radius tier; in-place PDF viewer for the planner's report + decision
+  order (the two documents professionals open most; raise the 4 MB proxy
+  cap for streaming).
+- **Search/UI polish.** Kildare descriptions start mid-sentence ("for the
+  conversion of…") — prepend/capitalise at export; glossary tooltips only
+  work in the detail sheet and only on hover — extend to filter chips and
+  status badges, tap-to-reveal on mobile; "Domestic only" reads planner —
+  consider "Houses & home extensions"; first-load strapline + visible
+  coverage ("Every planning application in Dublin and Kildare"); sign-in
+  card should pitch the pre-planner, not just saves.
+- **Coverage statement.** Deferred (data depth is being fixed instead), but
+  even post-backfill each surface should say what window/sources it covers —
+  the solicitor's completeness question never fully goes away.
+
 - **Per-application link previews + SEO metadata (parked 2026-07-27 — decision
   needed first).** An open application is now a real URL
   (`/application/{council}/{reference}`), but every one of them shares the
@@ -272,25 +378,44 @@ machinery, area stats, one-shot Haiku considerations narrative.
   preplan tables are created by `ensureSchema()` in api/preplan/routes.mjs
   on first use; scripts/migrate-accounts.mjs carries the same statements.
 
-## Agile detail harvest → dataset enrichment (backlogged 2026-07-27)
+## Agile detail harvest → dataset enrichment (backlogged 2026-07-27, shipped 2026-07-28)
 
 The agile portals' per-application detail (GET /application/{id}) carries
 fields the national dataset lacks or truncates: fullProposal, case officer
 (officerName), Eircode (postcode), applicant/agent names, live status and
-decision. Today we fetch it lazily per detail-panel open (/enrich) and
-backfill a few columns. Instead, run a regular scraping job across all
-applications for the four agile councils (DLR, Fingal, Dublin City, South
-Dublin) — low thousands per authority, so one polite nightly/weekly sweep
-is small.
+decision. Previously fetched lazily per detail-panel open (/enrich) only;
+now also harvested nightly into Neon and baked into the bundle.
 
-- Store officer_name as a first-class column → enables "which officers
-  grant vs refuse" style analytics and an officer facet/search.
-- Replace truncated descriptions wholesale (kills the Fingal-style AI
-  summary failures at the root instead of per-open).
-- Backfill Eircodes en masse (national dataset ~2% populated).
-- Respect the tenants: throttle, resume, cache agile ids (resolveAgileId
-  is the slow step); reuse pickDescription/pickOfficer/pickAgileDecision
-  from server/src/agile.ts.
-- Watch decision-flip safety: the ingest write path must use the same
-  CORRECTABLE_BAKED/TERMINAL_LIVE rules as /enrich so a stale portal read
+Shipped:
+
+- **Nightly incremental harvest** (api/accounts/harvest.mjs, runs inside
+  /api/cron/refresh-data before the deploy-hook POST so each rebuild picks
+  up that night's batch). Persists into Neon `agile_enrichment` (PK
+  authority_id + planning_reference), caching the resolved agile id — the
+  slow resolveAgileId search runs once per application. Priority queue:
+  never-harvested newest-received first (old refs predate each council's
+  agile migration and won't resolve), then still-live apps stalest-first,
+  then resolve failures retried after ~90 days (resolve_failed flag stops
+  nightly retries). Concurrency 3, ~150 ms between requests, time-boxed to
+  ~200 s of the function's 300 s maxDuration; harvest failure never blocks
+  the deploy hook. Route response reports harvested / resolve_failures /
+  remaining_estimate. Table also created lazily by ensureSchema() in the
+  harvest module; scripts/migrate-accounts.mjs carries the same statements.
+- **Build-time merge** (server/src/export-json.ts, live source +
+  DATABASE_URL set, best-effort): full_description replaces shorter register
+  descriptions (kills the Fingal-style AI summary failures at the root),
+  applicant/agent/eircode fill empty register fields, officer_name added as
+  a new first-class bundle field, live status applied under the same
+  CORRECTABLE_BAKED/TERMINAL_LIVE decision-flip rules as /enrich (via
+  mapLiveStatus, now also in server/src/normalize.ts) so a stale harvest
   never clobbers a fresh national decision.
+- Detail panel shows the baked case officer when live enrichment hasn't
+  supplied one; applicant search works automatically once merged
+  (applicant_name is already in the search haystack).
+
+Still open / follow-ups:
+
+- Restore "applicant" to the search placeholder once harvest coverage is
+  meaningful (a full sweep takes a few nights of 200 s batches).
+- Officer facet/search + "which officers grant vs refuse" analytics
+  (officer_name is deliberately NOT in the search haystack).

@@ -262,7 +262,11 @@ function RunningView({ project, steps, sections }: { project: PreplanProject; st
   );
 }
 
-export default function PrePlannerPanel() {
+export default function PrePlannerPanel({
+  onOpenApp,
+}: {
+  onOpenApp?: (authorityId: string, reference: string) => void;
+}) {
   const [view, setView] = useState<View>({ kind: "list" });
   const [projects, setProjects] = useState<PreplanProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -354,7 +358,7 @@ export default function PrePlannerPanel() {
             Print
           </button>
         </div>
-        <ReportView report={view.report} />
+        <ReportView report={view.report} onOpenApp={onOpenApp} />
       </div>
     );
   }
@@ -387,43 +391,73 @@ export default function PrePlannerPanel() {
         </div>
       ) : (
         <ul className="preplan-projects">
-          {projects.map((p) => (
-            <li key={p.id} className="preplan-project">
-              <div className="pp-main">
-                <span className="pp-label">{p.label}</span>
-                <span className="pp-address">
-                  {p.address}
-                  {p.eircode ? ` · ${p.eircode}` : ""}
-                </span>
-                <span className="pp-intent">{p.intent}</span>
-              </div>
-              <div className="pp-side">
-                {p.latest_report_id && p.latest_report_status === "complete" ? (
-                  <button type="button" className="btn" onClick={() => openReport(p.latest_report_id as number)}>
-                    Report · {fmtDate(p.latest_report_at ?? "")}
+          {projects.map((p) => {
+            const hasReport = p.latest_report_id != null && p.latest_report_status === "complete";
+            return (
+              <li
+                key={p.id}
+                className={`preplan-project${hasReport ? " preplan-project-clickable" : ""}`}
+                role={hasReport ? "button" : undefined}
+                tabIndex={hasReport ? 0 : undefined}
+                onClick={() => hasReport && openReport(p.latest_report_id as number)}
+                onKeyDown={(e) => {
+                  if (hasReport && (e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) {
+                    e.preventDefault();
+                    openReport(p.latest_report_id as number);
+                  }
+                }}
+              >
+                <div className="pp-main">
+                  <span className="pp-label">{p.label}</span>
+                  <span className="pp-address">
+                    {p.address}
+                    {p.eircode ? ` · ${p.eircode}` : ""}
+                  </span>
+                  <span className="pp-intent">{p.intent}</span>
+                </div>
+                <div className="pp-side">
+                  {hasReport ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openReport(p.latest_report_id as number);
+                      }}
+                    >
+                      Report · {fmtDate(p.latest_report_at ?? "")}
+                    </button>
+                  ) : p.latest_report_status === "error" ? (
+                    <span className="pp-status">last run failed</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      generate(p);
+                    }}
+                  >
+                    {p.latest_report_id ? "Run new report" : "Generate report"}
                   </button>
-                ) : p.latest_report_status === "error" ? (
-                  <span className="pp-status">last run failed</span>
-                ) : null}
-                <button type="button" className="btn btn-primary" onClick={() => generate(p)}>
-                  {p.latest_report_id ? "Run new report" : "Generate report"}
-                </button>
-                <button
-                  type="button"
-                  className="pp-delete"
-                  aria-label={`Delete ${p.label}`}
-                  title="Delete project"
-                  onClick={async () => {
-                    if (!window.confirm(`Delete “${p.label}” and its reports?`)) return;
-                    await preplanApi.deleteProject(p.id).catch(() => {});
-                    refresh();
-                  }}
-                >
-                  <XIcon />
-                </button>
-              </div>
-            </li>
-          ))}
+                  <button
+                    type="button"
+                    className="pp-delete"
+                    aria-label={`Delete ${p.label}`}
+                    title="Delete project"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!window.confirm(`Delete “${p.label}” and its reports?`)) return;
+                      await preplanApi.deleteProject(p.id).catch(() => {});
+                      refresh();
+                    }}
+                  >
+                    <XIcon />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

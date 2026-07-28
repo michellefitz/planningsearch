@@ -1,11 +1,11 @@
-export async function sendEmail({ to, subject, html, text }) {
+export async function sendEmail({ to, subject, html, text, headers }) {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error("RESEND_API_KEY not set");
   const from = process.env.EMAIL_FROM ?? "PlanView <onboarding@resend.dev>";
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ from, to, subject, html, text }),
+    body: JSON.stringify({ from, to, subject, html, text, ...(headers ? { headers } : {}) }),
   });
   if (!res.ok) throw new Error(`resend: HTTP ${res.status} ${await res.text()}`);
 }

@@ -53,7 +53,7 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
         <input
           type="search"
           className="search-input"
-          placeholder="Address, area, reference, applicant or keyword…"
+          placeholder="Address, area, reference or keyword…"
           aria-label="Search planning applications across all five authorities"
           role="combobox"
           aria-expanded={open}

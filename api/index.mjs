@@ -30,7 +30,24 @@ function trigrams(s) {
     for (let i = 0; i + 3 <= w.length; i++) set.add(w.slice(i, i + 3));
   return set;
 }
-const TRI = new Map(BUNDLE.applications.map((a) => [a.id, trigrams(HAYSTACK.get(a.id))]));
+
+// Inverted trigram index, built lazily: per-app trigram Sets cost ~300 MB and
+// ~2.5 s at cold start on the full-depth bundle, and only the fuzzy fallback
+// (no exact hits) ever needs them.
+let TRI_INDEX = null;
+function triIndex() {
+  if (!TRI_INDEX) {
+    TRI_INDEX = new Map();
+    for (const a of BUNDLE.applications) {
+      for (const g of trigrams(HAYSTACK.get(a.id))) {
+        const arr = TRI_INDEX.get(g);
+        if (arr) arr.push(a.id);
+        else TRI_INDEX.set(g, [a.id]);
+      }
+    }
+  }
+  return TRI_INDEX;
+}
 
 /**
  * Normalised address key — mirrors normalizeAddress() in server/src/ingest/ppr.ts.
@@ -744,16 +761,14 @@ function pickOfficer(d) {
   return best;
 }
 
-async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false) {
+// Detail fetch for a known agile id — the nightly harvest caches resolved ids
+// in Neon and skips the slow resolveAgileId search step entirely.
+async function fetchAgileDetailById(authorityId, id, debug = false) {
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   if (!client) return null;
-  const cacheKey = `agile-detail:${authorityId}:${reference}`;
-  if (!debug && PARTIES_CACHE.has(cacheKey)) return PARTIES_CACHE.get(cacheKey);
-  const id = await resolveAgileId(client, sourceUrl, reference);
-  if (!id) return null;
   const d = await agileGetJson(`${AGILE_API}/application/${id}`, client);
   if (!d || typeof d !== "object") return null;
-  const detail = {
+  return {
     applicant: joinName(d.applicantForename, d.applicantSurname, d.applicantName),
     agent: joinName(d.agentForename, d.agentSurname, d.agentName),
     status: pickAgileStatus(d),
@@ -763,6 +778,17 @@ async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false
     officer: pickOfficer(d),
     ...(debug ? { keys: Object.keys(d) } : {}),
   };
+}
+
+async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false) {
+  const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
+  if (!client) return null;
+  const cacheKey = `agile-detail:${authorityId}:${reference}`;
+  if (!debug && PARTIES_CACHE.has(cacheKey)) return PARTIES_CACHE.get(cacheKey);
+  const id = await resolveAgileId(client, sourceUrl, reference);
+  if (!id) return null;
+  const detail = await fetchAgileDetailById(authorityId, id, debug);
+  if (!detail) return null;
   PARTIES_CACHE.set(cacheKey, detail);
   return detail;
 }
@@ -1697,12 +1723,14 @@ function runSearch(p) {
     } else {
       fuzzy = true;
       const qt = trigrams(q);
+      const idx = triIndex();
+      const hits = new Map();
+      for (const g of qt) {
+        const ids = idx.get(g);
+        if (ids) for (const id of ids) hits.set(id, (hits.get(id) ?? 0) + 1);
+      }
       rows = rows
-        .map((a) => {
-          let hit = 0;
-          for (const g of qt) if (TRI.get(a.id).has(g)) hit++;
-          return { a, score: qt.size ? hit / qt.size : 0 };
-        })
+        .map((a) => ({ a, score: qt.size ? (hits.get(a.id) ?? 0) / qt.size : 0 }))
         .filter((x) => x.score >= 0.45)
         .sort((x, y) => y.score - x.score)
         .map((x) => ({ ...x.a, match_quality: "fuzzy" }));
@@ -1711,10 +1739,13 @@ function runSearch(p) {
 
   const near = parseNear(p);
   if (near) {
-    for (const r of rows) {
-      if (r.lat != null && r.lng != null)
-        r.distance_km = Math.round(haversineKm(near.lat, near.lng, r.lat, r.lng) * 100) / 100;
-    }
+    // Copy before annotating — the no-q path returns shared BUNDLE rows, and
+    // mutating them leaks this request's distances into later responses.
+    rows = rows.map((r) =>
+      r.lat != null && r.lng != null
+        ? { ...r, distance_km: Math.round(haversineKm(near.lat, near.lng, r.lat, r.lng) * 100) / 100 }
+        : r
+    );
   }
 
   const sort = p.get("sort");
@@ -2490,6 +2521,11 @@ export default async function handler(req, res) {
       appSummary: (app) => publicApp(app),
       fetchAgileDetail,
       mapLiveStatus: (detail) => mapLiveStatus(detail?.status, detail?.decision),
+      // For the nightly agile harvest (accounts/harvest.mjs).
+      applications: BUNDLE.applications,
+      resolveAgileId: (app) =>
+        resolveAgileId(AGILE_CLIENT_BY_AUTHORITY[app.authority_id], app.source_url, app.planning_reference),
+      fetchAgileDetailById,
     });
   }
 

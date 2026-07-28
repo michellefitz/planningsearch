@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AUTHORITIES } from "./config/authorities.js";
-import { APPLICATION_TYPE_LABELS, GLOSSARY, STATUS_LABELS } from "./normalize.js";
+import { APPLICATION_TYPE_LABELS, GLOSSARY, mapLiveStatus, STATUS_LABELS } from "./normalize.js";
 import { generateSeedRecords } from "./seed.js";
 import { featureToRecord, fetchAllSince, SERVICE_URL } from "./ingest/arcgis.js";
 import { buildPprIndex, lookupPpr } from "./ingest/ppr.js";
@@ -22,13 +22,36 @@ const OUT =
   process.env.PLANVIEW_JSON_OUT ??
   path.resolve(__dirname, "../../api/_data/planning.json");
 
+/** Minimal Neon HTTP SQL client (mirrors api/accounts/db.mjs) — a plain fetch
+ *  so the build needs no database driver dependency. */
+async function neonSql(query: string, params: unknown[] = []): Promise<Array<Record<string, unknown>>> {
+  const cs = process.env.DATABASE_URL;
+  if (!cs) throw new Error("DATABASE_URL not set");
+  const host = new URL(cs).hostname;
+  const res = await fetch(`https://${host}/sql`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Neon-Connection-String": cs,
+    },
+    body: JSON.stringify({ query, params }),
+  });
+  if (!res.ok) throw new Error(`neon: HTTP ${res.status} ${await res.text()}`);
+  const data = (await res.json()) as { rows?: Array<Record<string, unknown>> };
+  return data.rows ?? [];
+}
+
 /** Live pull from the national service: applications received in the window. */
 async function fetchLiveRecords(): Promise<{
   records: ApplicationRecord[];
   sourceUpdatedAt: string | null;
 }> {
-  const days = Number(process.env.PLANVIEW_EXPORT_DAYS ?? 1825); // default: last 5 years
-  const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+  // Full register depth by default — the national dataset starts in 2012.
+  // PLANVIEW_EXPORT_DAYS remains as an override for quick partial exports.
+  const days = process.env.PLANVIEW_EXPORT_DAYS ? Number(process.env.PLANVIEW_EXPORT_DAYS) : null;
+  const since = days
+    ? new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10)
+    : process.env.PLANVIEW_EXPORT_SINCE ?? "2012-01-01";
   console.log(`Fetching live data since ${since} from ${SERVICE_URL} …`);
   const features = await fetchAllSince(since, (n) => console.log(`  fetched ${n} features…`));
   const now = new Date().toISOString();
@@ -92,6 +115,8 @@ async function main() {
     completion_date?: string | null;
     commencement_units?: number | null;
     commencement_count?: number | null;
+    /** Case officer from the nightly agile-portal harvest (agile_enrichment). */
+    officer_name?: string | null;
   };
   const now = new Date().toISOString();
 
@@ -176,6 +201,75 @@ async function main() {
       console.log(`Matched commencement notices for ${commenced} of ${apps.length} applications.`);
     } catch (err) {
       console.error("BCMS fetch failed — bundle ships without commencement data:", err);
+    }
+
+    // Overlay the nightly agile-portal harvest (Neon agile_enrichment): full
+    // untruncated descriptions, applicant/agent, case officer, Eircodes, and
+    // live status corrections. Best-effort — a failure must not sink the deploy.
+    if (process.env.DATABASE_URL) {
+      try {
+        console.log("Fetching agile enrichment (Neon agile_enrichment) …");
+        const rows = await neonSql(
+          `select authority_id, planning_reference, full_description, applicant_name,
+                  agent_name, officer_name, eircode, live_status, live_decision
+           from agile_enrichment where not resolve_failed`
+        );
+        const byKey = new Map(apps.map((a) => [`${a.authority_id}|${a.planning_reference}`, a]));
+        // Same decision-flip safety as /enrich (api/index.mjs): only correct a
+        // not-yet-resolved baked status, and only to a terminal live outcome —
+        // a stale harvest must never clobber a fresher national decision.
+        const CORRECTABLE_BAKED = new Set(["unknown", "pending", "further_info", "incomplete"]);
+        const TERMINAL_LIVE = new Set(["granted", "refused", "invalid", "withdrawn"]);
+        const applied = { description: 0, applicant: 0, agent: 0, officer: 0, eircode: 0, status: 0 };
+        for (const r of rows) {
+          const app = byKey.get(`${r.authority_id}|${r.planning_reference}`);
+          if (!app) continue;
+          const fullDescription = r.full_description as string | null;
+          if (fullDescription && fullDescription.length > (app.description?.length ?? 0)) {
+            app.description = fullDescription;
+            applied.description++;
+          }
+          if (r.applicant_name && !app.applicant_name) {
+            app.applicant_name = r.applicant_name as string;
+            applied.applicant++;
+          }
+          if (r.agent_name && !app.agent_name) {
+            app.agent_name = r.agent_name as string;
+            applied.agent++;
+          }
+          if (r.officer_name) {
+            app.officer_name = r.officer_name as string;
+            applied.officer++;
+          }
+          if (r.eircode && !app.eircode) {
+            app.eircode = r.eircode as string;
+            applied.eircode++;
+          }
+          if (r.live_status || r.live_decision) {
+            const liveStatus = mapLiveStatus(
+              r.live_status as string | null,
+              r.live_decision as string | null
+            );
+            const baked = String(app.status ?? "unknown");
+            if (
+              liveStatus !== "unknown" &&
+              liveStatus !== baked &&
+              (baked === "unknown" ||
+                (CORRECTABLE_BAKED.has(baked) && TERMINAL_LIVE.has(liveStatus)))
+            ) {
+              app.status = liveStatus;
+              applied.status++;
+            }
+          }
+        }
+        console.log(
+          `Agile enrichment: ${rows.length} rows; applied — description ${applied.description}, applicant ${applied.applicant}, agent ${applied.agent}, officer ${applied.officer}, eircode ${applied.eircode}, status ${applied.status}.`
+        );
+      } catch (err) {
+        console.error("Agile enrichment merge failed — bundle ships without it:", err);
+      }
+    } else {
+      console.log("DATABASE_URL not set — skipping agile enrichment merge.");
     }
   }
 
