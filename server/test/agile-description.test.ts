@@ -55,6 +55,27 @@ describe("DLR payload (real tenant keys)", () => {
     expect(pickAgileDecision({ ...DLR, decisionText: "REFUSED" })).toBe("REFUSED");
   });
 
+  it("never returns the decision maker as the decision", () => {
+    // Regression: a "…decision…" key holding the *maker* beat the outcome on
+    // length ("Senior Planner West" is 19 chars, "GRANT PERMISSION" is 16), and
+    // the alert emails read "Decision issued: Senior Planner West".
+    const withMaker = { ...DLR, decisionMakerDescription: "Senior Planner West" };
+    expect(pickAgileDecision(withMaker)).toBe("GRANT PERMISSION");
+    const eastern = { ...DLR, decisionByPlanner: "Senior Planner East" };
+    expect(pickAgileDecision(eastern)).toBe("GRANT PERMISSION");
+  });
+
+  it("returns null rather than a value with no outcome wording", () => {
+    // Better no decision than a job title or a stage name presented as one.
+    const { decisionText: _drop, ...noOutcome } = DLR;
+    expect(pickAgileDecision({ ...noOutcome, decisionMakerDescription: "Senior Planner West" })).toBeNull();
+  });
+
+  it("still prefers the fuller wording of a split decision", () => {
+    const split = { ...DLR, decisionText: "GRANT PERMISSION AND REFUSE PERMISSION" };
+    expect(pickAgileDecision(split)).toBe("GRANT PERMISSION AND REFUSE PERMISSION");
+  });
+
   it("status = the stage description", () => {
     expect(pickAgileStatus(DLR)).toBe("Decision made");
   });

@@ -631,15 +631,30 @@ function pickAgileStatus(d) {
 // a decision-ish key, distinct from the status stage; reading it lets
 // mapLiveStatus defer to the outcome. Skip date/appeal keys; longest wins.
 const DECISION_KEY_RE = /decision/i;
+/** Keys that carry *who* or *how* decided rather than *what* was decided. */
+const DECISION_ROLE_KEY_RE = /appeal|date|level|officer|planner|maker|author|staff|user|\bby\b/i;
+/**
+ * A decision is an outcome. Requiring the value to read like one is the only
+ * reliable filter: the agile payload has several "…decision…" keys and no
+ * documented winner, so picking the longest string chose "Senior Planner West"
+ * (the decision maker, 19 chars) over "GRANT PERMISSION" (16) — which then
+ * reached users as "Decision issued: Senior Planner West".
+ */
+const DECISION_OUTCOME_RE =
+  /\b(grant|refus|approv|reject|withdraw|invalid|declar|exempt|permission|split|uphold|overturn|conditional)/i;
+
 function pickAgileDecision(d) {
   let best = null;
   for (const [key, value] of Object.entries(d)) {
     if (typeof value !== "string" || !DECISION_KEY_RE.test(key)) continue;
-    // "levelOfDecisionDescription" is WHO decided ("Approved Officer"), not the
-    // outcome — its "Approved…" wording would map a refusal to granted.
-    if (/appeal/i.test(key) || /date/i.test(key) || /level/i.test(key)) continue;
+    if (DECISION_ROLE_KEY_RE.test(key)) continue;
     const v = value.trim();
     if (!v || /^\d{4}-\d{2}-\d{2}/.test(v)) continue;
+    // No outcome vocabulary, no decision — better to report nothing than a
+    // person's job title.
+    if (!DECISION_OUTCOME_RE.test(v)) continue;
+    // Among genuine outcomes the longest wins, so a split decision
+    // ("GRANT PERMISSION AND REFUSE PERMISSION") beats a truncated one.
     if (v.length > (best?.length ?? 0)) best = v;
   }
   return best;
