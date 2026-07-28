@@ -80,31 +80,35 @@ const DECIDED_OPAQUE =
 // or refusal issued (e.g. SD22A/0440: still "Registered" in 2026, granted 2023).
 const NON_TERMINAL_STAGES = new Set<CanonicalStatus>(["pending", "further_info", "incomplete"]);
 
+function decisionToStatus(decision: string | null | undefined): CanonicalStatus | null {
+  const dec = `${decision ?? ""}`.trim();
+  if (!dec) return null;
+  // Part grant / part refuse — check before the individual grant/refuse tests
+  // so a split (which contains both words) isn't classified as just refused.
+  if (/split\s*decision/i.test(dec) || (/grant|approv|conditional/i.test(dec) && /refus|reject/i.test(dec)))
+    return "split";
+  if (/refus|reject/i.test(dec)) return "refused";
+  if (/grant|approv|conditional/i.test(dec)) return "granted";
+  if (/withdraw/i.test(dec)) return "withdrawn";
+  // Truncated national Decision text: "…DECLARED INVALID" arrives as "…INVA".
+  if (/invalid|declared\s+inv/i.test(dec)) return "invalid";
+  // Section 5 exemption declarations ("Declared Exempt/Not Exempt", "Declared
+  // to be Development") — a real outcome, but not a permission grant/refuse.
+  if (/exempt|declar|is\s+(not\s+)?development/i.test(dec)) return "decided";
+  return null;
+}
+
+function statusFromRules(source: string): CanonicalStatus | null {
+  for (const [re, status] of STATUS_RULES) {
+    if (re.test(source)) return status;
+  }
+  return null;
+}
+
 export function normalizeStatus(raw: string | null | undefined, decision?: string | null): CanonicalStatus {
   const source = `${raw ?? ""}`.trim();
-  const fromDecision = (): CanonicalStatus | null => {
-    const dec = `${decision ?? ""}`.trim();
-    if (!dec) return null;
-    // Part grant / part refuse — check before the individual grant/refuse tests
-    // so a split (which contains both words) isn't classified as just refused.
-    if (/split\s*decision/i.test(dec) || (/grant|approv|conditional/i.test(dec) && /refus|reject/i.test(dec)))
-      return "split";
-    if (/refus|reject/i.test(dec)) return "refused";
-    if (/grant|approv|conditional/i.test(dec)) return "granted";
-    if (/withdraw/i.test(dec)) return "withdrawn";
-    // Truncated national Decision text: "…DECLARED INVALID" arrives as "…INVA".
-    if (/invalid|declared\s+inv/i.test(dec)) return "invalid";
-    // Section 5 exemption declarations ("Declared Exempt/Not Exempt", "Declared
-    // to be Development") — a real outcome, but not a permission grant/refuse.
-    if (/exempt|declar|is\s+(not\s+)?development/i.test(dec)) return "decided";
-    return null;
-  };
-  const fromRules = (): CanonicalStatus | null => {
-    for (const [re, status] of STATUS_RULES) {
-      if (re.test(source)) return status;
-    }
-    return null;
-  };
+  const fromDecision = (): CanonicalStatus | null => decisionToStatus(decision);
+  const fromRules = (): CanonicalStatus | null => statusFromRules(source);
   const viaDecision = fromDecision();
   if (source) {
     // "Finalised"/"decision made" style statuses often carry no outcome — the
@@ -123,6 +127,25 @@ export function normalizeStatus(raw: string | null | undefined, decision?: strin
   // Some sources leave status blank once decided; fall back to the decision text.
   if (viaDecision) return viaDecision;
   return source ? "unknown" : "pending";
+}
+
+/**
+ * Maps a live agile-portal status (and its decision, when present) onto a
+ * canonical status. Unlike normalizeStatus it never defaults a blank read to
+ * "pending" — it is only ever used to correct a baked status, and an empty
+ * live read carries no signal. Mirrors mapLiveStatus in api/index.mjs.
+ */
+export function mapLiveStatus(
+  raw: string | null | undefined,
+  decision: string | null | undefined
+): CanonicalStatus {
+  const s = `${raw ?? ""}`.trim();
+  if (s) {
+    if (DECIDED_OPAQUE.test(s)) return decisionToStatus(decision) ?? statusFromRules(s) ?? "unknown";
+    const viaRules = statusFromRules(s);
+    if (viaRules) return viaRules;
+  }
+  return decisionToStatus(decision) ?? "unknown";
 }
 
 /**

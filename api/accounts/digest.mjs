@@ -1,7 +1,7 @@
 const esc = (s) =>
   String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-export function buildDigestEmail(entries) {
+export function buildDigestEmail(entries, unsubscribeUrl) {
   const n = entries.length;
   const subject =
     n === 1 ? `Update on ${entries[0].address}` : `Updates on ${n} applications you're watching`;
@@ -13,6 +13,7 @@ export function buildDigestEmail(entries) {
     ...entries.map((e) =>
       [`${e.address} (${e.reference})`, ...e.summaries.map((s) => `  - ${s}`), `  ${e.url}`].join("\n")
     ),
+    ...(unsubscribeUrl ? [`Turn off these emails: ${unsubscribeUrl}`] : []),
   ].join("\n\n");
 
   const blocks = entries
@@ -38,7 +39,11 @@ export function buildDigestEmail(entries) {
 <tr><td style="padding:28px 32px 4px;font-size:15px;font-weight:600;color:#17456e;">PlanView</td></tr>
 <tr><td style="padding:8px 32px 0;font-size:19px;font-weight:600;">${esc(subject)}</td></tr>
 ${blocks}
-<tr><td style="padding:20px 32px 28px;font-size:12px;color:#9aa1ab;">You get this because alerts are on for these saved applications. Manage them from your PlanView account.</td></tr>
+<tr><td style="padding:20px 32px 28px;font-size:12px;color:#9aa1ab;">You get this because alerts are on for these saved applications. Manage them from your PlanView account.${
+    unsubscribeUrl
+      ? ` <a href="${esc(unsubscribeUrl)}" style="color:#9aa1ab;text-decoration:underline;">Turn off these emails</a>.`
+      : ""
+  }</td></tr>
 </table></td></tr></table></body></html>`;
 
   return { subject, html, text };

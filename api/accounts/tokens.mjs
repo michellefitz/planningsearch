@@ -11,6 +11,20 @@ export function sha256Hex(s) {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
+// HMAC keyed on CRON_SECRET so unsubscribe links need no DB token or schema change.
+export function unsubscribeToken(userId) {
+  return crypto
+    .createHmac("sha256", process.env.CRON_SECRET ?? "")
+    .update(`unsub:${userId}`)
+    .digest("hex");
+}
+
+export function verifyUnsubscribeToken(userId, token) {
+  const expected = unsubscribeToken(userId);
+  if (typeof token !== "string" || token.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(token));
+}
+
 export function parseCookies(header) {
   const out = {};
   for (const part of (header ?? "").split(";")) {

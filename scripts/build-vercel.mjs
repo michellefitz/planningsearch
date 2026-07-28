@@ -48,6 +48,8 @@ fs.writeFileSync(
       // The agent endpoint streams SSE and can run for several tool turns.
       supportsResponseStreaming: true,
       maxDuration: 300,
+      // The full-depth (2012+) bundle needs ~900 MB resident after indexing.
+      memory: 2048,
     },
     null,
     2

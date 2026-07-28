@@ -2,5 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm install --include=dev",
   "buildCommand": "PLANVIEW_EXPORT_SOURCE=live node scripts/build-vercel.mjs",
-  "crons": [{ "path": "/api/cron/check-updates", "schedule": "0 7 * * *" }]
+  "crons": [
+    { "path": "/api/cron/check-updates", "schedule": "0 7 * * *" },
+    { "path": "/api/cron/refresh-data", "schedule": "30 2 * * *" }
+  ]
 }

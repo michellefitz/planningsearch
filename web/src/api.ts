@@ -65,6 +65,8 @@ export interface AppDetail extends AppSummary {
   final_grant_date: string | null;
   applicant_name: string | null;
   agent_name: string | null;
+  /** Case officer, baked in from the nightly agile-portal harvest. */
+  officer_name?: string | null;
   eircode: string | null;
   num_residential_units: number | null;
   floor_area_sqm: number | null;
@@ -263,6 +265,7 @@ export const api = {
       agent_name: string | null;
       description?: string | null;
       eircode?: string | null;
+      officer_name?: string | null;
       status?: string | null;
       status_raw?: string | null;
       status_label?: string | null;

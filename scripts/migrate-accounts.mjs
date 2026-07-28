@@ -72,6 +72,23 @@ const STATEMENTS = [
     intent text not null,
     created_at timestamptz not null default now()
   )`,
+  `create table if not exists agile_enrichment (
+    authority_id text not null,
+    planning_reference text not null,
+    agile_id integer,
+    full_description text,
+    applicant_name text,
+    agent_name text,
+    officer_name text,
+    eircode text,
+    live_status text,
+    live_decision text,
+    resolve_failed boolean not null default false,
+    fetched_at timestamptz not null default now(),
+    primary key (authority_id, planning_reference)
+  )`,
+  `create index if not exists agile_enrichment_fetched_idx
+     on agile_enrichment (fetched_at)`,
   `create table if not exists preplan_reports (
     id bigint generated always as identity primary key,
     project_id bigint not null references preplan_projects(id) on delete cascade,

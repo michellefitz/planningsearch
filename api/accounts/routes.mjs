@@ -2,11 +2,13 @@ import { sql } from "./db.mjs";
 import {
   clearSessionCookie, parseCookies, randomToken,
   SESSION_COOKIE, sessionCookie, sha256Hex,
+  unsubscribeToken, verifyUnsubscribeToken,
 } from "./tokens.mjs";
 import { magicLinkEmail, sendEmail } from "./email.mjs";
 import { diffSnapshots, snapshotFromBundleApp } from "./diff.mjs";
 import { fetchLiveNationalSnapshot } from "./live.mjs";
 import { buildDigestEmail } from "./digest.mjs";
+import { runAgileHarvest } from "./harvest.mjs";
 
 const AGILE = new Set(["dublin-city", "fingal", "dlr", "south-dublin"]);
 
@@ -17,7 +19,9 @@ export function isAccountRoute(route) {
     route === "/api/saves" || route.startsWith("/api/saves/") ||
     route === "/api/lists" || route.startsWith("/api/lists/") ||
     route === "/api/resolve" ||
-    route === "/api/cron/check-updates"
+    route === "/api/alerts/unsubscribe" ||
+    route === "/api/cron/check-updates" ||
+    route === "/api/cron/refresh-data"
   );
 }
 
@@ -195,7 +199,47 @@ async function dispatch(req, res, route, url, ctx) {
     return sendPrivate(res, app ? 200 : 404, app ? { id: app.id } : { error: "not found" });
   }
 
+  if (route === "/api/alerts/unsubscribe") {
+    // Reached from an email link, so no session: identity comes from the HMAC token.
+    const userId = Number(p.get("u"));
+    if (!Number.isInteger(userId) || !verifyUnsubscribeToken(userId, p.get("t") ?? "")) {
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.end("<p>This unsubscribe link is invalid or has expired.</p>");
+    }
+    await sql(`update saved_apps set alerts_enabled = false where user_id = $1`, [userId]);
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    return res.end(`<!doctype html>
+<html><body style="font-family:Inter,system-ui,sans-serif;color:#1a1d21;max-width:480px;margin:64px auto;padding:0 16px;">
+<h2 style="color:#17456e;">Alerts turned off</h2>
+<p style="color:#5c6370;line-height:1.6;">You won't get any more update emails from PlanView. Your saved applications are untouched — you can turn alerts back on any time from your <a href="/#account" style="color:#0b62d6;">PlanView account</a>.</p>
+</body></html>`);
+  }
+
   if (route === "/api/cron/check-updates") return handleCron(req, res, ctx);
+
+  if (route === "/api/cron/refresh-data") {
+    // Nightly: harvest agile-portal detail into Neon, then trigger a
+    // production rebuild so the baked bundle re-exports (and merges the fresh
+    // harvest). The hook deploys main as-is.
+    const secret = process.env.CRON_SECRET;
+    if (!secret || req.headers.authorization !== `Bearer ${secret}`)
+      return sendPrivate(res, 401, { error: "unauthorized" });
+    const hook = process.env.DEPLOY_HOOK_URL;
+    if (!hook) return sendPrivate(res, 500, { error: "DEPLOY_HOOK_URL not set" });
+    let harvest;
+    try {
+      harvest = await runAgileHarvest(ctx);
+    } catch (err) {
+      // Harvest failure must never block the nightly rebuild.
+      console.error("agile harvest failed", err);
+      harvest = { error: String(err?.message ?? err) };
+    }
+    const r = await fetch(hook, { method: "POST" });
+    return sendPrivate(res, r.ok ? 200 : 502, { triggered: r.ok, status: r.status, harvest });
+  }
 
   const user = await currentUser(req);
 
@@ -402,8 +446,13 @@ async function handleCron(req, res, ctx) {
       }
       byApp.get(key).summaries.push(r.summary);
     }
+    const unsubUrl = `${origin}/api/alerts/unsubscribe?u=${u.id}&t=${unsubscribeToken(u.id)}`;
     try {
-      await sendEmail({ to: u.email, ...buildDigestEmail([...byApp.values()]) });
+      await sendEmail({
+        to: u.email,
+        ...buildDigestEmail([...byApp.values()], unsubUrl),
+        headers: { "List-Unsubscribe": `<${unsubUrl}>` },
+      });
       emailsSent++;
       await sql(`update users set last_digest_at = now() where id = $1`, [u.id]);
     } catch (err) {
