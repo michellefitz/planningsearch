@@ -5,7 +5,7 @@ import {
   normalizeStatus,
   SNAPSHOT_FIELDS,
   snapshotFromBundleApp,
-} from "../../api/accounts/diff.mjs";
+} from "../../api/_accounts/diff.mjs";
 
 const BASE = Object.fromEntries(SNAPSHOT_FIELDS.map((f) => [f, null]));
 

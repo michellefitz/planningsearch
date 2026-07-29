@@ -1,4 +1,4 @@
-import { sql } from "../api/accounts/db.mjs";
+import { sql } from "../api/_accounts/db.mjs";
 
 const STATEMENTS = [
   `create table if not exists users (

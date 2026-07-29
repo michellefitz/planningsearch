@@ -3,8 +3,8 @@
  * Persistence in Neon (same database as accounts). Reports are immutable
  * snapshots — GET renders stored JSON; generation always inserts a new row.
  */
-import { sql } from "../accounts/db.mjs";
-import { currentUser } from "../accounts/routes.mjs";
+import { sql } from "../_accounts/db.mjs";
+import { currentUser } from "../_accounts/routes.mjs";
 import {
   generateReport,
   PREPLAN_SYNTHESIS_PROMPT,

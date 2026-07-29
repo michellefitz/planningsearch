@@ -6,7 +6,7 @@ import {
   SESSION_COOKIE,
   sessionCookie,
   sha256Hex,
-} from "../../api/accounts/tokens.mjs";
+} from "../../api/_accounts/tokens.mjs";
 
 describe("tokens", () => {
   it("randomToken is 64 hex chars and unique", () => {

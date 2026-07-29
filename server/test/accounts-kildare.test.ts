@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { snapshotFromDetailHtml } from "../../api/accounts/kildare.mjs";
-import { SNAPSHOT_FIELDS } from "../../api/accounts/diff.mjs";
+import { snapshotFromDetailHtml } from "../../api/_accounts/kildare.mjs";
+import { SNAPSHOT_FIELDS } from "../../api/_accounts/diff.mjs";
 
 /**
  * Structure taken from a real eplanning detail page (AppFileRefDetails/2660628).

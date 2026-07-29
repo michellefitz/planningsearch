@@ -148,7 +148,7 @@ export function normalizeStatus(raw: string | null | undefined, decision?: strin
  * Maps a live agile-portal status (and its decision, when present) onto a
  * canonical status. Unlike normalizeStatus it never defaults a blank read to
  * "pending" — it is only ever used to correct a baked status, and an empty
- * live read carries no signal. Mirrors mapLiveStatus in api/index.mjs.
+ * live read carries no signal. Mirrors mapLiveStatus in api/_index.mjs.
  */
 export function mapLiveStatus(
   raw: string | null | undefined,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { magicLinkEmail, sendEmail } from "../../api/accounts/email.mjs";
+import { magicLinkEmail, sendEmail } from "../../api/_accounts/email.mjs";
 
 describe("magicLinkEmail", () => {
   it("contains the link and expiry note in both bodies", () => {

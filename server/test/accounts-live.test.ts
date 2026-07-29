@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { attrsToSnapshot, fetchLiveNationalSnapshot } from "../../api/accounts/live.mjs";
-import { SNAPSHOT_FIELDS } from "../../api/accounts/diff.mjs";
+import { attrsToSnapshot, fetchLiveNationalSnapshot } from "../../api/_accounts/live.mjs";
+import { SNAPSHOT_FIELDS } from "../../api/_accounts/diff.mjs";
 
 const ATTRS = {
   ApplicationNumber: "SD22A/0440",
