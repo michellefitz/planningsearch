@@ -10,11 +10,11 @@ async function app() {
   return f;
 }
 
-describe("POST /api/preplan/generate", () => {
+describe("POST /api/_preplan/generate", () => {
   it("400s without coordinates or intent", async () => {
     const f = await app();
     for (const payload of [{}, { lat: 53.3, lng: -6.5 }, { lat: "x", lng: -6.5, intent: "shed" }]) {
-      const res = await f.inject({ method: "POST", url: "/api/preplan/generate", payload });
+      const res = await f.inject({ method: "POST", url: "/api/_preplan/generate", payload });
       expect(res.statusCode).toBe(400);
     }
     await f.close();
@@ -24,7 +24,7 @@ describe("POST /api/preplan/generate", () => {
     const f = await app();
     const res = await f.inject({
       method: "POST",
-      url: "/api/preplan/generate",
+      url: "/api/_preplan/generate",
       payload: { lat: 53.3813, lng: -6.5918, address: "Maynooth", intent: "rear extension" },
     });
     expect(res.statusCode).toBe(200);

@@ -10,8 +10,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { handleAccountRoute, isAccountRoute } from "./accounts/routes.mjs";
-import { handlePreplanRoute, isPreplanRoute } from "./preplan/routes.mjs";
+import { handleAccountRoute, isAccountRoute } from "./_accounts/routes.mjs";
+import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));

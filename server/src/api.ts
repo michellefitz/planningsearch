@@ -932,7 +932,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
 
   // Pre-planner report generation, ungated for local development — accounts
   // and persistence live only on the deployed api side.
-  app.post("/api/preplan/generate", async (req, reply) => {
+  app.post("/api/_preplan/generate", async (req, reply) => {
     const body = req.body as { lat?: number; lng?: number; address?: string; intent?: string } | null;
     const lat = Number(body?.lat);
     const lng = Number(body?.lng);

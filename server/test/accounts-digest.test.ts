@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDigestEmail } from "../../api/accounts/digest.mjs";
+import { buildDigestEmail } from "../../api/_accounts/digest.mjs";
 
 const ENTRY = {
   address: "12 Main Street, Maynooth",

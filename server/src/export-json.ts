@@ -1,6 +1,6 @@
 /**
  * Export the demo dataset to a plain JSON bundle for the dependency-free
- * Vercel serverless function (api/index.mjs). This path deliberately avoids
+ * Vercel serverless function (api/_index.mjs). This path deliberately avoids
  * the native better-sqlite3 module so the serverless build/runtime has zero
  * native dependencies.
  */
@@ -24,7 +24,7 @@ const OUT =
   process.env.PLANVIEW_JSON_OUT ??
   path.resolve(__dirname, "../../api/_data/planning.json");
 
-/** Minimal Neon HTTP SQL client (mirrors api/accounts/db.mjs) — a plain fetch
+/** Minimal Neon HTTP SQL client (mirrors api/_accounts/db.mjs) — a plain fetch
  *  so the build needs no database driver dependency. */
 async function neonSql(query: string, params: unknown[] = []): Promise<Array<Record<string, unknown>>> {
   const cs = process.env.DATABASE_URL;
@@ -217,7 +217,7 @@ async function main() {
            from agile_enrichment where not resolve_failed`
         );
         const byKey = new Map(apps.map((a) => [`${a.authority_id}|${a.planning_reference}`, a]));
-        // Same decision-flip safety as /enrich (api/index.mjs): only correct a
+        // Same decision-flip safety as /enrich (api/_index.mjs): only correct a
         // not-yet-resolved baked status, and only to a terminal live outcome —
         // a stale harvest must never clobber a fresher national decision.
         const CORRECTABLE_BAKED = new Set(["unknown", "pending", "further_info", "incomplete"]);

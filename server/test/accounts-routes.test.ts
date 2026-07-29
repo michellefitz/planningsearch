@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAccountRoute } from "../../api/accounts/routes.mjs";
+import { isAccountRoute } from "../../api/_accounts/routes.mjs";
 
 describe("isAccountRoute", () => {
   it.each([

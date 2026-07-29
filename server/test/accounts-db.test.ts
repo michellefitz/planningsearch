@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sql } from "../../api/accounts/db.mjs";
+import { sql } from "../../api/_accounts/db.mjs";
 
 const CS = "postgresql://user:pass@ep-test-123.eu-west-1.aws.neon.tech/neondb";
 

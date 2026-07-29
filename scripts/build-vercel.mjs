@@ -33,10 +33,13 @@ fs.cpSync(path.join(root, "web", "dist"), staticDir, { recursive: true });
 // 3. Serverless function.
 const funcDir = path.join(out, "functions", "api.func");
 fs.mkdirSync(funcDir, { recursive: true });
-fs.copyFileSync(path.join(root, "api", "index.mjs"), path.join(funcDir, "index.mjs"));
+// Everything under api/ is underscore-prefixed so Vercel's zero-config api
+// builder ignores it — otherwise each helper .mjs deploys as its own
+// serverless function (Hobby caps a deployment at 12; we hit 13).
+fs.copyFileSync(path.join(root, "api", "_index.mjs"), path.join(funcDir, "index.mjs"));
 fs.cpSync(path.join(root, "api", "_data"), path.join(funcDir, "_data"), { recursive: true });
-fs.cpSync(path.join(root, "api", "accounts"), path.join(funcDir, "accounts"), { recursive: true });
-fs.cpSync(path.join(root, "api", "preplan"), path.join(funcDir, "preplan"), { recursive: true });
+fs.cpSync(path.join(root, "api", "_accounts"), path.join(funcDir, "_accounts"), { recursive: true });
+fs.cpSync(path.join(root, "api", "_preplan"), path.join(funcDir, "_preplan"), { recursive: true });
 fs.writeFileSync(
   path.join(funcDir, ".vc-config.json"),
   JSON.stringify(
