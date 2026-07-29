@@ -291,9 +291,14 @@ in order:
   in the bulk dataset (unlike objections); a filter chip would let users see
   contested applications across the map.
 
-- **Scheduled redeploy for data freshness.** The Vercel bundle only refreshes
-  on deploy; a weekly cron (Vercel deploy hook) would keep the register data
-  current without code changes.
+- **Scheduled redeploy for data freshness (shipped 2026-07-27).** A nightly
+  Vercel cron at 02:30 UTC hits `/api/cron/refresh-data`, which runs the agile
+  detail harvest and then POSTs the project's deploy hook so the bundle
+  re-exports; the alert cron follows at 07:00 against the fresh data. Needs
+  `DEPLOY_HOOK_URL` set (Vercel → Settings → Git → Deploy Hooks, branch
+  `main`) — the route 500s without it. Note the Hobby plan allows two cron jobs
+  at one run per day, which is exactly what these two use; a third would need a
+  paid plan or an external scheduler.
 
 - **Shareable standalone property page (parked — flesh out the "why" first).**
   Add a small open-in-new-tab icon to the top corner of the detail slide-over
@@ -372,8 +377,12 @@ in order:
   events across saves; possibly AI summaries of what changed.
 - **Rate limiting beyond the live-token cap:** per-IP throttle on
   /api/auth/request-link and the write endpoints.
-- **Kildare live status in cron:** the eplanning list parser isn't wired into
-  the cron's live fetch, so Kildare relies on the national dataset + bundle.
+- **Kildare live status in cron (shipped 2026-07-27):** the cron now reads the
+  eplanning detail page per saved Kildare application
+  (`api/accounts/kildare.mjs`), falling back to the national feed and then the
+  bundle. Labels are scoped per tab because "Decision Date" appears under
+  Details, Decision *and* Appeal. Still to do: Kildare has no live *conditions*
+  source, and an unreadable page returns null (no alert) rather than retrying.
 - **Remove-from-list UI:** list membership can be added in the save popover
   but there's no affordance to remove a save from one list without unsaving.
 - **Token/session GC:** expired auth_tokens and sessions rows accumulate;

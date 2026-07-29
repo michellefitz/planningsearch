@@ -7,6 +7,7 @@ import {
 import { magicLinkEmail, sendEmail } from "./email.mjs";
 import { diffSnapshots, snapshotFromBundleApp } from "./diff.mjs";
 import { fetchLiveNationalSnapshot } from "./live.mjs";
+import { fetchKildareLiveSnapshot } from "./kildare.mjs";
 import { buildDigestEmail } from "./digest.mjs";
 import { runAgileHarvest } from "./harvest.mjs";
 
@@ -372,7 +373,14 @@ async function handleCron(req, res, ctx) {
       const key = `${t.authority_id}|${t.planning_reference}`;
       const app = ctx.findApp(t.authority_id, t.planning_reference);
       const prev = prevByKey.get(key);
-      let next = await fetchLiveNationalSnapshot(t.authority_id, t.planning_reference);
+      // Kildare first from the council register: the national feed trails it by
+      // ~3 months, so polling only that leaves Kildare saves effectively
+      // unmonitored. Falls through to the national feed, then the bundle.
+      let next =
+        t.authority_id === "kildare"
+          ? await fetchKildareLiveSnapshot(t.planning_reference)
+          : null;
+      if (!next) next = await fetchLiveNationalSnapshot(t.authority_id, t.planning_reference);
       if (!next) next = app ? snapshotFromBundleApp(app) : null;
       if (!next) return;
       if (app) {
