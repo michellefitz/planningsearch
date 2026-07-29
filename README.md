@@ -64,6 +64,15 @@ register data instead of the demo fixture, change `buildCommand`'s
 the data is rebuilt on every deploy, so redeploy (or a scheduled deploy hook)
 is the refresh mechanism.
 
+**Optional front-end environment variables** (all build-time — set them in the
+host's env and redeploy; each feature stays off when its variable is absent):
+
+| Variable | Effect |
+| --- | --- |
+| `VITE_GOOGLE_MAPS_KEY` | Street View thumbnail on the detail sheet. |
+| `VITE_MAPBOX_TOKEN` | Mapbox aerial thumbnail; falls back to keyless Esri. |
+| `VITE_PLAUSIBLE_DOMAIN` | Loads Plausible analytics. Set it to the site's own domain (the same value used when the site is created in Plausible). The script only loads when the browser is actually on that host, so localhost and preview deploys don't pollute the stats, and it is skipped entirely when the variable is unset. Plausible is cookieless and collects no personal data, so no consent banner is required. |
+
 **Docker hosts (Render / Fly.io / Railway):** `Dockerfile` runs the
 long-running server (API + SPA on one port) and bootstraps the database on
 first boot — `PLANVIEW_BOOTSTRAP=seed` (default) or `ingest` with automatic
