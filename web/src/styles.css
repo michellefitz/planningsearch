@@ -2288,6 +2288,26 @@ a.pill:hover {
   --pc: #b45309;
 }
 
+/* Sits under the map's top controls, stating that pins are a subset. */
+.map-truncated {
+  position: absolute;
+  top: 0.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  margin: 0;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.74rem;
+  color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* Provenance line that exists only on paper. */
 .print-stamp {
   display: none;

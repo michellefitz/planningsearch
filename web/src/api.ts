@@ -209,6 +209,24 @@ export function searchParams(
   return p;
 }
 
+/**
+ * Params for the map layer. Same filters as the list, but the bbox is *always*
+ * the current viewport — the "Limit to current map area" checkbox scopes the
+ * list, not the pins. Without this the map fetched every matching application
+ * in the country on every search, which since the 2012 backfill is ~94k
+ * features and tens of megabytes.
+ */
+export function mapParams(
+  s: SearchState,
+  bbox: [number, number, number, number] | null,
+  near: { lat: number; lng: number } | null
+): URLSearchParams {
+  const p = searchParams(s, bbox, near);
+  p.delete("limit");
+  if (bbox) p.set("bbox", bbox.join(","));
+  return p;
+}
+
 /** One date voice for display: "2026-05-12" → "12 May 2026". Anything that
     isn't an ISO date passes through untouched. Inputs keep ISO. */
 export function fmtDate(iso: string | null | undefined): string {
@@ -233,6 +251,10 @@ export interface PointFeatureCollection {
     geometry: { type: "Point"; coordinates: [number, number] };
     properties: Record<string, unknown>;
   }>;
+  /** Located applications matching the filters in this viewport. */
+  matched?: number;
+  /** True when more matched than were returned — the map is showing a subset. */
+  truncated?: boolean;
 }
 
 export const api = {

@@ -24,6 +24,9 @@ const haystackOf = (a) =>
     .toLowerCase();
 const HAYSTACK = new Map(BUNDLE.applications.map((a) => [a.id, haystackOf(a)]));
 
+/** Map pins per request — see /api/map/applications. */
+const MAP_FEATURE_LIMIT = 2000;
+
 function trigrams(s) {
   const set = new Set();
   for (const w of s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").split(" "))
@@ -1683,6 +1686,18 @@ function applyFilters(rows, p) {
  * fuzzy matching: a "close match" on a reference is a *different property*,
  * and someone who typed a reference wants that file or nothing.
  */
+/**
+ * A full or partial Eircode — "W23 Y2W8", "W23Y2W8", or a bare routing key
+ * ("W23", "D15", "D6W"). Same protection as a reference: an Eircode identifies
+ * one property, so a trigram "close match" is always a *different* address.
+ */
+function looksLikeEircode(q) {
+  const s = q.trim().toUpperCase().replace(/\s+/g, "");
+  if (!/^[A-Z0-9]+$/.test(s)) return false;
+  if (!/^(D6W|[A-Z]\d{2})/.test(s)) return false;
+  return s.length === 3 || s.length === 7;
+}
+
 function looksLikeReference(q) {
   const s = q.trim();
   if (!s || /\s/.test(s)) return false;
@@ -1732,7 +1747,7 @@ function runSearch(p) {
         .map((a) => ({ a, s: relevanceScore(a, tokens) }))
         .sort((x, y) => y.s - x.s)
         .map((x) => ({ ...x.a, match_quality: "exact" }));
-    } else if (looksLikeReference(q)) {
+    } else if (looksLikeReference(q) || looksLikeEircode(q)) {
       rows = [];
     } else {
       fuzzy = true;
@@ -2588,10 +2603,18 @@ export default async function handler(req, res) {
 
   if (route === "/api/map/applications") {
     const { rows } = runSearch(p);
+    const located = rows.filter((r) => r.lat != null && r.lng != null);
+    // The register goes back to 2012, so uncapped this was ~94k features and
+    // 22.7 MB on first load and on every search — the old five-year window had
+    // been acting as an accidental cap. The client sends its viewport, so this
+    // is a ceiling on dense areas, not the normal case. `truncated` lets the UI
+    // say so; a silently cut map reads as "this is everything here".
+    const shown = located.slice(0, MAP_FEATURE_LIMIT);
     return send(res, 200, {
       type: "FeatureCollection",
-      features: rows
-        .filter((r) => r.lat != null && r.lng != null)
+      matched: located.length,
+      truncated: located.length > shown.length,
+      features: shown
         .map((r) => ({
           type: "Feature",
           geometry: { type: "Point", coordinates: [r.lng, r.lat] },

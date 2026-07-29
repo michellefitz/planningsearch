@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   EMPTY_SEARCH,
+  mapParams,
   searchParams,
   type AppDetail,
   type AppSummary,
@@ -103,7 +104,10 @@ export default function App() {
       setError(null);
       try {
         const params = searchParams(s, bboxRef.current, nearRef.current);
-        const [listRes, geo] = await Promise.all([api.search(params), api.mapGeoJson(params)]);
+        const [listRes, geo] = await Promise.all([
+          api.search(params),
+          api.mapGeoJson(mapParams(s, bboxRef.current, nearRef.current)),
+        ]);
         if (seq !== searchSeq.current) return; // stale response
         setResults(listRes.results);
         setTotal(listRes.total);
@@ -135,6 +139,26 @@ export default function App() {
     setCanSearchArea(false);
     runSearch({ ...state, useMapArea: true });
   };
+
+  // Pins follow the viewport, independently of the list. Panning re-fetches
+  // only the map layer — debounced, because moveend fires continuously during
+  // a drag — so the payload stays proportional to what's on screen rather than
+  // to the whole register.
+  const pinSeq = useRef(0);
+  const pinTimer = useRef<number | null>(null);
+  const refreshPins = useCallback((s: SearchState) => {
+    if (pinTimer.current != null) window.clearTimeout(pinTimer.current);
+    pinTimer.current = window.setTimeout(async () => {
+      const seq = ++pinSeq.current;
+      try {
+        const geo = await api.mapGeoJson(mapParams(s, bboxRef.current, nearRef.current));
+        if (seq === pinSeq.current) setMapData(geo);
+      } catch {
+        // A failed pin refresh leaves the previous pins up; the list is
+        // unaffected and the next move retries.
+      }
+    }, 350);
+  }, []);
 
   const refreshMe = useCallback(async (): Promise<Me> => {
     try {
@@ -530,7 +554,10 @@ export default function App() {
             onSelect={select}
             onBoundsChange={(bbox) => {
               bboxRef.current = bbox;
+              // "Limit to current map area" re-runs the whole search; otherwise
+              // just the pins follow the viewport.
               if (state.useMapArea) runSearch(state);
+              else refreshPins(state);
             }}
             onUserMove={() => {
               if (!state.useMapArea) setCanSearchArea(true);
@@ -541,6 +568,14 @@ export default function App() {
             <button type="button" className="search-area-btn" onClick={searchThisArea}>
               Search this area
             </button>
+          )}
+          {/* A map that quietly stops drawing pins reads as "there's nothing
+              else here". Say when it's a subset and what to do about it. */}
+          {mapData?.truncated && (
+            <p className="map-truncated" role="status">
+              Showing {mapData.features.length.toLocaleString()} of{" "}
+              {mapData.matched?.toLocaleString()} in view — zoom in to see the rest
+            </p>
           )}
           <div className={`legend ${legendOpen ? "legend-open" : ""}`} aria-label="Map legend">
             <button

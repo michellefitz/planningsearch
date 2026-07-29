@@ -87,6 +87,25 @@ export function looksLikeReference(q: string): boolean {
   return (s.match(/\d/g)?.length ?? 0) >= 2;
 }
 
+/**
+ * A full or partial Eircode — "W23 Y2W8", "W23Y2W8", or a bare routing key
+ * ("W23", "D15", "D6W").
+ *
+ * These need the same protection as a planning reference. An Eircode
+ * identifies one property, so a trigram "close match" is always a *different*
+ * address: "W23 Y2W8" fuzzy-matched a D15 property, and the bare key "W23"
+ * false-hit "FW23B"-style references. Someone typing an Eircode wants that
+ * property or a clear nothing.
+ */
+export function looksLikeEircode(q: string): boolean {
+  const s = q.trim().toUpperCase().replace(/\s+/g, "");
+  if (!/^[A-Z0-9]+$/.test(s)) return false;
+  const routingKey = /^(D6W|[A-Z]\d{2})/;
+  if (!routingKey.test(s)) return false;
+  // Routing key alone, or the full 7-character code.
+  return s.length === 3 || s.length === 7;
+}
+
 /** Trigram OR-query for the typo-tolerant fallback (PRD F1.3). */
 export function buildTrigramQuery(q: string): string | null {
   const compact = q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -187,7 +206,10 @@ export function search(
   db: Database.Database,
   f: SearchFilters
 ): { results: SearchResultRow[]; total: number; fuzzy: boolean } {
-  const limit = Math.min(Math.max(f.limit ?? 25, 1), 200);
+  // 200 is the ceiling for list pages; the map layer asks for more because a
+  // pin is a fraction of a result row and a 200-pin map looks empty over a
+  // city. MAP_FEATURE_LIMIT is the real bound on that path.
+  const limit = Math.min(Math.max(f.limit ?? 25, 1), 2000);
   const page = Math.max(f.page ?? 1, 1);
   const distanceMode = f.sort === "distance" && !!f.near;
   // In distance mode, pull the whole (bbox-limited) set and rank by distance
@@ -206,10 +228,10 @@ export function search(
     if (ftsQuery) {
       ({ rows, total } = runFtsSearch(db, "fts_apps", ftsQuery, where, fetchLimit, offset, sort));
     }
-    if (rows.length === 0 && !looksLikeReference(f.q)) {
+    if (rows.length === 0 && !looksLikeReference(f.q) && !looksLikeEircode(f.q)) {
       // No exact/prefix hits: fall back to trigram matching so typos still land.
-      // Not for reference-shaped queries though — "close matches" on a planning
-      // reference means a different property, which is worse than no answer.
+      // Not for reference- or Eircode-shaped queries though — a "close match" on
+      // either means a different property, which is worse than no answer.
       const triQuery = buildTrigramQuery(f.q);
       if (triQuery) {
         ({ rows, total } = runFtsSearch(db, "fts_tri", triQuery, where, fetchLimit, offset, sort));

@@ -7,12 +7,17 @@ taxonomy and report upgrades shipped. Fixed same evening: GRANT/REFUSE
 CERTIFICATE OF EXEMPTION misclassifying as granted (169 apps). New findings,
 by urgency:
 
-- **Map payload regression (P0).** `/api/map/applications` ignores `limit`
-  and now returns all ~94k geocoded rows — 22.7 MB on first load and on
-  every search (the old 5-year window was acting as an accidental cap).
-  Hostile on mobile. Fix: viewport/zoom-bounded response, server-side
-  clustering, or vector tiles (client clustering exists but only after the
-  full download).
+- **Map payload regression (fixed 2026-07-28).** `/api/map/applications`
+  ignored `limit` and returned all ~94k geocoded rows (~25 MB) on first load
+  and every search. Now capped at `MAP_FEATURE_LIMIT` (2,000) in both
+  backends, and the client sends its **viewport bbox on every pin fetch**
+  regardless of the "Limit to current map area" checkbox — that checkbox
+  scopes the list, not the pins. Panning re-fetches only the map layer,
+  debounced 350 ms. The response carries `matched`/`truncated` (valid GeoJSON
+  foreign members) and the UI shows "Showing N of M in view — zoom in to see
+  the rest", because a map that silently stops drawing reads as "there's
+  nothing else here". ~25 MB → ~0.5 MB. Still open if density demands it:
+  server-side clustering or vector tiles.
 - **Per-council coverage floors, unstated (P0 for trust).** The national
   feed's depth is uneven: Fingal/DLR/South Dublin reach 2012, **Kildare
   starts 2017, Dublin City 2019**. Nothing states this, so a zero-result
@@ -48,10 +53,13 @@ by urgency:
   old precedents in keyword search. Run a one-off bulk backfill (repeated
   invocations or a longer-running worker), and add a "not yet harvested"
   hint where applicant/agent render as "—".
-- **Search haystack (P2).** Add agent_name + eircode to haystackOf once
-  harvested (applicant already there); extend the no-fuzzy guard to
-  Eircode-shaped queries now (one regex — "W23 Y2W8" currently fuzzy-matches
-  a D15 address; "W23" alone false-hits FW23B references).
+- **Search haystack (P2, partly done).** Still to do: add agent_name +
+  eircode to haystackOf once harvested (applicant already there). **Done
+  2026-07-28:** the no-fuzzy guard now covers Eircode-shaped queries
+  (`looksLikeEircode` — full codes spaced or not, plus bare routing keys
+  including D6W), so "W23 Y2W8" no longer fuzzy-matches a D15 address.
+  "FW23B" is correctly caught by the reference guard rather than the Eircode
+  one, so it keeps its protection too.
 - **Export (P2, architect's #3).** CSV of search results and saved lists;
   PDF of the report with a methodology/appendix block (sources, dates
   checked, radius); reuse the detail sheet's print provenance footer on the

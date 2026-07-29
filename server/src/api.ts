@@ -128,6 +128,15 @@ function publicApplication(row: Record<string, unknown>) {
   };
 }
 
+/**
+ * Map pins returned per request. The register now goes back to 2012, so an
+ * uncapped response was ~94k features and 22.7 MB on first load and on every
+ * search — the old five-year window had been acting as an accidental cap. The
+ * client sends the viewport bbox, so this is a ceiling on a dense area rather
+ * than the normal case.
+ */
+const MAP_FEATURE_LIMIT = 2000;
+
 const REFUSAL_SUMMARY_CACHE = new Map<number, string>();
 const APPEAL_SUMMARY_CACHE = new Map<number, { summary: string; based_on_document: string | null }>();
 const DECISION_SUMMARY_CACHE = new Map<number, DecisionExtract & { source_document: string | null }>();
@@ -222,26 +231,27 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
   // GeoJSON for the map layer; capped and bbox-filtered (PRD F2.1).
   app.get("/api/map/applications", (req) => {
     const filters = filtersFromQuery(req.query as Record<string, unknown>);
-    filters.limit = 5000;
+    filters.limit = MAP_FEATURE_LIMIT;
     filters.page = 1;
-    const { results } = search(db, filters);
-    return {
-      type: "FeatureCollection",
-      features: results
-        .filter((r) => r.lat != null && r.lng != null)
-        .map((r) => ({
-          type: "Feature",
-          geometry: { type: "Point", coordinates: [r.lng, r.lat] },
-          properties: {
-            id: r.id,
-            reference: r.planning_reference,
-            status: r.status,
-            authority_id: r.authority_id,
-            address: r.address_text,
-            is_domestic_guess: Boolean(r.is_domestic_guess),
-          },
-        })),
-    };
+    const { results, total } = search(db, filters);
+    const features = results
+      .filter((r) => r.lat != null && r.lng != null)
+      .map((r) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [r.lng, r.lat] },
+        properties: {
+          id: r.id,
+          reference: r.planning_reference,
+          status: r.status,
+          authority_id: r.authority_id,
+          address: r.address_text,
+          is_domestic_guess: Boolean(r.is_domestic_guess),
+        },
+      }));
+    // Foreign members on a FeatureCollection are valid GeoJSON and MapLibre
+    // ignores them — but the UI needs to know it's showing a subset, because a
+    // silently truncated map reads as "this is everything here".
+    return { type: "FeatureCollection", features, matched: total, truncated: total > features.length };
   });
 
   // On-demand scanned-file listing (Kildare/eplanning for now): fetches the

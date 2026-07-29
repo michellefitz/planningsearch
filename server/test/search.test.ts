@@ -3,7 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { openDb, upsertApplication, type ApplicationRecord } from "../src/db.js";
-import { aggregateApplications, buildFtsQuery, buildTrigramQuery, search, suggest } from "../src/search.js";
+import {
+  aggregateApplications,
+  buildFtsQuery,
+  buildTrigramQuery,
+  looksLikeEircode,
+  search,
+  suggest,
+} from "../src/search.js";
 import type Database from "better-sqlite3";
 
 const base: ApplicationRecord = {
@@ -236,5 +243,27 @@ describe("fuzzy fallback is suppressed for reference-shaped queries", () => {
   it("still falls back for prose queries", () => {
     const { fuzzy } = search(db, { q: "extensoin" });
     expect(fuzzy).toBe(true);
+  });
+});
+
+describe("Eircode-shaped queries never fall back to fuzzy", () => {
+  // An Eircode identifies one property, so a "close match" is always a
+  // different address — "W23 Y2W8" was fuzzy-matching a D15 property.
+  it("recognises full codes, spaced or not, and bare routing keys", () => {
+    for (const q of ["W23 Y2W8", "W23Y2W8", "D15XY12", "W23", "D6W", "d6w xy12"]) {
+      expect(looksLikeEircode(q)).toBe(true);
+    }
+  });
+
+  it("does not mistake references or place names for Eircodes", () => {
+    for (const q of ["FW23B", "3456/25", "Celbridge", "Mount Prospect Drive", "W2"]) {
+      expect(looksLikeEircode(q)).toBe(false);
+    }
+  });
+
+  it("returns nothing rather than a close-looking different address", () => {
+    const { results, fuzzy } = search(db, { q: "W23 Y2W8" });
+    expect(fuzzy).toBe(false);
+    expect(results).toHaveLength(0);
   });
 });
