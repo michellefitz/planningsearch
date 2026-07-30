@@ -292,9 +292,26 @@ export function guessIsDomestic(description: string | null | undefined): boolean
   return score >= 2;
 }
 
+/**
+ * A unit noun, optionally behind a few qualifying words. Descriptions rarely
+ * put the noun straight after the count — "6 No. M1 type houses", "10 No.
+ * previously approved house type G" — so a short run of words is allowed, and
+ * the run is handed back for the caller to vet.
+ */
 const UNIT_NOUN =
-  /^(?:new\s+|proposed\s+|residential\s+)*(dwelling|house|home|apartment|duplex|unit|flat|maisonette|bungalow|townhouse|terraced house|semi-detached)/i;
-const UNIT_COUNT = /(\d{1,4})\s*(?:no\.?\s*|nr\.?\s*|x\s*)?/g;
+  /^((?:[\w-]+\s+){0,4}?)(dwelling|house|home|apartment|duplex|unit|flat|maisonette|bungalow|townhouse|terraced house|semi-detached)/i;
+/**
+ * Words which mean the number describes the unit rather than counting them:
+ * "3 bedroom houses" is one house type, "10 metres from the house" is a
+ * distance. Allowing a gap before the noun is only safe with this guard.
+ */
+const UNIT_ATTRIBUTE =
+  /\b(?:bed|beds|bedroom|bedrooms|storey|storeys|story|stories|space|spaces|metre|metres|meter|meters|m2|sqm|sq|square|person|persons|bay|bays|level|levels)\b/i;
+// Case-insensitive: Irish planning descriptions overwhelmingly write "10 No."
+// with a capital N, and without the flag the abbreviation went unrecognised —
+// the count then ran into "No. houses", which is not a unit noun, and the
+// whole scheme scored null.
+const UNIT_COUNT = /(\d{1,4})\s*(?:no\.?\s*|nr\.?\s*|x\s*)?/gi;
 
 /**
  * Best-effort residential unit count from the development description, used
@@ -315,8 +332,12 @@ export function extractResidentialUnits(description: string | null | undefined):
   while ((m = UNIT_COUNT.exec(text))) {
     const n = Number(m[1]);
     if (!n || n > 2000) continue;
-    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 40);
-    if (!UNIT_NOUN.test(after)) continue;
+    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 60);
+    const noun = UNIT_NOUN.exec(after);
+    if (!noun) continue;
+    // Whatever sits between the number and the noun decides whether the number
+    // counts units or describes them.
+    if (UNIT_ATTRIBUTE.test(noun[1])) continue;
     const before = text.slice(Math.max(0, m.index - 30), m.index).toLowerCase();
     if (/demoli|remov|replace existing|existing/.test(before)) continue;
     if (n > max) max = n;

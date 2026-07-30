@@ -250,4 +250,40 @@ describe("extractResidentialUnits", () => {
     expect(extractResidentialUnits(null)).toBeNull();
     expect(extractResidentialUnits("")).toBeNull();
   });
+
+  it('reads "No." with a capital N', () => {
+    // The count regex was case-sensitive, so the abbreviation Irish
+    // descriptions actually use went unrecognised: the count ran into
+    // "No. houses", which is not a unit noun, and the scheme scored null.
+    expect(extractResidentialUnits("10 No. houses")).toBe(10);
+    expect(extractResidentialUnits("10 No houses")).toBe(10);
+    expect(extractResidentialUnits("12 No. Apartments")).toBe(12);
+    expect(extractResidentialUnits("4 NO. DWELLINGS")).toBe(4);
+  });
+
+  it("sees the unit noun behind house-type qualifiers", () => {
+    // Real Kildare amendment (19833), which scored null: multi-unit schemes
+    // name house types between the count and the noun. 10 approved houses are
+    // replaced by 6 + 4 of two other types, so 10 is the scheme's size.
+    expect(
+      extractResidentialUnits(
+        "the replacement of 10 No. previously approved house type G (three bedroom, two " +
+          "storey houses) at 45-54 The Avenue, with 6 No. M1 type houses (three bedroom, two " +
+          "storey houses) and 4 No. D and D1 type houses (four bedroom, two storey houses)."
+      )
+    ).toBe(10);
+    expect(extractResidentialUnits("6 No. M1 type houses")).toBe(6);
+    expect(extractResidentialUnits("block of 4 storeys containing 12 apartments")).toBe(12);
+  });
+
+  it("still refuses numbers that describe a unit rather than count them", () => {
+    // The guard that makes the qualifier gap above safe. Each of these has a
+    // unit noun within a few words of a number, and none of them is a count.
+    expect(extractResidentialUnits("3 bedroom houses")).toBeNull();
+    expect(extractResidentialUnits("a 4 bed dwelling")).toBeNull();
+    expect(extractResidentialUnits("2 storey house")).toBeNull();
+    expect(extractResidentialUnits("dwelling 10 metres from the house")).toBeNull();
+    expect(extractResidentialUnits("5 no. car parking spaces")).toBeNull();
+    expect(extractResidentialUnits("10 North Street")).toBeNull();
+  });
 });

@@ -1125,8 +1125,17 @@ async function fetchEplanningRelated(sourceUrl) {
   }
 }
 
-async function callHaiku(systemPrompt, userMsg) {
-  if (!ANTHROPIC_API_KEY) return null;
+/**
+ * Every failure here returns null, which is right for callers (a missing
+ * summary must never break a sheet) but leaves "the AI isn't generating"
+ * indistinguishable from a timeout, a rate limit and a refusal. Pass `trace`
+ * to record which one it was; /enrich?debug=1 surfaces it.
+ */
+async function callHaiku(systemPrompt, userMsg, trace) {
+  if (!ANTHROPIC_API_KEY) {
+    trace?.push({ step: "haiku", error: "ANTHROPIC_API_KEY not set" });
+    return null;
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
@@ -1145,10 +1154,26 @@ async function callHaiku(systemPrompt, userMsg) {
         messages: [{ role: "user", content: userMsg }],
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      trace?.push({ step: "haiku", status: res.status, error: (await res.text()).slice(0, 300) });
+      return null;
+    }
     const data = await res.json();
-    return data.content?.find((b) => b.type === "text")?.text?.trim() || null;
-  } catch {
+    const text = data.content?.find((b) => b.type === "text")?.text?.trim() || null;
+    trace?.push({
+      step: "haiku",
+      status: res.status,
+      stop_reason: data.stop_reason ?? null,
+      reply: text,
+    });
+    return text;
+  } catch (err) {
+    // An abort here is the 10s timeout, which is worth telling apart from a
+    // network failure — long descriptions are the ones that hit it.
+    trace?.push({
+      step: "haiku",
+      error: err?.name === "AbortError" ? "timed out after 10s" : String(err?.message ?? err),
+    });
     return null;
   } finally {
     clearTimeout(timer);
@@ -1392,8 +1417,11 @@ async function fetchAppealDocumentBase64(url, maxBytes = 12_000_000, trace) {
 
 const APPEAL_SUMMARY_CACHE = new Map();
 
-async function summariseDescription(description, applicationType) {
-  if (!description) return null;
+async function summariseDescription(description, applicationType, trace) {
+  if (!description) {
+    trace?.push({ step: "summarise", error: "no description to summarise" });
+    return null;
+  }
   if (AI_SUMMARY_CACHE.has(description)) return AI_SUMMARY_CACHE.get(description);
   const systemPrompt =
     "You summarise Irish planning applications in one short sentence of plain English. " +
@@ -1406,7 +1434,12 @@ async function summariseDescription(description, applicationType) {
   const userMsg = applicationType
     ? `Application type: ${applicationType}\nDescription: ${description}`
     : description;
-  const text = isUsableSummary(await callHaiku(systemPrompt, userMsg));
+  const raw = await callHaiku(systemPrompt, userMsg, trace);
+  const text = isUsableSummary(raw);
+  // The guard drops INSUFFICIENT and anything that addresses the reader. That
+  // is a different failure from the model never answering, and used to look
+  // identical from outside.
+  if (raw && !text) trace?.push({ step: "summarise", error: "reply rejected by isUsableSummary" });
   if (text) AI_SUMMARY_CACHE.set(description, text);
   return text;
 }
@@ -3019,6 +3052,7 @@ export default async function handler(req, res) {
     let description = app.description ?? null;
     let parties = { applicant: null, agent: null };
     const debug = p.get("debug") === "1";
+    const summaryTrace = debug ? [] : undefined;
     // Summarise in parallel only for non-agile councils, whose description we
     // already hold in full. Agile councils get a fuller description from the
     // portal, so we summarise after that fetch (below) — otherwise the summary
@@ -3031,7 +3065,7 @@ export default async function handler(req, res) {
       !isAgile && !(app.applicant_name && app.agent_name) && app.source_url
         ? fetchEplanningParties(app.source_url)
         : null,
-      isAgile ? null : summariseDescription(description, app.application_type),
+      isAgile ? null : summariseDescription(description, app.application_type, summaryTrace),
     ]);
     // The council portal reflects the true current outcome (e.g. "Invalid",
     // "Grant Permission") long before the national dataset does. The portal
@@ -3083,10 +3117,13 @@ export default async function handler(req, res) {
     const descriptionImproved = description !== (app.description ?? null);
     const aiSummary =
       descriptionImproved || (isAgile && !quickSummary)
-        ? (await summariseDescription(description, app.application_type)) ?? quickSummary
+        ? (await summariseDescription(description, app.application_type, summaryTrace)) ??
+          quickSummary
         : quickSummary;
     return send(res, 200, {
       ai_summary: aiSummary,
+      // debug=1 only: why a null summary is null.
+      ...(summaryTrace ? { summary_trace: summaryTrace, description_len: description?.length ?? 0 } : {}),
       applicant_name: app.applicant_name ?? parties.applicant,
       agent_name: app.agent_name ?? parties.agent,
       description,
