@@ -81,9 +81,16 @@ export default function MapView({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const loadedRef = useRef(false);
-  // Kept in a ref so the mount-time moveend handler always calls the latest.
+  // Kept in refs so the mount-time moveend handlers always call the latest.
+  // onBoundsChange especially: the first-render closure holds the initial
+  // (unfiltered) search state, so calling it stale refetched pins with every
+  // filter dropped on each pan/zoom.
   const onUserMoveRef = useRef(onUserMove);
   onUserMoveRef.current = onUserMove;
+  const onBoundsChangeRef = useRef(onBoundsChange);
+  onBoundsChangeRef.current = onBoundsChange;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
   const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false, flood: false });
   const [layersOpen, setLayersOpen] = useState(false);
@@ -387,7 +394,7 @@ export default function MapView({
       });
       map.on("click", "pins", (e) => {
         const f = e.features?.[0];
-        if (f?.properties?.id != null) onSelect(Number(f.properties.id));
+        if (f?.properties?.id != null) onSelectRef.current(Number(f.properties.id));
       });
       for (const layer of ["pins", "clusters"]) {
         map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
@@ -404,7 +411,7 @@ export default function MapView({
       bboxRef.current = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
       zoomRef.current = map.getZoom();
       setMapZoom(map.getZoom());
-      onBoundsChange(bboxRef.current);
+      onBoundsChangeRef.current(bboxRef.current);
     };
     map.on("moveend", emitBounds);
     // A user gesture (pan/zoom) carries an originalEvent; programmatic moves
