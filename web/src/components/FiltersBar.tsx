@@ -1,4 +1,4 @@
-import { DEFAULT_STATUSES, fmtDate, type Meta, type SearchState } from "../api";
+import { DEFAULT_STATUSES, fmtDate, MIN_UNITS_OPTIONS, type Meta, type SearchState } from "../api";
 import { STATUS_STYLE } from "./MapView";
 import MultiSelect from "./MultiSelect";
 
@@ -44,6 +44,10 @@ function appliedFilters(meta: Meta | null, s: SearchState, onChange: (n: SearchS
           ? `From ${fmtDate(s.receivedFrom)}`
           : `Until ${fmtDate(s.receivedTo)}`;
     out.push({ key: "dates", label, remove: () => onChange({ ...s, receivedFrom: "", receivedTo: "" }) });
+  }
+  if (s.minUnits) {
+    const label = MIN_UNITS_OPTIONS.find((o) => o.value === s.minUnits)?.label ?? `${s.minUnits}+ homes`;
+    out.push({ key: "minunits", label, remove: () => onChange({ ...s, minUnits: 0 }) });
   }
   if (s.domesticOnly) out.push({ key: "domestic", label: "Domestic only", remove: () => onChange({ ...s, domesticOnly: false }) });
   if (s.appealedOnly) out.push({ key: "appealed", label: "Appealed", remove: () => onChange({ ...s, appealedOnly: false }) });
@@ -123,6 +127,23 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
         </div>
       </fieldset>
       <fieldset>
+        <legend>Development size</legend>
+        <div className="chip-row">
+          {MIN_UNITS_OPTIONS.map((o) => (
+            <label key={o.value} className={`chip ${state.minUnits === o.value ? "chip-on" : ""}`}>
+              <input
+                type="radio"
+                name="min-units"
+                checked={state.minUnits === o.value}
+                onChange={() => onChange({ ...state, minUnits: o.value })}
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+        <em className="hint">Residential unit counts come from the register and the application wording — small schemes without a stated count are excluded when a size is set.</em>
+      </fieldset>
+      <fieldset>
         <legend>More</legend>
         <label className="toggle-row">
           <input
@@ -198,6 +219,7 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
                 commencedOnly: false,
                 receivedFrom: "",
                 receivedTo: "",
+                minUnits: 0,
                 useMapArea: false,
               })
             }

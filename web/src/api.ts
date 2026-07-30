@@ -39,6 +39,8 @@ export interface AppSummary {
   lng: number | null;
   distance_km?: number;
   match_quality?: "exact" | "fuzzy";
+  /** Residential unit count — feed field or extracted from the description. */
+  num_residential_units?: number | null;
   portal_url: string | null;
   commencement_date?: string | null;
   completion_date?: string | null;
@@ -144,9 +146,19 @@ export interface SearchState {
   commencedOnly: boolean;
   receivedFrom: string;
   receivedTo: string;
+  /** Minimum residential units ("development size"); 0 = any. */
+  minUnits: number;
   useMapArea: boolean;
   sort: string;
 }
+
+/** Options for the development-size filter, smallest to largest. */
+export const MIN_UNITS_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 0, label: "Any size" },
+  { value: 10, label: "10+ homes" },
+  { value: 50, label: "50+ homes" },
+  { value: 100, label: "100+ homes" },
+];
 
 // Canonical status keys, kept in step with STATUS_STYLE (MapView). "invalid"
 // and "incomplete" are noise for most users (applications that never proceeded),
@@ -177,6 +189,7 @@ export const EMPTY_SEARCH: SearchState = {
   commencedOnly: false,
   receivedFrom: "",
   receivedTo: "",
+  minUnits: 0,
   useMapArea: false,
   // Relevance by default: with a keyword it means best-match-first, and with no
   // keyword both backends fall through to newest-first. Defaulting to "received"
@@ -199,6 +212,7 @@ export function searchParams(
   if (s.commencedOnly) p.set("commenced", "1");
   if (s.receivedFrom) p.set("receivedFrom", s.receivedFrom);
   if (s.receivedTo) p.set("receivedTo", s.receivedTo);
+  if (s.minUnits) p.set("minUnits", String(s.minUnits));
   if (s.useMapArea && bbox) p.set("bbox", bbox.join(","));
   if (near) {
     p.set("lat", String(near.lat));

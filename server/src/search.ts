@@ -14,6 +14,8 @@ export interface SearchFilters {
   receivedTo?: string;
   decisionFrom?: string;
   decisionTo?: string;
+  /** Only developments of at least this many residential units. */
+  minUnits?: number;
   /** [west, south, east, north] — "search this area" (PRD F1.4). */
   bbox?: [number, number, number, number];
   /** Centre for distance sort / "near me". */
@@ -36,6 +38,7 @@ export interface SearchResultRow {
   decision_date: string | null;
   appeal_reference: string | null;
   address_text: string | null;
+  num_residential_units: number | null;
   lat: number | null;
   lng: number | null;
   distance_km?: number;
@@ -182,6 +185,10 @@ function buildWhere(f: SearchFilters, alias = "a"): WhereClause {
     params.dt = f.decisionTo;
     clauses.push(`${alias}.decision_date <= @dt`);
   }
+  if (f.minUnits) {
+    params.mu = f.minUnits;
+    clauses.push(`${alias}.num_residential_units >= @mu`);
+  }
   if (f.bbox) {
     const [w, s, e, n] = f.bbox;
     Object.assign(params, { bw: w, bs: s, be: e, bn: n });
@@ -193,8 +200,8 @@ function buildWhere(f: SearchFilters, alias = "a"): WhereClause {
 const RESULT_COLUMNS = `
   a.id, a.authority_id, a.planning_reference, a.description, a.status,
   a.application_type, a.is_domestic_guess, a.received_date, a.decision,
-  a.decision_date, a.appeal_reference, a.address_text, a.lat, a.lng,
-  a.commencement_date, a.completion_date
+  a.decision_date, a.appeal_reference, a.address_text, a.num_residential_units,
+  a.lat, a.lng, a.commencement_date, a.completion_date
 `;
 
 // When sorting by distance we fetch a wide candidate pool (bbox-bounded) and

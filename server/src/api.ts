@@ -81,6 +81,7 @@ function filtersFromQuery(q: Record<string, unknown>): SearchFilters {
     receivedTo: typeof q.receivedTo === "string" ? q.receivedTo : undefined,
     decisionFrom: typeof q.decisionFrom === "string" ? q.decisionFrom : undefined,
     decisionTo: typeof q.decisionTo === "string" ? q.decisionTo : undefined,
+    minUnits: num(q.minUnits),
     bbox: parseBbox(q.bbox),
     near: lat !== undefined && lng !== undefined ? { lat, lng } : undefined,
     sort: ["relevance", "received", "decision", "distance"].includes(String(q.sort))

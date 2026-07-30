@@ -1658,6 +1658,7 @@ function applyFilters(rows, p) {
   const commenced = p.get("commenced") === "1" || p.get("commenced") === "true";
   const rf = p.get("receivedFrom"), rt = p.get("receivedTo");
   const df = p.get("decisionFrom"), dt = p.get("decisionTo");
+  const minUnits = Number(p.get("minUnits")) || 0;
   const bbox = parseBbox(p.get("bbox"));
   return rows.filter((a) => {
     if (auths && !auths.includes(a.authority_id)) return false;
@@ -1671,6 +1672,7 @@ function applyFilters(rows, p) {
     if (rt && (!a.received_date || a.received_date > rt)) return false;
     if (df && (!a.decision_date || a.decision_date < df)) return false;
     if (dt && (!a.decision_date || a.decision_date > dt)) return false;
+    if (minUnits && !(a.num_residential_units >= minUnits)) return false;
     if (bbox) {
       const [w, s, e, n] = bbox;
       if (a.lng == null || a.lat == null) return false;

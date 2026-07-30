@@ -2357,6 +2357,9 @@ a.pill:hover {
 .pill-appeal {
   --pc: #ea580c;
 }
+.pill-units {
+  --pc: #7c3aed;
+}
 .pill-commenced {
   --pc: #166534;
 }

@@ -1213,6 +1213,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             appealUrl={d.appeal_url}
             commencementDate={d.commencement_date}
             completionDate={d.completion_date}
+            numUnits={d.num_residential_units}
           />
         </div>
         <div className="sheet-actions">

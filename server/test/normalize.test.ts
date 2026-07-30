@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveApplicationType,
+  extractResidentialUnits,
   guessIsDomestic,
   normalizeApplicationType,
   normalizeStatus,
@@ -220,5 +221,33 @@ describe("guessIsDomestic", () => {
 
   it("handles empty input", () => {
     expect(guessIsDomestic(null)).toBe(false);
+  });
+});
+
+describe("extractResidentialUnits", () => {
+  it("counts units introduced with no./nr./x notation", () => {
+    expect(extractResidentialUnits("Construction of 48 no. residential units and a creche")).toBe(48);
+    expect(extractResidentialUnits("Demolition of shed and erection of 12 nr. houses")).toBe(12);
+    expect(extractResidentialUnits("Permission for 6 x apartments over ground floor retail")).toBe(6);
+  });
+
+  it("takes the stated total over the breakdown", () => {
+    expect(
+      extractResidentialUnits("50 residential units comprising 30 houses and 20 apartments")
+    ).toBe(50);
+  });
+
+  it("ignores bedrooms, storeys and demolition/existing clauses", () => {
+    expect(extractResidentialUnits("Construction of a 4 bedroom two storey dwelling")).toBeNull();
+    expect(extractResidentialUnits("Demolition of 3 houses and all associated site works")).toBeNull();
+    expect(
+      extractResidentialUnits("Demolition of 2 existing dwellings and construction of 9 no. dwellings")
+    ).toBe(9);
+  });
+
+  it("returns null when no unit count is stated", () => {
+    expect(extractResidentialUnits("Single storey extension to rear")).toBeNull();
+    expect(extractResidentialUnits(null)).toBeNull();
+    expect(extractResidentialUnits("")).toBeNull();
   });
 });

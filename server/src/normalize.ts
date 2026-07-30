@@ -292,6 +292,38 @@ export function guessIsDomestic(description: string | null | undefined): boolean
   return score >= 2;
 }
 
+const UNIT_NOUN =
+  /^(?:new\s+|proposed\s+|residential\s+)*(dwelling|house|home|apartment|duplex|unit|flat|maisonette|bungalow|townhouse|terraced house|semi-detached)/i;
+const UNIT_COUNT = /(\d{1,4})\s*(?:no\.?\s*|nr\.?\s*|x\s*)?/g;
+
+/**
+ * Best-effort residential unit count from the development description, used
+ * when the feed's NumResidentialUnits is blank (it covers no Fingal/DLR rows
+ * at all). A number counts when a unit noun follows it directly — optionally
+ * via "no."/"nr."/"x" — so "3 bedroom"/"2 storey" never match. Counts inside
+ * demolition/existing clauses are skipped. Descriptions state totals alongside
+ * breakdowns ("50 units comprising 30 houses and 20 apartments"): take the max.
+ * Where the feed disagrees with this extraction the feed is usually right
+ * (amendments cite the parent scheme's numbers), so callers must prefer it.
+ */
+export function extractResidentialUnits(description: string | null | undefined): number | null {
+  if (!description) return null;
+  const text = `${description}`;
+  let max = 0;
+  let m: RegExpExecArray | null;
+  UNIT_COUNT.lastIndex = 0;
+  while ((m = UNIT_COUNT.exec(text))) {
+    const n = Number(m[1]);
+    if (!n || n > 2000) continue;
+    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 40);
+    if (!UNIT_NOUN.test(after)) continue;
+    const before = text.slice(Math.max(0, m.index - 30), m.index).toLowerCase();
+    if (/demoli|remov|replace existing|existing/.test(before)) continue;
+    if (n > max) max = n;
+  }
+  return max || null;
+}
+
 /**
  * Jargon glossary served to the front-end for inline expansion (PRD F3.3).
  */

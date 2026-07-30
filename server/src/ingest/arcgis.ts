@@ -16,6 +16,7 @@ import {
 } from "../config/authorities.js";
 import {
   deriveApplicationType,
+  extractResidentialUnits,
   guessIsDomestic,
   normalizeStatus,
 } from "../normalize.js";
@@ -207,7 +208,10 @@ export function featureToRecord(
       extractEircode(str(attrs, FIELD_MAP.eircode)) ??
       extractEircode(str(attrs, FIELD_MAP.address)) ??
       extractEircode(description),
-    num_residential_units: num(attrs, FIELD_MAP.numResidentialUnits),
+    // The feed's field wins when present — where they disagree it's usually an
+    // amendment whose description cites the parent scheme's unit count.
+    num_residential_units:
+      num(attrs, FIELD_MAP.numResidentialUnits) ?? extractResidentialUnits(description),
     floor_area_sqm: num(attrs, FIELD_MAP.floorArea),
     site_area_ha: num(attrs, FIELD_MAP.siteArea),
     expiry_date: isoDate(attrs, FIELD_MAP.expiryDate),
