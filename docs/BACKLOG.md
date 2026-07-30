@@ -1,5 +1,29 @@
 # Backlog
 
+## Shipped 2026-07-30 — ACP direct cases + developments by size (PR #10)
+
+- **An Coimisiún Pleanála direct applications** now ingest at export from the
+  commission's own ArcGIS service (`Cases_2016_Onwards`, CC-BY 4.0) under the
+  `acp` authority: 470 SHD/SID/substitute-consent cases for the five covered
+  authorities, with centroids from the case polygons and unit counts +
+  commencement dates joined from the DHLGH SHD tracker (528 joinable rows).
+  These are most of the 100+-home schemes of 2017–2022 — previously invisible.
+- **Development size lens**: `num_residential_units` is now populated for
+  ~10k council apps (feed field, else description extraction, retried after
+  agile enrichment), `minUnits` filter in both backends, "Development size"
+  filter (10+/50+/100+ homes) in FiltersBar, size pill on cards/detail sheet.
+- Still open from this work:
+  - ACP applicant names only exist per-case — scraping needs a new
+    `case-sub`/`case-summary` regex in abp.ts (current three patterns match
+    zero fields on today's pleanala.ie markup; document links still parse).
+  - ACP data is baked at build; weekly decided/new lists
+    (`pleanala.ie/en-ie/lists/cases?list=D|N`) are the incremental hook if we
+    want fresher-than-nightly.
+  - A dedicated "large developments near me" surface (map lens/landing page)
+    on top of the filter.
+  - DCC LRD register gap (below) is NOT fixed by this — LRD applications are
+    council-decided; only their appeals reach the ACP service.
+
 ## Round-2 persona review (2026-07-28 evening) — post-data-deepening
 
 Same three personas re-ran after the 2012+ backfill, harvest, type/status
