@@ -109,6 +109,48 @@ export default function MapView({
     mapHoverIdRef.current = id;
   };
 
+  // Latest props, readable from the map's load handler — which closes over the
+  // mount-time values (the init effect runs once) and so can't see them.
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const polygonsRef = useRef(polygons);
+  polygonsRef.current = polygons;
+  const prevState = useRef<{ selected: number | null; hovered: number | null }>({
+    selected: null,
+    hovered: null,
+  });
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+  const hoveredIdRef = useRef(hoveredId);
+  hoveredIdRef.current = hoveredId;
+
+  /**
+   * Mirror hover/selection onto both sources, so a list hover or an open sheet
+   * outlines the site the same way hovering the pin does. The boundary layers
+   * paint at zero opacity until their feature carries this state.
+   *
+   * Called from the selection effect and again from the map's load handler: an
+   * application can already be selected before the style finishes loading (a
+   * shared /application/… URL selects during the first render), and state set
+   * before the sources exist is dropped. The effect can't cover that — it is
+   * keyed on the ids, which don't change again afterwards, so the boundary and
+   * the selected pin would stay invisible for the whole session.
+   */
+  const applyActiveState = (map: maplibregl.Map) => {
+    const { selected, hovered } = prevState.current;
+    const nextSelected = selectedIdRef.current;
+    const nextHovered = hoveredIdRef.current;
+    for (const source of ["apps", "site-polygons"]) {
+      if (selected != null) map.setFeatureState({ source, id: selected }, { selected: false });
+      if (hovered != null) map.setFeatureState({ source, id: hovered }, { hovered: false });
+      if (nextSelected != null) map.setFeatureState({ source, id: nextSelected }, { selected: true });
+      if (nextHovered != null) map.setFeatureState({ source, id: nextHovered }, { hovered: true });
+    }
+    prevState.current = { selected: nextSelected, hovered: nextHovered };
+  };
+  const applyActiveStateRef = useRef(applyActiveState);
+  applyActiveStateRef.current = applyActiveState;
+
   const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false, flood: false });
   const [layersOpen, setLayersOpen] = useState(false);
   const [mapZoom, setMapZoom] = useState(7);
@@ -462,7 +504,20 @@ export default function MapView({
       map.on("mouseleave", "pins", () => setMapHover(map, null));
 
       loadedRef.current = true;
-      if (data) (map.getSource("apps") as maplibregl.GeoJSONSource).setData(data as never);
+      // Seed both sources from the current props, not the mount-time ones: the
+      // first search usually resolves before the style does, and the [data] /
+      // [polygons] effects bail out while loadedRef is false without ever
+      // retrying. Boundaries in particular had no other path in — they only
+      // appeared once a pan or a new search produced a fresh object.
+      if (dataRef.current) {
+        (map.getSource("apps") as maplibregl.GeoJSONSource).setData(dataRef.current as never);
+      }
+      if (polygonsRef.current) {
+        (map.getSource("site-polygons") as maplibregl.GeoJSONSource).setData(
+          polygonsRef.current as never
+        );
+      }
+      applyActiveStateRef.current(map);
       emitBounds();
     });
 
@@ -513,23 +568,10 @@ export default function MapView({
     }
   }, [polygons]);
 
-  const prevState = useRef<{ selected: number | null; hovered: number | null }>({
-    selected: null,
-    hovered: null,
-  });
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    // Mirror hover/selection onto the site-boundary source so a list hover or
-    // an open sheet outlines the site, same as hovering the pin itself.
-    const { selected, hovered } = prevState.current;
-    for (const source of ["apps", "site-polygons"]) {
-      if (selected != null) map.setFeatureState({ source, id: selected }, { selected: false });
-      if (hovered != null) map.setFeatureState({ source, id: hovered }, { hovered: false });
-      if (selectedId != null) map.setFeatureState({ source, id: selectedId }, { selected: true });
-      if (hoveredId != null) map.setFeatureState({ source, id: hoveredId }, { hovered: true });
-    }
-    prevState.current = { selected: selectedId, hovered: hoveredId };
+    applyActiveStateRef.current(map);
   }, [selectedId, hoveredId]);
 
   useEffect(() => {

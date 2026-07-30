@@ -255,13 +255,15 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     return { type: "FeatureCollection", features, matched: total, truncated: total > features.length };
   });
 
-  // Site-boundary polygons for whatever the pins query matches — currently
-  // only ACP direct cases carry geometry (the national council feed is
-  // points); shown on pin hover/selection. Mirrors /api/map/polygons in
-  // api/_index.mjs.
+  // Site-boundary polygons for whatever the pins query matches; shown on pin
+  // hover/selection. Council applications carry a boundary from the national
+  // sites layer, ACP direct cases from the commission's case service. Mirrors
+  // /api/map/polygons in api/_index.mjs.
   app.get("/api/map/polygons", (req) => {
     const filters = filtersFromQuery(req.query as Record<string, unknown>);
-    filters.limit = 500;
+    // Matched to the pin limit: any pin on screen can be hovered, so a lower
+    // cap would leave most of them with no boundary to reveal.
+    filters.limit = MAP_FEATURE_LIMIT;
     filters.page = 1;
     const { results } = search(db, filters);
     if (!results.length) return { type: "FeatureCollection", features: [] };

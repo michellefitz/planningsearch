@@ -2669,7 +2669,11 @@ export default async function handler(req, res) {
         geometry,
         properties: { id: r.id, status: r.status },
       });
-      if (features.length >= 500) break;
+      // Matched to the pin limit deliberately: any pin on screen can be
+      // hovered, so a lower cap here would leave most of them with no boundary
+      // to reveal. Harmless while only 470 ACP cases had geometry; not once
+      // every council application does. ~2,000 sites ≈ 440 KB, ~130 KB gzipped.
+      if (features.length >= MAP_FEATURE_LIMIT) break;
     }
     return send(res, 200, { type: "FeatureCollection", features });
   }
