@@ -14,33 +14,6 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
       rel="stylesheet"
     />
-    <!--
-      Plausible: cookieless, collects no personal data, so it needs no consent
-      banner — which matters for an EU product.
-
-      Loaded from the head rather than from React so it is in place before the
-      app's first history.pushState; Plausible hooks pushState to count
-      client-side navigations, and our open-application URLs
-      (/application/{council}/{reference}) are real routes.
-
-      Injected by this guard rather than hard-coded so it stays off unless
-      VITE_PLAUSIBLE_DOMAIN is set, and off on localhost and preview deploys,
-      which would otherwise pollute the production stats.
-    -->
-    <script>
-      (function () {
-        var domain = "%VITE_PLAUSIBLE_DOMAIN%";
-        // Vite leaves the placeholder intact when the variable is unset.
-        if (!domain || domain.charAt(0) === "%") return;
-        var host = location.hostname;
-        if (host !== domain && host !== "www." + domain) return;
-        var s = document.createElement("script");
-        s.defer = true;
-        s.setAttribute("data-domain", domain);
-        s.src = "https://plausible.io/js/script.js";
-        document.head.appendChild(s);
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>
