@@ -17,6 +17,24 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));
 const AUTH = new Map(BUNDLE.authorities.map((a) => [a.id, a]));
 
+/**
+ * Site boundaries, keyed by application id, in their own file beside the bundle
+ * (see export-json.ts). Read on first use rather than at module load: it is the
+ * larger of the two files and only /api/map/polygons touches it, so search and
+ * detail cold starts shouldn't pay for geometry they never draw. A missing
+ * sidecar means no boundaries, not a broken deployment.
+ */
+let POLYGONS = null;
+function sitePolygons() {
+  if (POLYGONS) return POLYGONS;
+  try {
+    POLYGONS = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/polygons.json"), "utf8"));
+  } catch {
+    POLYGONS = {};
+  }
+  return POLYGONS;
+}
+
 const haystackOf = (a) =>
   [a.planning_reference, a.address_text, a.applicant_name, a.description]
     .filter(Boolean)
@@ -1428,8 +1446,9 @@ const AGILE_BASE = "https://planning.agileapplications.ie";
 function publicApp(a) {
   const auth = AUTH.get(a.authority_id);
   const agile = Boolean(AGILE_SLUGS[a.authority_id]);
-  // Site polygons can run to kilobytes each — they're served by
-  // /api/map/polygons for the map layer, never inlined in list/detail rows.
+  // Boundaries are served by /api/map/polygons from the sidecar and are no
+  // longer written into bundle rows at all; stripped here so an older bundle
+  // that still carries the field can't inline kilobytes per row.
   const { geom_polygon: _gp, ...rest } = a;
   return {
     ...rest,
@@ -2635,23 +2654,21 @@ export default async function handler(req, res) {
     });
   }
 
-  // Site-boundary polygons for whatever the pins query matches — currently
-  // only ACP direct cases carry geometry (the national council feed is
-  // points), so this stays small; shown on pin hover/selection.
+  // Site-boundary polygons for whatever the pins query matches; shown on pin
+  // hover/selection. Council applications carry a boundary from the national
+  // sites layer, ACP direct cases from the commission's case service.
   if (route === "/api/map/polygons") {
     const { rows } = runSearch(p);
+    const polygons = sitePolygons();
     const features = [];
     for (const r of rows) {
-      if (!r.geom_polygon) continue;
-      try {
-        features.push({
-          type: "Feature",
-          geometry: JSON.parse(r.geom_polygon),
-          properties: { id: r.id, status: r.status },
-        });
-      } catch {
-        // A malformed baked polygon must not sink the whole layer.
-      }
+      const geometry = polygons[r.id];
+      if (!geometry) continue;
+      features.push({
+        type: "Feature",
+        geometry,
+        properties: { id: r.id, status: r.status },
+      });
       if (features.length >= 500) break;
     }
     return send(res, 200, { type: "FeatureCollection", features });

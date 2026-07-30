@@ -183,6 +183,33 @@ describe("featureToRecord", () => {
     expect(rec.lat).toBeNull();
     expect(rec.lng).toBeNull();
   });
+
+  it("never reads AreaofSite as hectares", () => {
+    // Measured against true site geometry (300 samples per authority), four of
+    // the five councils publish AreaofSite in square metres and only Kildare in
+    // hectares. Reading the field as hectares made a 292 m² back garden read as
+    // 292 hectares. Site area now comes from the site boundary — fetchAllSites
+    // measures it — so nothing here may take the field at face value.
+    const dublin: ArcgisFeature = {
+      attributes: {
+        ...CARLOW_SAMPLE.attributes,
+        PlanningAuthority: "Dublin City Council",
+        AreaofSite: 292.18, // square metres, whatever the field is named
+      },
+      geometry: { x: -6.26, y: 53.35 },
+    };
+    expect(featureToRecord(dublin)!.site_area_ha).toBeNull();
+
+    const kildare: ArcgisFeature = {
+      attributes: {
+        ...CARLOW_SAMPLE.attributes,
+        PlanningAuthority: "Kildare County Council",
+        AreaofSite: 0.115, // hectares, for the same nominal field
+      },
+      geometry: { x: -6.59, y: 53.38 },
+    };
+    expect(featureToRecord(kildare)!.site_area_ha).toBeNull();
+  });
 });
 
 describe("buildWhereClause", () => {

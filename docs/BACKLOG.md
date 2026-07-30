@@ -1,5 +1,42 @@
 # Backlog
 
+## Shipped 2026-07-30 — site boundaries for every council application
+
+- **The national feed has polygons, and we were querying the wrong layer.**
+  `IrishPlanningApplications/FeatureServer` has two: layer 0 "Planning
+  Application Points" (what the ingest has always read) and layer 1 "Planning
+  Application Sites" — the site boundary per application, same field set plus
+  `LandUseCode`, `AreaofSite` and `SiteId`, joined on
+  `PlanningAuthority` + `ApplicationNumber`. No per-council scraping needed;
+  it arrives on the same deploy-time pull as the points.
+- Coverage verified against the live service before building: 500,559 sites
+  against 500,736 points nationally, 94,380 against 94,303 for the five
+  authorities since 2012, 438 against 438 received in the last 30 days, and
+  the same max `ETL_DATE` — so the boundaries track the points rather than
+  being a stale one-off load. Every year back to 2012 matches 1:1. Real
+  outlines, median 7–13 vertices (one DLR site has 385), not point buffers.
+- **`site_area_ha` was wrong by 10,000x for four of five councils.**
+  `AreaofSite` is square metres for Dublin City, Fingal, DLR and South Dublin
+  but hectares for Kildare; the ingest stored all of them as hectares.
+  Measured against true geometry, 300 samples per authority. Nothing rendered
+  it, but it reached the model in both the agent and the pre-planning report.
+  Now derived from the boundary by geodesic area (agrees with the councils'
+  own published figure to 0.3%), and never read from the field.
+- Areas are measured from full-precision rings *before* simplification, which
+  distorts small sites by a median 0.86% and up to 52%. Storage is simplified
+  to 2 m by Douglas-Peucker (`server/src/ingest/geom.ts`), halving the bytes.
+- Boundaries ship in `api/_data/polygons.json`, keyed by application id, read
+  lazily on first `/api/map/polygons` hit — `planning.json` is parsed eagerly
+  at module load, so ~22 MB of geometry in there would tax every search cold
+  start. `geom_polygon` is no longer written into bundle rows at all.
+- Projected full build: ~21.7 MB of boundaries (~6.3 MB gzipped), taking the
+  function payload to ~147 MB against Vercel's 250 MB unzipped limit. Worth
+  watching if the register keeps growing; vector tiles are the escape hatch.
+- Still open: the Kildare eplanning top-up (applications ahead of the national
+  feed) has no boundary until the feed catches up — 0/234 in a test build.
+  Kildare detail pages carry a Site Location tab, so the ITM point is already
+  parsed there; a boundary would need a different source.
+
 ## Shipped 2026-07-30 — ACP direct cases + developments by size (PR #10)
 
 - **An Coimisiún Pleanála direct applications** now ingest at export from the

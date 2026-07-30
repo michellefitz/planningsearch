@@ -10,8 +10,13 @@
  * joined on the 6-digit case id.
  */
 import { extractResidentialUnits, normalizeStatus } from "../normalize.js";
+import { ringsToMultiPolygon } from "./geom.js";
 import type { ApplicationRecord } from "../db.js";
 import type { CanonicalApplicationType, CanonicalStatus } from "../normalize.js";
+
+// Re-exported: the ring→GeoJSON conversion now lives in geom.js, shared with
+// the national site-boundary ingest.
+export { ringsToMultiPolygon };
 
 export const ACP_CASES_URL =
   "https://services-eu1.arcgis.com/o56BSnENmD5mYs3j/arcgis/rest/services/Cases_2016_Onwards/FeatureServer/3";
@@ -94,32 +99,6 @@ interface AcpFeature {
   attributes: Record<string, unknown>;
   centroid?: { x: number; y: number };
   geometry?: { rings?: number[][][] };
-}
-
-/** Signed ring area (shoelace) — ArcGIS outer rings are clockwise (negative). */
-function ringArea(ring: number[][]): number {
-  let sum = 0;
-  for (let i = 0; i < ring.length - 1; i++) {
-    sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
-  }
-  return sum / 2;
-}
-
-/**
- * ArcGIS rings → GeoJSON MultiPolygon coordinates. ArcGIS mixes outer rings
- * (clockwise) and holes (counter-clockwise) in one flat list; each outer ring
- * starts a polygon and following holes attach to it.
- */
-export function ringsToMultiPolygon(rings: number[][][]): number[][][][] | null {
-  const polys: number[][][][] = [];
-  for (const raw of rings) {
-    if (raw.length < 4) continue;
-    // 6 dp ≈ 0.1 m — full-precision doubles double the baked size for nothing.
-    const ring = raw.map(([x, y]) => [Math.round(x * 1e6) / 1e6, Math.round(y * 1e6) / 1e6]);
-    if (ringArea(ring) <= 0 || polys.length === 0) polys.push([ring]);
-    else polys[polys.length - 1].push(ring);
-  }
-  return polys.length ? polys : null;
 }
 
 async function fetchJson(url: string): Promise<any> {

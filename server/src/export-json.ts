@@ -13,7 +13,9 @@ import {
   normalizeApplicationType, STATUS_LABELS,
 } from "./normalize.js";
 import { generateSeedRecords } from "./seed.js";
-import { featureToRecord, fetchAllSince, SERVICE_URL } from "./ingest/arcgis.js";
+import {
+  featureToRecord, fetchAllSince, fetchAllSites, SERVICE_URL, siteKey, SITES_URL,
+} from "./ingest/arcgis.js";
 import { buildPprIndex, lookupPpr } from "./ingest/ppr.js";
 import { fetchKildareRecent, eplanningItemToRecord } from "./ingest/eplanning-list.js";
 import { ACP_AUTHORITY, fetchAcpDirectRecords } from "./ingest/acp.js";
@@ -25,6 +27,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT =
   process.env.PLANVIEW_JSON_OUT ??
   path.resolve(__dirname, "../../api/_data/planning.json");
+
+/**
+ * Site boundaries ship in their own file beside the bundle, not inside it.
+ * api/_index.mjs parses planning.json eagerly at module load, so ~19 MB of
+ * polygons in there would be paid by every cold start — including the search
+ * and detail requests that never draw a boundary. The polygon layer is the
+ * only reader, and it loads this lazily on first use.
+ */
+const POLYGONS_OUT =
+  process.env.PLANVIEW_POLYGONS_OUT ?? path.join(path.dirname(OUT), "polygons.json");
 
 /** Minimal Neon HTTP SQL client (mirrors api/_accounts/db.mjs) — a plain fetch
  *  so the build needs no database driver dependency. */
@@ -79,8 +91,31 @@ async function fetchLiveRecords(): Promise<{
     `Mapped ${byKey.size} applications (${skipped} outside the five authorities/unmappable, ${records.length - byKey.size} duplicates).`
   );
   if (byKey.size === 0) throw new Error("Live fetch returned zero mappable applications");
+  const deduped = [...byKey.values()];
+
+  // Site boundaries from layer 1 of the same service. Best-effort: an
+  // application is still worth showing without its outline, so a failed pull
+  // must not sink the deploy — it just costs the boundaries and the site areas.
+  try {
+    console.log(`Fetching site boundaries since ${since} from ${SITES_URL} …`);
+    const sites = await fetchAllSites(since, (n) => console.log(`  fetched ${n} boundaries…`));
+    let matched = 0;
+    for (const r of deduped) {
+      const site = sites.get(siteKey(r.authority_id, r.planning_reference));
+      if (!site) continue;
+      r.geom_polygon = site.geomPolygon;
+      r.site_area_ha = site.siteAreaHa;
+      matched++;
+    }
+    console.log(
+      `Site boundaries: ${sites.size} fetched, matched ${matched} of ${deduped.length} applications.`
+    );
+  } catch (err) {
+    console.error("Site-boundary fetch failed (applications unaffected):", err);
+  }
+
   return {
-    records: [...byKey.values()],
+    records: deduped,
     sourceUpdatedAt: maxEtl ? new Date(maxEtl).toISOString().slice(0, 10) : null,
   };
 }
@@ -324,6 +359,16 @@ async function main() {
   }
   if (reextracted) console.log(`Unit counts: extracted ${reextracted} more from enriched descriptions.`);
 
+  // Lift the boundaries into the sidecar, keyed by application id, and drop the
+  // field from the bundle rows entirely — left in place as `null` it would cost
+  // ~2 MB across the register for no information. Concatenating the stored
+  // strings avoids parsing and re-serialising ~90k polygons.
+  const polygonParts: string[] = [];
+  for (const app of apps) {
+    if (app.geom_polygon) polygonParts.push(`"${app.id}":${app.geom_polygon}`);
+    delete (app as { geom_polygon?: unknown }).geom_polygon;
+  }
+
   const counts = new Map<string, number>();
   for (const a of apps) counts.set(a.authority_id, (counts.get(a.authority_id) ?? 0) + 1);
 
@@ -360,6 +405,14 @@ async function main() {
   fs.writeFileSync(OUT, JSON.stringify(bundle));
   const mb = (fs.statSync(OUT).size / 1024 / 1024).toFixed(1);
   console.log(`Wrote ${apps.length} applications (${dataSource}) to ${OUT} (${mb} MB)`);
+
+  // Always written, even when empty, so the polygon layer can distinguish "no
+  // boundaries in this build" from "sidecar missing".
+  fs.writeFileSync(POLYGONS_OUT, `{${polygonParts.join(",")}}`);
+  const polyMb = (fs.statSync(POLYGONS_OUT).size / 1024 / 1024).toFixed(1);
+  console.log(
+    `Wrote ${polygonParts.length} site boundaries to ${POLYGONS_OUT} (${polyMb} MB)`
+  );
 }
 
 main().catch((err) => {

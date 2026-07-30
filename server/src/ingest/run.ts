@@ -9,7 +9,9 @@
  */
 import { openDb, setAuthoritySynced, upsertApplication } from "../db.js";
 import { AUTHORITIES } from "../config/authorities.js";
-import { buildWhereClause, featureToRecord, fetchPage, SERVICE_URL } from "./arcgis.js";
+import {
+  buildWhereClause, featureToRecord, fetchAllSites, fetchPage, SERVICE_URL, siteKey,
+} from "./arcgis.js";
 import { buildCommencementIndex, lookupCommencement } from "./bcms.js";
 
 const PAGE_SIZE = 1000;
@@ -50,6 +52,34 @@ export async function runIngest() {
 
   for (const a of AUTHORITIES) setAuthoritySynced(db, a.id, startedAt);
   console.log(`Done: ${totalUpserted} applications upserted, ${totalSkipped} outside scope/unmappable.`);
+
+  // Site boundaries from layer 1 of the same feature service. Also the source
+  // of site_area_ha: it is measured from the boundary because the feed's own
+  // AreaofSite is in different units per council (see featureToRecord).
+  // Best-effort — the register data stands alone without outlines.
+  try {
+    console.log("Fetching site boundaries (national sites layer) …");
+    const sites = await fetchAllSites(since, (n) => console.log(`  fetched ${n} boundaries…`));
+    const rows = db
+      .prepare("SELECT id, authority_id, planning_reference FROM applications")
+      .all() as Array<{ id: number; authority_id: string; planning_reference: string }>;
+    const update = db.prepare(
+      "UPDATE applications SET geom_polygon = ?, site_area_ha = ? WHERE id = ?"
+    );
+    let matched = 0;
+    const tx = db.transaction(() => {
+      for (const r of rows) {
+        const site = sites.get(siteKey(r.authority_id, r.planning_reference));
+        if (!site) continue;
+        update.run(site.geomPolygon, site.siteAreaHa, r.id);
+        matched++;
+      }
+    });
+    tx();
+    console.log(`Site boundaries: matched ${matched} of ${rows.length} applications.`);
+  } catch (err) {
+    console.error("Site-boundary fetch failed (register data unaffected):", err);
+  }
 
   // Join BCMS commencement notices onto the freshly-upserted applications.
   // Best-effort: the portal can be flaky and the register data stands alone.

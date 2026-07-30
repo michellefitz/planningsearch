@@ -21,6 +21,11 @@ import {
   normalizeStatus,
 } from "../normalize.js";
 import { extractEircode } from "./ppr.js";
+import {
+  multiPolygonAreaSqm,
+  ringsToMultiPolygon,
+  simplifyMultiPolygon,
+} from "./geom.js";
 import { mapPool } from "./pool.js";
 import type { ApplicationRecord } from "../db.js";
 
@@ -30,6 +35,26 @@ const PAGE_CONCURRENCY = 6;
 export const SERVICE_URL =
   process.env.PLANVIEW_ARCGIS_URL ??
   "https://services.arcgis.com/NzlPQPKn5QF9v2US/arcgis/rest/services/IrishPlanningApplications/FeatureServer/0";
+
+/**
+ * Layer 1 of the same feature service, "Planning Application Sites" — the site
+ * boundary for each application, as a polygon. Layer 0 ("Planning Application
+ * Points") carries only a centroid, which is why site outlines used to come
+ * from the commission's case service alone.
+ *
+ * Coverage is effectively 1:1 with the points, verified against the live
+ * service on 2026-07-30: 500,559 sites against 500,736 points nationally,
+ * 94,380 against 94,303 for the five authorities since 2012, 438 against 438
+ * for applications received in the last 30 days, and the same max ETL_DATE.
+ * Every year back to 2012 matches, so this is not a stale one-off load.
+ */
+export const SITES_URL =
+  process.env.PLANVIEW_ARCGIS_SITES_URL ?? SERVICE_URL.replace(/\/0$/, "/1");
+
+/** Site boundaries are simplified to this tolerance before being stored —
+ *  visually exact at any zoom the map offers, and half the bytes. Areas are
+ *  measured before simplifying (it distorts small sites by up to 52%). */
+const SITE_SIMPLIFY_M = 2;
 
 // Verified against the live service schema on 2026-07-18.
 export const FIELD_MAP = {
@@ -213,7 +238,14 @@ export function featureToRecord(
     num_residential_units:
       num(attrs, FIELD_MAP.numResidentialUnits) ?? extractResidentialUnits(description),
     floor_area_sqm: num(attrs, FIELD_MAP.floorArea),
-    site_area_ha: num(attrs, FIELD_MAP.siteArea),
+    // AreaofSite is deliberately NOT read here: councils publish it in
+    // different units. Measured against true geometry for 300 sites each,
+    // Dublin City, Fingal, DLR and South Dublin give square metres while
+    // Kildare gives hectares — so reading it as hectares (as this did) made
+    // four of the five authorities 10,000x too large. The honest value is the
+    // area of the site boundary, which fetchAllSites measures; applications
+    // with no boundary get null rather than a number in unknown units.
+    site_area_ha: null,
     expiry_date: isoDate(attrs, FIELD_MAP.expiryDate),
     lat,
     lng,
@@ -228,14 +260,21 @@ export interface FetchPageOptions {
   offset: number;
   pageSize: number;
   signal?: AbortSignal;
+  /** Layer to query; defaults to the points layer. */
+  serviceUrl?: string;
+  /** Fields to return; defaults to everything. */
+  outFields?: string;
 }
 
 /** Total matching features, so pages can be fetched in parallel rather than
  *  discovered one at a time. Null if the service won't answer a count query. */
-export async function fetchCount(where: string): Promise<number | null> {
+export async function fetchCount(
+  where: string,
+  serviceUrl: string = SERVICE_URL
+): Promise<number | null> {
   const params = new URLSearchParams({ f: "json", where, returnCountOnly: "true" });
   try {
-    const res = await fetch(`${SERVICE_URL}/query?${params}`);
+    const res = await fetch(`${serviceUrl}/query?${params}`);
     if (!res.ok) return null;
     const body = (await res.json()) as { count?: number };
     return typeof body.count === "number" ? body.count : null;
@@ -248,13 +287,13 @@ export async function fetchPage(opts: FetchPageOptions): Promise<ArcgisFeature[]
   const params = new URLSearchParams({
     f: "json",
     where: opts.where,
-    outFields: "*",
+    outFields: opts.outFields ?? "*",
     outSR: "4326",
     resultOffset: String(opts.offset),
     resultRecordCount: String(opts.pageSize),
     orderByFields: "OBJECTID",
   });
-  const res = await fetch(`${SERVICE_URL}/query?${params}`, { signal: opts.signal });
+  const res = await fetch(`${opts.serviceUrl ?? SERVICE_URL}/query?${params}`, { signal: opts.signal });
   if (!res.ok) throw new Error(`ArcGIS query failed: HTTP ${res.status}`);
   const body = (await res.json()) as { features?: ArcgisFeature[]; error?: { message?: string } };
   if (body.error) throw new Error(`ArcGIS query error: ${body.error.message ?? "unknown"}`);
@@ -279,11 +318,13 @@ export function buildWhereClause(sinceIso?: string): string {
 async function fetchPageWithRetry(
   where: string,
   offset: number,
-  pageSize: number
+  pageSize: number,
+  serviceUrl?: string,
+  outFields?: string
 ): Promise<ArcgisFeature[]> {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await fetchPage({ where, offset, pageSize });
+      return await fetchPage({ where, offset, pageSize, serviceUrl, outFields });
     } catch (err) {
       if (attempt === 3) throw err;
       await new Promise((r) => setTimeout(r, attempt * 2000));
@@ -292,7 +333,7 @@ async function fetchPageWithRetry(
 }
 
 /**
- * Fetch every matching feature since a date.
+ * Fetch every feature matching a WHERE clause from one layer.
  *
  * Asking for the count first turns pagination from a serial walk (fetch a page,
  * discover whether there's another, repeat) into a set of known offsets we can
@@ -300,20 +341,21 @@ async function fetchPageWithRetry(
  * OBJECTID keeps the offsets stable across requests. Falls back to the serial
  * walk if the service won't give a count.
  */
-export async function fetchAllSince(
-  sinceIso: string,
-  onPage?: (fetched: number) => void
+async function fetchAllPages(
+  where: string,
+  onPage?: (fetched: number) => void,
+  serviceUrl?: string,
+  outFields?: string
 ): Promise<ArcgisFeature[]> {
-  const where = buildWhereClause(sinceIso);
   const pageSize = 1000;
-  const total = await fetchCount(where);
+  const total = await fetchCount(where, serviceUrl ?? SERVICE_URL);
 
   if (total != null) {
     const offsets: number[] = [];
     for (let o = 0; o < total; o += pageSize) offsets.push(o);
     let done = 0;
     const pages = await mapPool(offsets, PAGE_CONCURRENCY, async (offset) => {
-      const features = await fetchPageWithRetry(where, offset, pageSize);
+      const features = await fetchPageWithRetry(where, offset, pageSize, serviceUrl, outFields);
       done += features.length;
       onPage?.(done);
       return features;
@@ -324,10 +366,74 @@ export async function fetchAllSince(
   // No count available — walk the pages in order until one comes up short.
   const all: ArcgisFeature[] = [];
   for (let offset = 0; ; offset += pageSize) {
-    const features = await fetchPageWithRetry(where, offset, pageSize);
+    const features = await fetchPageWithRetry(where, offset, pageSize, serviceUrl, outFields);
     all.push(...features);
     onPage?.(all.length);
     if (features.length < pageSize) break;
   }
   return all;
+}
+
+/** Fetch every application (points layer) received since a date. */
+export async function fetchAllSince(
+  sinceIso: string,
+  onPage?: (fetched: number) => void
+): Promise<ArcgisFeature[]> {
+  return fetchAllPages(buildWhereClause(sinceIso), onPage);
+}
+
+export interface SiteBoundary {
+  /** GeoJSON MultiPolygon, stringified for the geom_polygon column. */
+  geomPolygon: string;
+  /** Ground area of the boundary in hectares — see site_area_ha above. */
+  siteAreaHa: number | null;
+}
+
+/** Key a site onto its application: authority id + planning reference. */
+export function siteKey(authorityId: string, reference: string): string {
+  return `${authorityId}|${reference}`;
+}
+
+/**
+ * Fetch the site boundary for every application received since a date, keyed by
+ * `siteKey`. Geometry is requested at full precision so the area can be
+ * measured honestly, then simplified for storage.
+ *
+ * Best-effort per feature: a site whose authority is outside the five, whose
+ * reference is missing, or whose rings are degenerate is skipped rather than
+ * failing the pull.
+ */
+export async function fetchAllSites(
+  sinceIso: string,
+  onPage?: (fetched: number) => void
+): Promise<Map<string, SiteBoundary>> {
+  const features = await fetchAllPages(
+    buildWhereClause(sinceIso),
+    onPage,
+    SITES_URL,
+    // Everything else about the application already comes from the points
+    // layer; asking for all fields here would double the download for nothing.
+    `${FIELD_MAP.authority},${FIELD_MAP.reference}`
+  );
+
+  const sites = new Map<string, SiteBoundary>();
+  for (const f of features) {
+    const authorityName = str(f.attributes, FIELD_MAP.authority);
+    const reference = str(f.attributes, FIELD_MAP.reference);
+    if (!authorityName || !reference || !f.geometry?.rings) continue;
+    const authorityId = authorityIdForNationalName(authorityName);
+    if (!authorityId) continue;
+
+    const full = ringsToMultiPolygon(f.geometry.rings);
+    if (!full) continue;
+    const areaSqm = multiPolygonAreaSqm(full);
+    const shown = simplifyMultiPolygon(full, SITE_SIMPLIFY_M) ?? full;
+    sites.set(siteKey(authorityId, reference), {
+      geomPolygon: JSON.stringify({ type: "MultiPolygon", coordinates: shown }),
+      // Round to 4 dp (1 m² in hectares) — a back garden is ~0.03 ha, so
+      // fewer places would collapse ordinary sites to zero.
+      siteAreaHa: areaSqm > 0 ? Math.round((areaSqm / 10_000) * 1e4) / 1e4 : null,
+    });
+  }
+  return sites;
 }
