@@ -351,6 +351,8 @@ export const api = {
     }>(`/api/applications/${id}/decision-summary`),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
+  mapPolygons: (p: URLSearchParams) =>
+    getJson<GeoJSON.FeatureCollection>(`/api/map/polygons?${p}`),
   resolve: (authority: string, reference: string) =>
     getJson<{ id: number }>(
       `/api/resolve?authority=${encodeURIComponent(authority)}&reference=${encodeURIComponent(reference)}`

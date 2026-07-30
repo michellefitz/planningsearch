@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acpDecisionToStatus } from "../src/ingest/acp.js";
+import { acpDecisionToStatus, ringsToMultiPolygon } from "../src/ingest/acp.js";
 
 describe("acpDecisionToStatus", () => {
   it("treats progress notes and blanks as pending, not decisions", () => {
@@ -37,5 +37,25 @@ describe("acpDecisionToStatus", () => {
     expect(acpDecisionToStatus("Annulled")).toBe("decided");
     expect(acpDecisionToStatus("Please see case 305219 (Order 2)")).toBe("decided");
     expect(acpDecisionToStatus("Alter decision - Is a Material Alteration (No EIS)")).toBe("decided");
+  });
+});
+
+describe("ringsToMultiPolygon", () => {
+  // Clockwise = ArcGIS outer ring, counter-clockwise = hole.
+  const outerCW = [[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]];
+  const holeCCW = [[2, 2], [4, 2], [4, 4], [2, 4], [2, 2]];
+  const outer2CW = [[20, 20], [20, 30], [30, 30], [30, 20], [20, 20]];
+
+  it("keeps a hole inside its outer ring's polygon", () => {
+    expect(ringsToMultiPolygon([outerCW, holeCCW])).toEqual([[outerCW, holeCCW]]);
+  });
+
+  it("splits disjoint outer rings into separate polygons", () => {
+    expect(ringsToMultiPolygon([outerCW, outer2CW])).toEqual([[outerCW], [outer2CW]]);
+  });
+
+  it("drops degenerate rings and returns null when nothing survives", () => {
+    expect(ringsToMultiPolygon([[[0, 0], [1, 1], [0, 0]]])).toBeNull();
+    expect(ringsToMultiPolygon([])).toBeNull();
   });
 });

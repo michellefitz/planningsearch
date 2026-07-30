@@ -60,6 +60,8 @@ const IRELAND_EAST_BOUNDS: [number, number, number, number] = [-7.2, 52.9, -5.9,
 
 interface Props {
   data: PointFeatureCollection | null;
+  /** Site boundaries (id/status properties) shown on pin hover/selection. */
+  polygons: GeoJSON.FeatureCollection | null;
   selectedId: number | null;
   hoveredId: number | null;
   onSelect: (id: number) => void;
@@ -71,6 +73,7 @@ interface Props {
 
 export default function MapView({
   data,
+  polygons,
   selectedId,
   hoveredId,
   onSelect,
@@ -91,6 +94,20 @@ export default function MapView({
   onBoundsChangeRef.current = onBoundsChange;
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  // Map-side pin hover (distinct from list hover, which arrives as a prop).
+  const mapHoverIdRef = useRef<number | null>(null);
+  const setMapHover = (map: maplibregl.Map, id: number | null) => {
+    const prev = mapHoverIdRef.current;
+    if (prev != null && prev !== id) {
+      map.setFeatureState({ source: "apps", id: prev }, { hovered: false });
+      map.setFeatureState({ source: "site-polygons", id: prev }, { hovered: false });
+    }
+    if (id != null) {
+      map.setFeatureState({ source: "apps", id }, { hovered: true });
+      map.setFeatureState({ source: "site-polygons", id }, { hovered: true });
+    }
+    mapHoverIdRef.current = id;
+  };
 
   const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false, flood: false });
   const [layersOpen, setLayersOpen] = useState(false);
@@ -299,6 +316,40 @@ export default function MapView({
         map.on("mouseleave", `ov-${layer}-fill`, () => (map.getCanvas().style.cursor = ""));
       }
 
+      // Site boundaries, revealed per-application on pin hover/selection —
+      // always-on polygons read as visual noise, and a boundary with no pin
+      // context answers nothing. Added before the pin layers so pins stay on
+      // top of their own outline.
+      map.addSource("site-polygons", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        promoteId: "id",
+      });
+      const activeExpr = [
+        "any",
+        ["boolean", ["feature-state", "selected"], false],
+        ["boolean", ["feature-state", "hovered"], false],
+      ] as unknown as maplibregl.ExpressionSpecification;
+      map.addLayer({
+        id: "site-fill",
+        type: "fill",
+        source: "site-polygons",
+        paint: {
+          "fill-color": "#1e3a5f",
+          "fill-opacity": ["case", activeExpr, 0.14, 0],
+        },
+      });
+      map.addLayer({
+        id: "site-outline",
+        type: "line",
+        source: "site-polygons",
+        paint: {
+          "line-color": "#1e3a5f",
+          "line-width": 2.5,
+          "line-opacity": ["case", activeExpr, 0.95, 0],
+        },
+      });
+
       map.addSource("apps", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -400,6 +451,15 @@ export default function MapView({
         map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
         map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
       }
+      // Map-side pin hover: reveal the site boundary (and grow the pin)
+      // without a React round-trip. mousemove, not mouseenter — dense areas
+      // can slide the cursor between pins without leaving the layer.
+      map.on("mousemove", "pins", (e) => {
+        const id = e.features?.[0]?.properties?.id;
+        if (id == null || Number(id) === mapHoverIdRef.current) return;
+        setMapHover(map, Number(id));
+      });
+      map.on("mouseleave", "pins", () => setMapHover(map, null));
 
       loadedRef.current = true;
       if (data) (map.getSource("apps") as maplibregl.GeoJSONSource).setData(data as never);
@@ -446,6 +506,13 @@ export default function MapView({
     }
   }, [data]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && loadedRef.current && polygons) {
+      (map.getSource("site-polygons") as maplibregl.GeoJSONSource).setData(polygons as never);
+    }
+  }, [polygons]);
+
   const prevState = useRef<{ selected: number | null; hovered: number | null }>({
     selected: null,
     hovered: null,
@@ -453,12 +520,15 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
+    // Mirror hover/selection onto the site-boundary source so a list hover or
+    // an open sheet outlines the site, same as hovering the pin itself.
     const { selected, hovered } = prevState.current;
-    if (selected != null) map.setFeatureState({ source: "apps", id: selected }, { selected: false });
-    if (hovered != null) map.setFeatureState({ source: "apps", id: hovered }, { hovered: false });
-    if (selectedId != null)
-      map.setFeatureState({ source: "apps", id: selectedId }, { selected: true });
-    if (hoveredId != null) map.setFeatureState({ source: "apps", id: hoveredId }, { hovered: true });
+    for (const source of ["apps", "site-polygons"]) {
+      if (selected != null) map.setFeatureState({ source, id: selected }, { selected: false });
+      if (hovered != null) map.setFeatureState({ source, id: hovered }, { hovered: false });
+      if (selectedId != null) map.setFeatureState({ source, id: selectedId }, { selected: true });
+      if (hoveredId != null) map.setFeatureState({ source, id: hoveredId }, { hovered: true });
+    }
     prevState.current = { selected: selectedId, hovered: hoveredId };
   }, [selectedId, hoveredId]);
 

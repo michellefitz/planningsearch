@@ -255,6 +255,38 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     return { type: "FeatureCollection", features, matched: total, truncated: total > features.length };
   });
 
+  // Site-boundary polygons for whatever the pins query matches — currently
+  // only ACP direct cases carry geometry (the national council feed is
+  // points); shown on pin hover/selection. Mirrors /api/map/polygons in
+  // api/_index.mjs.
+  app.get("/api/map/polygons", (req) => {
+    const filters = filtersFromQuery(req.query as Record<string, unknown>);
+    filters.limit = 500;
+    filters.page = 1;
+    const { results } = search(db, filters);
+    if (!results.length) return { type: "FeatureCollection", features: [] };
+    const placeholders = results.map(() => "?").join(",");
+    const rows = db
+      .prepare(
+        `SELECT id, status, geom_polygon FROM applications
+         WHERE geom_polygon IS NOT NULL AND id IN (${placeholders})`
+      )
+      .all(...results.map((r) => r.id)) as Array<{ id: number; status: string; geom_polygon: string }>;
+    const features = [];
+    for (const r of rows) {
+      try {
+        features.push({
+          type: "Feature",
+          geometry: JSON.parse(r.geom_polygon),
+          properties: { id: r.id, status: r.status },
+        });
+      } catch {
+        // A malformed stored polygon must not sink the whole layer.
+      }
+    }
+    return { type: "FeatureCollection", features };
+  });
+
   // On-demand scanned-file listing (Kildare/eplanning for now): fetches the
   // council's public file-list page only when a user asks, never cached or
   // mirrored (PRD §7.3 deep-link tier plus).
