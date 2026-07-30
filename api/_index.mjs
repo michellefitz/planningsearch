@@ -1428,8 +1428,11 @@ const AGILE_BASE = "https://planning.agileapplications.ie";
 function publicApp(a) {
   const auth = AUTH.get(a.authority_id);
   const agile = Boolean(AGILE_SLUGS[a.authority_id]);
+  // Site polygons can run to kilobytes each — they're served by
+  // /api/map/polygons for the map layer, never inlined in list/detail rows.
+  const { geom_polygon: _gp, ...rest } = a;
   return {
-    ...a,
+    ...rest,
     is_domestic_guess: Boolean(a.is_domestic_guess),
     status_label: BUNDLE.statuses[a.status] ?? a.status,
     application_type_label: BUNDLE.application_types[a.application_type] ?? a.application_type ?? "",
@@ -2630,6 +2633,28 @@ export default async function handler(req, res) {
           },
         })),
     });
+  }
+
+  // Site-boundary polygons for whatever the pins query matches — currently
+  // only ACP direct cases carry geometry (the national council feed is
+  // points), so this stays small; shown on pin hover/selection.
+  if (route === "/api/map/polygons") {
+    const { rows } = runSearch(p);
+    const features = [];
+    for (const r of rows) {
+      if (!r.geom_polygon) continue;
+      try {
+        features.push({
+          type: "Feature",
+          geometry: JSON.parse(r.geom_polygon),
+          properties: { id: r.id, status: r.status },
+        });
+      } catch {
+        // A malformed baked polygon must not sink the whole layer.
+      }
+      if (features.length >= 500) break;
+    }
+    return send(res, 200, { type: "FeatureCollection", features });
   }
 
   const dm = route.match(/^\/api\/applications\/(\d+)\/files\/(\d+)$/);

@@ -480,6 +480,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                 <div className="account-map-wrap">
                   <MapView
                     data={mapGeoJson}
+                    polygons={null}
                     selectedId={null}
                     hoveredId={null}
                     onSelect={handleMapSelect}

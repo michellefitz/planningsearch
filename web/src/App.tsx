@@ -48,6 +48,7 @@ export default function App() {
   const [fuzzy, setFuzzy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mapData, setMapData] = useState<PointFeatureCollection | null>(null);
+  const [sitePolygons, setSitePolygons] = useState<GeoJSON.FeatureCollection | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AppDetail | null>(null);
@@ -104,15 +105,20 @@ export default function App() {
       setError(null);
       try {
         const params = searchParams(s, bboxRef.current, nearRef.current);
-        const [listRes, geo] = await Promise.all([
+        const mp = mapParams(s, bboxRef.current, nearRef.current);
+        const [listRes, geo, polys] = await Promise.all([
           api.search(params),
-          api.mapGeoJson(mapParams(s, bboxRef.current, nearRef.current)),
+          api.mapGeoJson(mp),
+          // Site boundaries render on pin hover/selection only; a failure
+          // just means no outline, never a failed search.
+          api.mapPolygons(mp).catch(() => null),
         ]);
         if (seq !== searchSeq.current) return; // stale response
         setResults(listRes.results);
         setTotal(listRes.total);
         setFuzzy(listRes.fuzzy);
         setMapData(geo);
+        setSitePolygons(polys);
       } catch {
         if (seq === searchSeq.current) setError("Search failed — is the server running?");
       } finally {
@@ -151,8 +157,15 @@ export default function App() {
     pinTimer.current = window.setTimeout(async () => {
       const seq = ++pinSeq.current;
       try {
-        const geo = await api.mapGeoJson(mapParams(s, bboxRef.current, nearRef.current));
-        if (seq === pinSeq.current) setMapData(geo);
+        const mp = mapParams(s, bboxRef.current, nearRef.current);
+        const [geo, polys] = await Promise.all([
+          api.mapGeoJson(mp),
+          api.mapPolygons(mp).catch(() => null),
+        ]);
+        if (seq === pinSeq.current) {
+          setMapData(geo);
+          if (polys) setSitePolygons(polys);
+        }
       } catch {
         // A failed pin refresh leaves the previous pins up; the list is
         // unaffected and the next move retries.
@@ -549,6 +562,7 @@ export default function App() {
           </button>
           <MapView
             data={mapData}
+            polygons={sitePolygons}
             selectedId={selectedId}
             hoveredId={hoveredId}
             onSelect={select}
