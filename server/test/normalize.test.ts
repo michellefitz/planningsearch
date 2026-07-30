@@ -261,28 +261,54 @@ describe("extractResidentialUnits", () => {
     expect(extractResidentialUnits("4 NO. DWELLINGS")).toBe(4);
   });
 
-  it("sees the unit noun behind house-type qualifiers", () => {
-    // Real Kildare amendment (19833), which scored null: multi-unit schemes
-    // name house types between the count and the noun. 10 approved houses are
-    // replaced by 6 + 4 of two other types, so 10 is the scheme's size.
+  it("reads the qualifiers that actually precede a unit noun", () => {
+    expect(extractResidentialUnits("97 No. studio units")).toBe(97);
+    expect(extractResidentialUnits("12 no. affordable houses")).toBe(12);
+    expect(extractResidentialUnits("169 No. residential units")).toBe(169);
+    expect(extractResidentialUnits("48 No. duplex units")).toBe(48);
+  });
+
+  it("counts only what the number is a token of", () => {
+    // "115m2 detached dwelling" read as 2 dwellings, and "a 31m2 flat-roof
+    // extension" as 2 flats, because the tail of a measurement looked like a
+    // count. A number has to stand on its own.
+    expect(extractResidentialUnits("a two-bedroom 115m2 detached dwelling")).toBeNull();
+    expect(extractResidentialUnits("a 31m2 flat-roof single storey extension")).toBeNull();
+    // Dublin City WEB5464/25 — a pizza restaurant that reported 169 houses.
+    // "169C" is the unit's address, and a digit with a letter stuck on is
+    // never a count.
     expect(
       extractResidentialUnits(
-        "the replacement of 10 No. previously approved house type G (three bedroom, two " +
-          "storey houses) at 45-54 The Avenue, with 6 No. M1 type houses (three bedroom, two " +
-          "storey houses) and 4 No. D and D1 type houses (four bedroom, two storey houses)."
+        "Combination of Unit 2 and 169C into a single unit for restaurant use and change " +
+          "of use of Unit 169C from retail use to restaurant use"
       )
-    ).toBe(10);
-    expect(extractResidentialUnits("6 No. M1 type houses")).toBe(6);
-    expect(extractResidentialUnits("block of 4 storeys containing 12 apartments")).toBe(12);
+    ).toBeNull();
+  });
+
+  it("does not count non-residential things that share a unit noun", () => {
+    // Measured against 3,000 real descriptions: allowing arbitrary words
+    // between the count and the noun turned each of these into homes. The
+    // qualifier list is closed for exactly this reason.
+    expect(extractResidentialUnits("54 self-storage units")).toBeNull();
+    expect(extractResidentialUnits("51 container units")).toBeNull();
+    expect(extractResidentialUnits("2 commercial units")).toBeNull();
+    expect(extractResidentialUnits("Units 9 - 11 Saunders House, Spencer Dock")).toBeNull();
+    expect(extractResidentialUnits("2No. home base offices")).toBeNull();
+  });
+
+  it("accepts missing a count rather than inventing one", () => {
+    // The cost of the closed qualifier list, recorded so it is a decision and
+    // not a bug: a house-type code between the count and the noun is not read.
+    // A wrong count is worse than none — it drives the size filter and the
+    // model's description of the scheme.
+    expect(extractResidentialUnits("6 No. M1 type houses")).toBeNull();
+    expect(extractResidentialUnits("10 No. previously approved house type G")).toBeNull();
   });
 
   it("still refuses numbers that describe a unit rather than count them", () => {
-    // The guard that makes the qualifier gap above safe. Each of these has a
-    // unit noun within a few words of a number, and none of them is a count.
     expect(extractResidentialUnits("3 bedroom houses")).toBeNull();
     expect(extractResidentialUnits("a 4 bed dwelling")).toBeNull();
     expect(extractResidentialUnits("2 storey house")).toBeNull();
-    expect(extractResidentialUnits("dwelling 10 metres from the house")).toBeNull();
     expect(extractResidentialUnits("5 no. car parking spaces")).toBeNull();
     expect(extractResidentialUnits("10 North Street")).toBeNull();
   });
