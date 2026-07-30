@@ -142,6 +142,46 @@ by urgency:
   for both consumer and professional personas; both professionals now say
   they'd use it today, and the architect would pay €40-60/month as-is.
 
+## Open — intermittent missing AI summary (seen 2026-07-30)
+
+Reported on Kildare 19833 (a multi-unit amendment): the sheet showed no
+plain-English summary. It generated normally on a later attempt, so it is
+intermittent rather than tied to that application.
+
+What is already ruled out:
+
+- Not a missing description. `/enrich` returns the full description for
+  Kildare, and the reported payload carried it.
+- Not the `ai_summary: null` in `/api/applications/:id` — that route only
+  reports an `AI_SUMMARY_CACHE` hit by design; the sheet calls `/enrich`
+  for the real summary. A null there is expected, not a symptom.
+
+Two candidates remain, and they were indistinguishable from outside because
+`callHaiku` returned null for every failure. `/enrich?debug=1` now reports
+which (`summary_trace`, plus `description_len`):
+
+- **The 10s timeout in `callHaiku`.** Fits the intermittency, and long
+  descriptions are the ones that would hit it.
+- **The model replying `INSUFFICIENT`**, dropped by `isUsableSummary`.
+  Would be deterministic per description, so a recurrence on an application
+  that previously succeeded points away from this.
+
+Diagnosing it needs care: summaries are cached per description text, in
+memory, per serverless instance. A retry that succeeds does not clear the
+fault — the same application can read fine on a warm instance and still
+fail on a cold one. So capture `?debug=1` at the moment it happens, before
+reloading.
+
+Fixes, once the trace names the cause: raise the timeout, or move
+summarisation off the request path so a slow model call cannot race the
+sheet (it already renders before enrichment arrives — the summary could
+follow the same way). If it is `INSUFFICIENT`, it is a prompt problem:
+descriptions that are mostly cross-references to a parent permission and
+house-type codes are thin material for a one-sentence summary.
+
+Note the diagnostics are in `api/_index.mjs` only, where the deployed API
+runs. `server/src/summarize.ts` (Docker/Render) has no equivalent.
+
 ## Next up (persona review, 2026-07-28)
 
 Three persona reviews (homeowner / architect / conveyancing solicitor) ran
