@@ -9,12 +9,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AUTHORITIES } from "./config/authorities.js";
 import {
-  APPLICATION_TYPE_LABELS, GLOSSARY, mapLiveStatus, normalizeApplicationType, STATUS_LABELS,
+  APPLICATION_TYPE_LABELS, extractResidentialUnits, GLOSSARY, mapLiveStatus,
+  normalizeApplicationType, STATUS_LABELS,
 } from "./normalize.js";
 import { generateSeedRecords } from "./seed.js";
 import { featureToRecord, fetchAllSince, SERVICE_URL } from "./ingest/arcgis.js";
 import { buildPprIndex, lookupPpr } from "./ingest/ppr.js";
 import { fetchKildareRecent, eplanningItemToRecord } from "./ingest/eplanning-list.js";
+import { ACP_AUTHORITY, fetchAcpDirectRecords } from "./ingest/acp.js";
 import { buildCommencementIndex, lookupCommencement } from "./ingest/bcms.js";
 import type { ApplicationRecord } from "./db.js";
 
@@ -146,7 +148,31 @@ async function main() {
     }
   }
 
+  // Direct applications to An Coimisiún Pleanála (SHD/SID/substitute consent)
+  // never pass through a council register, so the national feed misses them —
+  // and they're most of the 100+-home schemes from 2017–2022. Best-effort.
+  let acpCommencements = new Map<string, string>();
+  if (dataSource === "live") {
+    try {
+      console.log("Fetching An Coimisiún Pleanála direct cases …");
+      const acp = await fetchAcpDirectRecords(now, console.log);
+      records.push(...acp.records);
+      acpCommencements = acp.commencementByRef;
+      console.log(`ACP: added ${acp.records.length} direct cases.`);
+    } catch (err) {
+      console.error("ACP direct-case fetch failed (national data unaffected):", err);
+    }
+  }
+
   const apps: BundledApp[] = records.map((r, i) => ({ id: i + 1, ...r }));
+
+  // SHD tracker commencement dates for ACP cases (BCMS matching is keyed on
+  // council permission numbers, so it can't cover these).
+  for (const app of apps) {
+    if (app.authority_id !== ACP_AUTHORITY.id) continue;
+    const commenced = acpCommencements.get(app.planning_reference);
+    if (commenced) app.commencement_date = commenced;
+  }
 
   // Join Property Price Register sales by normalized address — only for
   // addresses with a house/unit number (townland-only addresses are shared
@@ -284,6 +310,20 @@ async function main() {
     }
   }
 
+  // The agile merge above can swap in a much longer description than the
+  // truncated national one, revealing unit counts the ingest-time extraction
+  // couldn't see — retry where the count is still missing.
+  let reextracted = 0;
+  for (const app of apps) {
+    if (app.num_residential_units) continue;
+    const u = extractResidentialUnits(app.description);
+    if (u) {
+      app.num_residential_units = u;
+      reextracted++;
+    }
+  }
+  if (reextracted) console.log(`Unit counts: extracted ${reextracted} more from enriched descriptions.`);
+
   const counts = new Map<string, number>();
   for (const a of apps) counts.set(a.authority_id, (counts.get(a.authority_id) ?? 0) + 1);
 
@@ -291,22 +331,27 @@ async function main() {
     generated_at: now,
     data_source: dataSource,
     source_updated_at: sourceUpdatedAt,
-    authorities: AUTHORITIES.map((a) => ({
-      id: a.id,
-      name: a.name,
-      short_name: a.shortName,
-      source_system: a.sourceSystem,
-      portal_base_url: a.portalBaseUrl,
-      gis_url: a.gisUrl,
-      last_synced: now,
-      application_count: counts.get(a.id) ?? 0,
-    })),
+    authorities: [
+      ...AUTHORITIES.map((a) => ({
+        id: a.id,
+        name: a.name,
+        short_name: a.shortName,
+        source_system: a.sourceSystem as string,
+        portal_base_url: a.portalBaseUrl,
+        gis_url: a.gisUrl,
+        last_synced: now,
+        application_count: counts.get(a.id) ?? 0,
+      })),
+      // Present even with zero cases (e.g. seed builds) so the id always
+      // resolves to a name.
+      { ...ACP_AUTHORITY, last_synced: now, application_count: counts.get(ACP_AUTHORITY.id) ?? 0 },
+    ],
     statuses: STATUS_LABELS,
     application_types: APPLICATION_TYPE_LABELS,
     glossary: GLOSSARY,
     attribution:
       dataSource === "live"
-        ? "Contains Irish Public Sector Data (Department of Housing, Local Government and Heritage) licensed under CC-BY 4.0. The local authority registers remain the authoritative source."
+        ? "Contains Irish Public Sector Data (Department of Housing, Local Government and Heritage; An Coimisiún Pleanála) licensed under CC-BY 4.0. The local authority registers and the commission's case files remain the authoritative sources."
         : "DEMO DATA — fictional applications for demonstration only. Real data: National Planning Applications (DHLGH), CC-BY 4.0.",
     applications: apps,
   };

@@ -40,14 +40,30 @@ export function SecondaryPills({
   appealUrl,
   commencementDate,
   completionDate,
+  numUnits,
 }: {
   appealReference?: string | null;
   appealDecision?: string | null;
   appealUrl?: string | null;
   commencementDate?: string | null;
   completionDate?: string | null;
+  numUnits?: number | null;
 }) {
   const pills: ReactNode[] = [];
+
+  // Only multi-unit schemes get a size pill — a "1 home" pill on every house
+  // extension is noise, and the counts are best-effort below ~10 anyway.
+  if (numUnits != null && numUnits >= 10) {
+    pills.push(
+      <span
+        key="units"
+        className="pill pill-units"
+        title="Residential unit count from the register, or read from the application wording — treat as approximate"
+      >
+        {numUnits.toLocaleString()} homes
+      </span>
+    );
+  }
 
   if (appealReference || appealDecision) {
     const label = appealDecision ? `Appeal: ${appealDecision}` : "Appealed";
@@ -162,6 +178,7 @@ export default function ResultsList({
                   appealReference={r.appeal_reference}
                   commencementDate={r.commencement_date}
                   completionDate={r.completion_date}
+                  numUnits={r.num_residential_units}
                 />
               </div>
               <p className="result-desc">{r.description}</p>

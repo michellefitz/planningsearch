@@ -17,6 +17,7 @@ import type { ApplicationRecord } from "../db.js";
 import {
   deriveApplicationType,
   expandDecisionCode,
+  extractResidentialUnits,
   guessIsDomestic,
   normalizeStatus,
 } from "../normalize.js";
@@ -404,7 +405,7 @@ export function eplanningItemToRecord(item: EplanningListItem, now: string): App
     agent_name: null,
     address_text: item.address,
     eircode: extractEircode(item.address),
-    num_residential_units: null,
+    num_residential_units: extractResidentialUnits(item.description),
     floor_area_sqm: null,
     site_area_ha: null,
     expiry_date: null,
