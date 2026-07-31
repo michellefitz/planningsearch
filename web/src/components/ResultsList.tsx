@@ -15,6 +15,8 @@ interface Props {
   onHover: (id: number | null) => void;
   savedByKey: Map<string, SavedApp>;
   onToggleSave: (authorityId: string, reference: string) => void;
+  /** How far back each register goes — shown when nothing matched. */
+  coverage: string | null;
 }
 
 export function StatusBadge({ status, label }: { status: string; label: string }) {
@@ -123,13 +125,17 @@ export default function ResultsList({
   onHover,
   savedByKey,
   onToggleSave,
+  coverage,
 }: Props) {
   if (loading) return <p className="list-note" role="status">Searching…</p>;
   if (results.length === 0)
     return (
-      <p className="list-note">
-        No applications match. Try a broader term, or widen the map area / filters.
-      </p>
+      <div className="list-note">
+        <p>No applications match. Try a broader term, or widen the map area / filters.</p>
+        {/* A zero-result search reads as "nothing was ever applied for here"
+            unless we say how far back we actually hold each register. */}
+        {coverage && <p className="list-note-coverage">{coverage}</p>}
+      </div>
     );
   return (
     <div className="results">

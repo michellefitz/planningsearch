@@ -53,6 +53,9 @@ export interface RunAgentOptions {
   fetchImpl?: typeof fetch;
   apiKey?: string;
   model?: string;
+  /** Per-council register depth, appended to the system prompt so the model can
+   *  tell "we don't hold that year" from "it doesn't exist". */
+  coverageClause?: string;
 }
 
 export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEvent> {
@@ -84,7 +87,7 @@ export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEven
           model: opts.model ?? MODEL,
           max_tokens: MAX_TOKENS,
           stream: true,
-          system: SYSTEM_PROMPT,
+          system: SYSTEM_PROMPT + (opts.coverageClause ?? ""),
           tools: AGENT_TOOLS,
           messages: msgs,
         }),

@@ -20,6 +20,7 @@ import AccountPanel from "./components/AccountPanel";
 import PrePlannerPanel from "./components/PrePlannerPanel";
 import { accountApi, saveKey, type Me, type SavedApp } from "./accountApi";
 import type { AgentAppRef } from "./agentApi";
+import { coverageSummary } from "./coverage";
 
 /**
  * An open application is a real, shareable address: /application/{council}/{ref}.
@@ -527,6 +528,7 @@ export default function App() {
                 onHover={setHoveredId}
                 savedByKey={savedByKey}
                 onToggleSave={toggleSave}
+                coverage={coverageSummary(meta)}
               />
             </div>
           </div>

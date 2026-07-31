@@ -62,12 +62,18 @@ async function fetchLiveRecords(): Promise<{
   records: ApplicationRecord[];
   sourceUpdatedAt: string | null;
 }> {
-  // Full register depth by default — the national dataset starts in 2012.
-  // PLANVIEW_EXPORT_DAYS remains as an override for quick partial exports.
+  // Everything the feed holds, by default. The old 2012 floor was set when the
+  // dataset was believed to start there; it doesn't. Measured 2026-07-30, the
+  // feed reaches back to 1992 for South Dublin and 2001 for Dún Laoghaire-
+  // Rathdown, and those rows are complete (100% description, address and
+  // geometry, ~99.7% decision). For a house's planning history a 1990s
+  // extension is often the whole answer, so the cutoff was discarding the
+  // most valuable part of the record for two of the five councils.
+  // PLANVIEW_EXPORT_DAYS/SINCE remain as overrides for quick partial exports.
   const days = process.env.PLANVIEW_EXPORT_DAYS ? Number(process.env.PLANVIEW_EXPORT_DAYS) : null;
   const since = days
     ? new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10)
-    : process.env.PLANVIEW_EXPORT_SINCE ?? "2012-01-01";
+    : process.env.PLANVIEW_EXPORT_SINCE ?? "1900-01-01";
   console.log(`Fetching live data since ${since} from ${SERVICE_URL} …`);
   const features = await fetchAllSince(since, (n) => console.log(`  fetched ${n} features…`));
   const now = new Date().toISOString();
@@ -372,6 +378,17 @@ async function main() {
   const counts = new Map<string, number>();
   for (const a of apps) counts.set(a.authority_id, (counts.get(a.authority_id) ?? 0) + 1);
 
+  // How far back we actually hold each council's register. The national feed's
+  // depth is very uneven — Dublin City starts 2019 and Kildare 2017, while
+  // South Dublin reaches 1992 — so a search before a council's floor returns
+  // nothing and, unstated, reads as "no planning history exists".
+  const earliest = new Map<string, string>();
+  for (const a of apps) {
+    if (!a.received_date) continue;
+    const held = earliest.get(a.authority_id);
+    if (!held || a.received_date < held) earliest.set(a.authority_id, a.received_date);
+  }
+
   const bundle = {
     generated_at: now,
     data_source: dataSource,
@@ -386,10 +403,16 @@ async function main() {
         gis_url: a.gisUrl,
         last_synced: now,
         application_count: counts.get(a.id) ?? 0,
+        earliest_received: earliest.get(a.id) ?? null,
       })),
       // Present even with zero cases (e.g. seed builds) so the id always
       // resolves to a name.
-      { ...ACP_AUTHORITY, last_synced: now, application_count: counts.get(ACP_AUTHORITY.id) ?? 0 },
+      {
+        ...ACP_AUTHORITY,
+        last_synced: now,
+        application_count: counts.get(ACP_AUTHORITY.id) ?? 0,
+        earliest_received: earliest.get(ACP_AUTHORITY.id) ?? null,
+      },
     ],
     statuses: STATUS_LABELS,
     application_types: APPLICATION_TYPE_LABELS,

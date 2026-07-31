@@ -7,6 +7,8 @@ export interface Authority {
   gis_url: string | null;
   last_synced: string | null;
   application_count: number;
+  /** Earliest application we hold for this council — its register depth. */
+  earliest_received: string | null;
 }
 
 export interface Meta {

@@ -1861,6 +1861,15 @@ const AGENT_MAX_TURNS = 12;
 const AGENT_MAX_TOKENS = 4000;
 const AGENT_TOOL_RESULT_CAP = 30_000;
 
+/** Per-council register depth, appended to the agent prompt at call time so the
+ *  model can tell "we don't hold that year" from "it doesn't exist". */
+function coverageFloorsClause() {
+  const held = BUNDLE.authorities.filter((a) => a.earliest_received && a.application_count > 0);
+  if (!held.length) return "";
+  const list = held.map((a) => `${a.name}: from ${a.earliest_received}`).join("; ");
+  return `\n\nCOVERAGE HELD (earliest application on file per council) — ${list}.`;
+}
+
 const AGENT_SYSTEM_PROMPT = `You are the PlanView planning agent. You help people in Ireland understand what has \
 happened with planning applications so they can form their own picture — typically a homeowner wondering about an \
 extension, rebuild or new dwelling, or a professional researching an area.
@@ -1915,6 +1924,12 @@ one authority, say so and give the split, lead with the authority that would dec
 authorities as secondary context — never present a single blended grant/refusal rate across authorities as if one \
 body produced it. If the user's own authority has few local comparables, say that plainly rather than leaning on a \
 neighbouring council's record.
+
+COVERAGE FLOORS — WHAT "NONE FOUND" MEANS: The register depth here is uneven per council, and the floors are \
+supplied to you below. A search that returns nothing before a council's floor means WE DO NOT HOLD THAT YEAR, not \
+that nothing was applied for. Never say a property has no planning history, or that a precedent does not exist, on \
+the basis of an empty result that falls outside the years held — say what we hold and point at the council's own \
+register for anything earlier.
 
 CONDITIONS — SUBSTANTIVE VS BOILERPLATE: Most grants carry near-identical boilerplate conditions (construction hours, \
 noise limits, site tidiness, development contributions, water/drainage standards). Do not present these as a pattern — \
@@ -2441,7 +2456,7 @@ async function* runAgent(messages) {
           model: AGENT_MODEL,
           max_tokens: AGENT_MAX_TOKENS,
           stream: true,
-          system: AGENT_SYSTEM_PROMPT,
+          system: AGENT_SYSTEM_PROMPT + coverageFloorsClause(),
           tools: AGENT_TOOLS,
           messages: msgs,
         }),

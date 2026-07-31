@@ -195,8 +195,15 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
   app.get("/api/meta", () => {
     const authorities = db
       .prepare(
+        // earliest_received is how far back we actually hold this council's
+        // register. Without it a search before that date returns nothing and
+        // reads as "no planning history exists" rather than "we don't hold
+        // that year" — the councils' depth is very uneven (Dublin City starts
+        // 2019, Kildare 2017, South Dublin reaches 1992).
         `SELECT a.id, a.name, a.short_name, a.source_system, a.portal_base_url, a.gis_url, a.last_synced,
-                (SELECT COUNT(*) FROM applications ap WHERE ap.authority_id = a.id) AS application_count
+                (SELECT COUNT(*) FROM applications ap WHERE ap.authority_id = a.id) AS application_count,
+                (SELECT MIN(ap.received_date) FROM applications ap
+                  WHERE ap.authority_id = a.id AND ap.received_date IS NOT NULL) AS earliest_received
          FROM authorities a ORDER BY a.name`
       )
       .all();
@@ -955,7 +962,23 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     });
     const executeTool = buildToolExecutor(db);
     try {
-      for await (const ev of runAgent({ messages, executeTool })) {
+      // Register depth per council, so an empty result outside the years held
+      // is reported as "we don't hold that year", not "it doesn't exist".
+      const floors = db
+        .prepare(
+          `SELECT a.name, MIN(ap.received_date) AS earliest
+             FROM authorities a JOIN applications ap ON ap.authority_id = a.id
+            WHERE ap.received_date IS NOT NULL
+            GROUP BY a.id ORDER BY a.name`
+        )
+        .all() as Array<{ name: string; earliest: string | null }>;
+      const coverageClause = floors.length
+        ? `\n\nCOVERAGE HELD (earliest application on file per council) — ${floors
+            .filter((f) => f.earliest)
+            .map((f) => `${f.name}: from ${f.earliest}`)
+            .join("; ")}.`
+        : "";
+      for await (const ev of runAgent({ messages, executeTool, coverageClause })) {
         reply.raw.write(`data: ${JSON.stringify(ev)}\n\n`);
       }
     } catch {

@@ -6,6 +6,7 @@ import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "./MapView";
 import SaveStar from "./SaveStar";
 import { getFloodData } from "../floodData";
+import { coverageNoteFor } from "../coverage";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { point as turfPoint } from "@turf/helpers";
 
@@ -1466,8 +1467,13 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
               difference between a viewer and a trap. */}
           <p className="caveat">
             Matched on the address as each application recorded it, so a differently-worded
-            address won't be linked. Earlier applications outside the register window held here
-            won't appear either — check the council's portal for a property's full history.
+            address won't be linked.{" "}
+            {/* Naming the actual year beats "outside the register window": for
+                Dublin City that is 2019, so most of a house's history can sit
+                outside it, and a reader has no way to know that. */}
+            {coverageNoteFor(meta, d.authority_id) ??
+              "Earlier applications outside the register window held here won't appear either."}{" "}
+            Check the council's portal for a property's full history.
           </p>
         </section>
       )}

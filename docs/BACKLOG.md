@@ -1,5 +1,56 @@
 # Backlog
 
+## Shipped 2026-07-30 — coverage floors stated, and the register deepened
+
+Closes the last P0 ("Per-council coverage floors, unstated") and takes the
+export floor off with it.
+
+- **The floors are real and uneven.** Measured against the live feed:
+  Dublin City **2019-01-02**, Kildare **2017-01-03**, Fingal 2011-01-04,
+  Dún Laoghaire-Rathdown **2001-01-02**, South Dublin **1992-01-02**.
+  `earliest_received` is now computed per authority at export, carried in the
+  bundle, served by `/api/meta` in both backends (SQLite computes it with a
+  `MIN(received_date)` subquery), and typed on the front end.
+- **Surfaced in three of the four places named.** The search empty state
+  ("Coverage runs Dublin City from 2019, … and South Dublin from 1992"), the
+  detail sheet's "Other applications at this address" caveat (scoped to that
+  council, replacing the vague "outside the register window"), and the agent
+  system prompt — which now gets the floors injected at call time in both
+  backends, with an instruction never to report an empty result outside the
+  years held as "no planning history".
+- **The fourth place, the report footer, does not exist yet.** The report has
+  no provenance footer to attach to; adding one is already tracked under
+  Export (P2), and the coverage line should go in when it lands.
+- **The 2012 export floor was wrong and is gone.** It was set when the dataset
+  was believed to start in 2012; it doesn't. Pre-2012 rows are complete —
+  100% description, address and geometry, ~99.7% decision, 100% site boundary
+  — and terse (58-char mean description vs 485 for 2012+). Default is now
+  1900-01-01, i.e. everything the feed holds. **94,870 → 132,166
+  applications** (+37,296), and for a house's planning history a 1990s
+  extension is often the whole answer.
+
+### Watch this: the bundle is close to two ceilings
+
+Measured on the real full-depth build:
+
+- `planning.json` **178 MB**, `polygons.json` 34 MB — **212 MB of Vercel's
+  250 MB unzipped function limit**. At ~10k applications a year that is
+  roughly two and a half years of headroom.
+- Cold start pays **~2.0 s to read + ~1.4 s to `JSON.parse`** the bundle, and
+  535 MB of heap. `serverless-loads.test.ts` now takes 9.7 s for the same
+  reason — a useful canary.
+- Export step alone: **316 s**.
+
+**The mitigation is measured and ready, not done:** stripping null fields at
+write time takes the bundle from 177.9 MB to 132.5 MB (**25.5%**), which
+buys back both the ceiling and a quarter of the parse. Checked safe — the
+serverless path has only 7 strict null comparisons and none are on
+application fields, and `snapshotFromBundleApp` already coerces with
+`?? null`, so the accounts diff cannot mistake a missing key for a change.
+The API response shape should be preserved by re-adding the canonical nulls
+in `publicApp`, so nothing client-side sees the difference. Beyond that, the
+real fix is not parsing 132k rows at module load at all.
+
 ## Shipped 2026-07-30 — site boundaries for every council application
 
 - **The national feed has polygons, and we were querying the wrong layer.**
@@ -79,7 +130,9 @@ by urgency:
   the rest", because a map that silently stops drawing reads as "there's
   nothing else here". ~25 MB → ~0.5 MB. Still open if density demands it:
   server-side clustering or vector tiles.
-- **Per-council coverage floors, unstated (P0 for trust).** The national
+- **Per-council coverage floors, unstated (P0 for trust) — SHIPPED
+  2026-07-30, see the entry at the top; the DCC LRD gap below is still
+  open.** The national
   feed's depth is uneven: Fingal/DLR/South Dublin reach 2012, **Kildare
   starts 2017, Dublin City 2019**. Nothing states this, so a zero-result
   historical search reads as "no precedent/history exists" — the
