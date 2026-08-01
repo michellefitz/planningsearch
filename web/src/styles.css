@@ -422,10 +422,25 @@ body {
   display: none;
 }
 
+/* Desktop: the wrapper is inert, so .filters keeps its original parent box. */
+.panel-controls {
+  display: contents;
+}
+
 /* ---------- Mobile: one pane at a time, denser chrome ---------- */
 @media (max-width: 767px) {
+  /* Chrome above the map was 246px of an 874px screen — 28%, before a single
+     result. Everything in this block is about giving that back to the map. */
   .app-header {
-    padding: 0.5rem 1rem;
+    padding: 0.35rem 0.9rem;
+  }
+  .app-header h1 {
+    font-size: 0.98rem;
+  }
+  /* The beta pill is a desktop nicety; on a phone it costs width in the row
+     that also has to hold the account controls. */
+  .app-header .beta {
+    display: none;
   }
   /* The data-source footer is dropped to reclaim vertical space (attribution
      still shows on every application's detail sheet). */
@@ -451,15 +466,39 @@ body {
     max-height: none;
     border-top: none;
     border-bottom: 1px solid var(--line);
-    padding: 0.7rem 1rem;
+    padding: 0.5rem 0.9rem 0.55rem;
+  }
+
+  /* Filters and the map/list toggle on one line: two rows of mostly empty
+     space became one. When the filter panel opens it takes the full width and
+     the toggle follows underneath, so the editor never gets squeezed into a
+     column beside it. */
+  .panel-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.15rem 0.75rem;
+  }
+  .panel-controls .filters {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+  .panel-controls .filters[open] {
+    flex-basis: 100%;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.3rem;
   }
 
   .view-toggle {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 0.6rem;
-    margin-top: 0.7rem;
+    margin: 0;
+    flex: 0 0 auto;
   }
 
   .vt-count {
@@ -1307,24 +1346,28 @@ body {
 /* Mobile: slimmer search chrome, and bigger touch targets for thumbs. */
 @media (max-width: 767px) {
   .mode-tabs {
-    margin-bottom: 0.55rem;
+    margin-bottom: 0.4rem;
+  }
+  .mode-tabs button {
+    padding: 0.28rem 0.95rem;
   }
   .search-bar form {
     gap: 0.4rem;
   }
   .search-input {
-    padding: 0.6rem 0.8rem;
+    padding: 0.55rem 0.8rem;
   }
   .search-bar .btn {
-    padding: 0.55rem 0.9rem;
+    padding: 0.5rem 0.9rem;
   }
   /* Keep the icon button square and thumb-sized (the rule above would stretch it). */
   .search-bar .btn-icon {
-    width: 2.6rem;
-    padding: 0.55rem;
+    width: 2.5rem;
+    padding: 0.5rem;
   }
+  /* Still a comfortable tap target — the row is the target, not just the text. */
   .filters summary {
-    padding: 0.5rem 0;
+    padding: 0.45rem 0;
   }
   /* Dropdown rows need thumb-sized targets too. */
   .ms-trigger {
@@ -2321,6 +2364,33 @@ a.pill:hover {
   box-shadow: var(--shadow-sm);
   white-space: nowrap;
   pointer-events: none;
+}
+
+.mt-short {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* Centred at the top, the full-width banner sat on top of the Layers chip
+     and the zoom buttons. Drop it below that row and shorten the wording. */
+  .map-truncated {
+    top: 3.15rem;
+    left: 0.6rem;
+    /* Sized to its text and stopped short of the zoom column on the right,
+       rather than stretched across it. */
+    right: auto;
+    max-width: calc(100% - 4.4rem);
+    transform: none;
+    white-space: normal;
+    font-size: 0.7rem;
+    padding: 0.28rem 0.6rem;
+  }
+  .mt-long {
+    display: none;
+  }
+  .mt-short {
+    display: inline;
+  }
 }
 
 /* Provenance line that exists only on paper. */

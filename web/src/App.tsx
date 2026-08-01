@@ -487,12 +487,17 @@ export default function App() {
               }}
               onNearMe={nearMe}
             />
-            <FiltersBar meta={meta} state={state} onChange={applyState} />
             {error && (
               <p className="error" role="alert">
                 {error}
               </p>
             )}
+            {/* Filters and the map/list toggle share one line on mobile, where
+                two near-empty rows cost more screen than they earn. Desktop
+                keeps them as they were — the wrapper is display:contents there,
+                and the toggle is hidden anyway. */}
+            <div className="panel-controls">
+            <FiltersBar meta={meta} state={state} onChange={applyState} />
             {/* Mobile map/list toggle — hidden at ≥768px, where both show. */}
             <div className="view-toggle" role="group" aria-label="View">
               <span className="vt-count" role="status">
@@ -516,6 +521,7 @@ export default function App() {
                   List
                 </button>
               </div>
+            </div>
             </div>
             <div className="results-scroll">
               <ResultsList
@@ -589,8 +595,18 @@ export default function App() {
               else here". Say when it's a subset and what to do about it. */}
           {mapData?.truncated && (
             <p className="map-truncated" role="status">
-              Showing {mapData.features.length.toLocaleString()} of{" "}
-              {mapData.matched?.toLocaleString()} in view — zoom in to see the rest
+              {/* Two wordings, one meaning: the full sentence needs more width
+                  than a phone has between the Layers chip and the zoom column,
+                  and a banner that covers the map controls is worse than a
+                  terse one. */}
+              <span className="mt-long">
+                Showing {mapData.features.length.toLocaleString()} of{" "}
+                {mapData.matched?.toLocaleString()} in view — zoom in to see the rest
+              </span>
+              <span className="mt-short">
+                {mapData.features.length.toLocaleString()} of{" "}
+                {mapData.matched?.toLocaleString()} shown — zoom in
+              </span>
             </p>
           )}
           <div className={`legend ${legendOpen ? "legend-open" : ""}`} aria-label="Map legend">
