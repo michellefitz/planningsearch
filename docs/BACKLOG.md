@@ -29,27 +29,40 @@ export floor off with it.
   applications** (+37,296), and for a house's planning history a 1990s
   extension is often the whole answer.
 
-### Watch this: the bundle is close to two ceilings
+### Bundle size — headroom bought back (2026-07-30)
 
-Measured on the real full-depth build:
+Deepening the register took `planning.json` to 178 MB, which with the 34 MB
+of boundaries was 212 MB of Vercel's 250 MB unzipped function limit, and a
+cold start spending ~2.0 s reading and ~1.4 s parsing before it could answer
+anything.
 
-- `planning.json` **178 MB**, `polygons.json` 34 MB — **212 MB of Vercel's
-  250 MB unzipped function limit**. At ~10k applications a year that is
-  roughly two and a half years of headroom.
-- Cold start pays **~2.0 s to read + ~1.4 s to `JSON.parse`** the bundle, and
-  535 MB of heap. `serverless-loads.test.ts` now takes 9.7 s for the same
-  reason — a useful canary.
-- Export step alone: **316 s**.
+Fixed by dropping null-valued fields at export. Most applications have most
+fields empty — no agent, no Eircode, no appeal, no floor area — so roughly a
+quarter of the file was the word "null" written out across ~132k rows. On the
+real build:
 
-**The mitigation is measured and ready, not done:** stripping null fields at
-write time takes the bundle from 177.9 MB to 132.5 MB (**25.5%**), which
-buys back both the ceiling and a quarter of the parse. Checked safe — the
-serverless path has only 7 strict null comparisons and none are on
-application fields, and `snapshotFromBundleApp` already coerces with
-`?? null`, so the accounts diff cannot mistake a missing key for a change.
-The API response shape should be preserved by re-adding the canonical nulls
-in `publicApp`, so nothing client-side sees the difference. Beyond that, the
-real fix is not parsing 132k rows at module load at all.
+| | before | after |
+| --- | --- | --- |
+| `planning.json` | 178.1 MB | **133.3 MB** |
+| function total (with boundaries) | 212 MB | **166 MB** of 250 MB |
+| cold-start read + parse | 1,963 ms | **1,303 ms** |
+| heap after parse | 535 MB | **433 MB** |
+| `serverless-loads.test.ts` | 9.7 s | 2 s |
+
+Two details make it safe:
+
+- Only the **canonical** fields are stripped (the intersection of keys across
+  every row, carried in the bundle as `application_fields`). The optional
+  extras are left alone: a row that matched a commencement notice with no
+  completion date carries `completion_date: null`, and that null is part of
+  the shape the API returns — nothing would put it back.
+- `publicApp` restores the canonical nulls on the way out, so responses are
+  unchanged. Verified by dumping meta, two searches, the map layer and 20
+  detail rows across all six authorities from both bundles: **byte-identical,
+  key order included**.
+
+Still true: the real fix, when the register outgrows this again, is not
+parsing 132k rows at module load at all.
 
 ## Shipped 2026-07-30 — site boundaries for every council application
 

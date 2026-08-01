@@ -1476,6 +1476,17 @@ const AGILE_SLUGS = {
 };
 const AGILE_BASE = "https://planning.agileapplications.ie";
 
+/**
+ * Null-valued fields are stripped from the bundle rows at export (see
+ * export-json.ts) — most applications have most fields empty, so writing them
+ * out cost roughly a quarter of the file. This puts them back on the way out,
+ * so every API response keeps the shape it has always had. Empty for an older
+ * bundle that has no field list, which simply means nothing to restore.
+ */
+const NULL_ROW = Object.freeze(
+  Object.fromEntries((BUNDLE.application_fields ?? []).map((k) => [k, null]))
+);
+
 function publicApp(a) {
   const auth = AUTH.get(a.authority_id);
   const agile = Boolean(AGILE_SLUGS[a.authority_id]);
@@ -1484,6 +1495,7 @@ function publicApp(a) {
   // that still carries the field can't inline kilobytes per row.
   const { geom_polygon: _gp, ...rest } = a;
   return {
+    ...NULL_ROW,
     ...rest,
     is_domestic_guess: Boolean(a.is_domestic_guess),
     status_label: BUNDLE.statuses[a.status] ?? a.status,

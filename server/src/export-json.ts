@@ -365,14 +365,38 @@ async function main() {
   }
   if (reextracted) console.log(`Unit counts: extracted ${reextracted} more from enriched descriptions.`);
 
+  // The fields every row carries, captured before the null strip below so the
+  // API can restore the exact shape it has always returned. An intersection,
+  // not a union: fields only some rows have (ppr_sales, commencement_*) are
+  // already absent from most rows today and must stay that way.
+  const applicationFields = apps.length
+    ? Object.keys(apps[0]).filter((k) => k !== "geom_polygon" && apps.every((a) => k in a))
+    : [];
+
   // Lift the boundaries into the sidecar, keyed by application id, and drop the
   // field from the bundle rows entirely — left in place as `null` it would cost
   // ~2 MB across the register for no information. Concatenating the stored
   // strings avoids parsing and re-serialising ~90k polygons.
+  //
+  // In the same pass, drop every field whose value is null. Most applications
+  // have most fields empty (no agent, no Eircode, no appeal, no floor area), so
+  // roughly a quarter of the bundle was the word "null" written out ~130k
+  // times: 178 MB against Vercel's 250 MB function limit, and ~3.4 s of cold
+  // start spent reading and parsing it. An absent field and a null one carry
+  // the same information; publicApp restores the nulls on the way out, so no
+  // API response changes.
   const polygonParts: string[] = [];
   for (const app of apps) {
     if (app.geom_polygon) polygonParts.push(`"${app.id}":${app.geom_polygon}`);
     delete (app as { geom_polygon?: unknown }).geom_polygon;
+    // Only the canonical fields, never the optional extras. A row that matched
+    // a commencement notice with no completion date carries completion_date:
+    // null, and that null is part of the shape the API returns today — it is
+    // not in applicationFields, so nothing would put it back.
+    const row = app as unknown as Record<string, unknown>;
+    for (const key of applicationFields) {
+      if (row[key] === null) delete row[key];
+    }
   }
 
   const counts = new Map<string, number>();
@@ -416,6 +440,9 @@ async function main() {
     ],
     statuses: STATUS_LABELS,
     application_types: APPLICATION_TYPE_LABELS,
+    // Every field an application row carries. Null values are stripped from the
+    // rows to keep the bundle small; this is how the API puts them back.
+    application_fields: applicationFields,
     glossary: GLOSSARY,
     attribution:
       dataSource === "live"
