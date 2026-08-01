@@ -178,10 +178,20 @@ body {
 
 /* Pushed to the right of the wordmark, as in any ordinary web app. */
 .app-nav {
+  position: relative;
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+/* Desktop: the avatar is absent and the links sit inline, exactly as before. */
+.nav-avatar {
+  display: none;
+}
+
+.nav-links {
+  display: contents;
 }
 
 .nav-link {
@@ -442,17 +452,98 @@ body {
   .app-header .beta {
     display: none;
   }
+  /* Search/Ask moves into the top bar, which had empty middle, and out of the
+     panel, where it cost a whole row. The display swap itself lives with the
+     .mode-tabs rules further down — those are defined after this block, so an
+     override here would lose to them. */
+  .app-header {
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
   /* The data-source footer is dropped to reclaim vertical space (attribution
      still shows on every application's detail sheet). */
   .app-footer {
     display: none;
   }
-  /* Keep the top bar to brand + the account controls that fit. */
-  .nav-email {
-    display: none;
-  }
   .app-nav {
     gap: 0.5rem;
+  }
+
+  /* Signed in, the account controls collapse behind one avatar button. */
+  .nav-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--line-strong);
+    border-radius: 50%;
+    background: var(--surface-2);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 650;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .nav-avatar[aria-expanded="true"] {
+    background: var(--action-tint);
+    color: var(--action);
+    border-color: var(--action);
+  }
+  /* The update dot rides the avatar while the menu is shut, so a saved
+     application with news is still visible without opening anything. */
+  .nav-dot-avatar {
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    margin: 0;
+    width: 8px;
+    height: 8px;
+    border: 1.5px solid var(--surface);
+  }
+
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    right: 0;
+    z-index: 30;
+    min-width: 12rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.1rem;
+    padding: 0.35rem;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+  }
+  .nav-links-open {
+    display: flex;
+  }
+  .nav-links .nav-link,
+  .nav-links .nav-signout {
+    text-align: left;
+    padding: 0.55rem 0.7rem;
+    border-radius: var(--r-sm);
+    font-size: 0.88rem;
+  }
+  /* Room for it here, unlike the top bar it used to be hidden from. */
+  .nav-links .nav-email {
+    display: block;
+    max-width: none;
+    order: 1;
+    padding: 0.45rem 0.7rem 0.15rem;
+    border-top: 1px solid var(--line);
+    margin-top: 0.2rem;
+    font-size: 0.74rem;
+    color: var(--ink-3);
+  }
+  .nav-links .nav-signout {
+    order: 2;
   }
   .account-screen-inner {
     padding: 0.8rem 1rem 2rem;
@@ -1345,11 +1436,8 @@ body {
 
 /* Mobile: slimmer search chrome, and bigger touch targets for thumbs. */
 @media (max-width: 767px) {
-  .mode-tabs {
-    margin-bottom: 0.4rem;
-  }
   .mode-tabs button {
-    padding: 0.28rem 0.95rem;
+    padding: 0.28rem 0.9rem;
   }
   .search-bar form {
     gap: 0.4rem;
@@ -2602,6 +2690,26 @@ a.pill:hover {
   margin-bottom: 0.6rem;
   background: var(--surface-2);
   border-radius: 999px;
+}
+
+/* Desktop shows the panel copy; the top-bar copy is a phone affordance. */
+.mode-tabs-top {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* Search/Ask lives in the top bar on a phone: the bar had empty middle, and
+     the panel row it used to occupy cost ~40px of map. Kept next to the rule
+     it overrides — the other mobile blocks are earlier in the file and would
+     lose to it. */
+  .mode-tabs-top {
+    display: inline-flex;
+    margin: 0;
+    flex: 0 0 auto;
+  }
+  .mode-tabs-panel {
+    display: none;
+  }
 }
 .mode-tabs button {
   padding: 0.3rem 1.15rem;

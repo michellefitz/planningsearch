@@ -62,6 +62,10 @@ export default function App() {
   // Desktop only: tuck the whole panel away for a full-width map.
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
+  // Mobile account menu. Only rendered as a menu below 768px — above it the
+  // same buttons sit inline in the top bar and this stays false.
+  const [navOpen, setNavOpen] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
   // Shown after the user pans/zooms the map: a one-tap "search this area".
   const [canSearchArea, setCanSearchArea] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
@@ -133,6 +137,24 @@ export default function App() {
   useEffect(() => {
     runSearch(EMPTY_SEARCH);
   }, [runSearch]);
+
+  // Dismiss the account menu the way a menu is expected to go: tap anywhere
+  // else, or press Escape.
+  useEffect(() => {
+    if (!navOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!navRef.current?.contains(e.target as Node)) setNavOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNavOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [navOpen]);
 
   const applyState = (next: SearchState) => {
     setState(next);
@@ -400,41 +422,106 @@ export default function App() {
     null
   );
 
+  /**
+   * Search/Ask. Rendered twice and shown once: in the top bar on a phone,
+   * where the row has space the panel does not, and above the panel at
+   * >=768px. One `mode` drives both, so they cannot disagree.
+   */
+  const modeTabs = (variant: string) => (
+    <div className={`mode-tabs ${variant}`} role="tablist" aria-label="Panel mode">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "search"}
+        className={mode === "search" ? "tab-active" : ""}
+        onClick={() => setMode("search")}
+      >
+        Search
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "ask"}
+        className={mode === "ask" ? "tab-active" : ""}
+        onClick={() => setMode("ask")}
+      >
+        Ask
+      </button>
+    </div>
+  );
+
   return (
     <div className="app">
       <header className="app-header">
         <h1>
           PlanView <span className="beta">beta</span>
         </h1>
+        {(mode === "search" || mode === "ask") && modeTabs("mode-tabs-top")}
         {/* Account lives in the top bar, where a web app puts it — not as a
             third panel tab. Signing in and the dashboard are app-level
             destinations, not modes of the search panel. */}
-        <nav className="app-nav" aria-label="Account">
+        <nav className="app-nav" aria-label="Account" ref={navRef}>
           {me?.user ? (
             <>
+              {/* Signed in, the top bar carried four controls — two links, the
+                  email and Sign out — which on a phone left no room for
+                  anything else. They collapse behind one avatar button here;
+                  the wrapper is display:contents at ≥768px, so the desktop bar
+                  keeps the same inline row it always had. */}
               <button
                 type="button"
-                className={`nav-link ${mode === "preplan" ? "nav-link-on" : ""}`}
-                aria-current={mode === "preplan" ? "page" : undefined}
-                onClick={() => setMode("preplan")}
+                className="nav-avatar"
+                aria-expanded={navOpen}
+                aria-haspopup="menu"
+                aria-label={`Account menu for ${me.user.email}`}
+                onClick={() => setNavOpen((o) => !o)}
               >
-                Pre-planner
+                {me.user.email.slice(0, 1).toUpperCase()}
+                {/* The dot has to survive the collapse, or a saved application
+                    with an update becomes invisible until you go looking. */}
+                {me.saves.some((s) => s.has_update) ? <span className="nav-dot nav-dot-avatar" /> : null}
               </button>
-              <button
-                type="button"
-                className={`nav-link ${mode === "account" ? "nav-link-on" : ""}`}
-                aria-current={mode === "account" ? "page" : undefined}
-                onClick={() => setMode("account")}
-              >
-                Dashboard
-                {me.saves.some((s) => s.has_update) ? <span className="nav-dot" /> : null}
-              </button>
-              <span className="nav-email" title={me.user.email}>
-                {me.user.email}
-              </span>
-              <button type="button" className="nav-signout" onClick={signOut}>
-                Sign out
-              </button>
+              <div className={`nav-links ${navOpen ? "nav-links-open" : ""}`} role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`nav-link ${mode === "account" ? "nav-link-on" : ""}`}
+                  aria-current={mode === "account" ? "page" : undefined}
+                  onClick={() => {
+                    setNavOpen(false);
+                    setMode("account");
+                  }}
+                >
+                  Dashboard
+                  {me.saves.some((s) => s.has_update) ? <span className="nav-dot" /> : null}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`nav-link ${mode === "preplan" ? "nav-link-on" : ""}`}
+                  aria-current={mode === "preplan" ? "page" : undefined}
+                  onClick={() => {
+                    setNavOpen(false);
+                    setMode("preplan");
+                  }}
+                >
+                  Pre-planner
+                </button>
+                <span className="nav-email" title={me.user.email}>
+                  {me.user.email}
+                </span>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="nav-signout"
+                  onClick={() => {
+                    setNavOpen(false);
+                    signOut();
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
             </>
           ) : (
             <button
@@ -455,26 +542,7 @@ export default function App() {
         hidden={mode === "account" || mode === "preplan"}
       >
         <div className="side-panel">
-          <div className="mode-tabs" role="tablist" aria-label="Panel mode">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === "search"}
-              className={mode === "search" ? "tab-active" : ""}
-              onClick={() => setMode("search")}
-            >
-              Search
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === "ask"}
-              className={mode === "ask" ? "tab-active" : ""}
-              onClick={() => setMode("ask")}
-            >
-              Ask
-            </button>
-          </div>
+          {modeTabs("mode-tabs-panel")}
 
           <div hidden={mode !== "search"} className="search-wrap">
             <SearchBar
