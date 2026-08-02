@@ -10,6 +10,10 @@ import { fetchLiveNationalSnapshot } from "./live.mjs";
 import { fetchKildareLiveSnapshot } from "./kildare.mjs";
 import { buildDigestEmail } from "./digest.mjs";
 import { runAgileHarvest } from "./harvest.mjs";
+import {
+  ensureWatchSchema, findWatchHits, MAX_RADIUS_M, MAX_WATCHES_PER_USER,
+  MIN_RADIUS_M, watchHitSummary, watchWindowStart,
+} from "./watches.mjs";
 
 const AGILE = new Set(["dublin-city", "fingal", "dlr", "south-dublin"]);
 
@@ -19,6 +23,7 @@ export function isAccountRoute(route) {
     route === "/api/me" ||
     route === "/api/saves" || route.startsWith("/api/saves/") ||
     route === "/api/lists" || route.startsWith("/api/lists/") ||
+    route === "/api/watches" || route.startsWith("/api/watches/") ||
     route === "/api/resolve" ||
     route === "/api/alerts/unsubscribe" ||
     route === "/api/cron/check-updates" ||
@@ -109,6 +114,19 @@ async function loadLists(userId) {
     ...l,
     item_ids: items.filter((i) => i.list_id === l.id).map((i) => i.saved_app_id),
   }));
+}
+
+async function loadWatches(userId) {
+  try {
+    return await sql(
+      `select id, name, lat, lng, radius_m, alerts_enabled, created_at
+       from area_watches where user_id = $1 order by created_at desc`,
+      [userId]
+    );
+  } catch {
+    // Table not created yet (fresh database, no watch saved anywhere).
+    return [];
+  }
 }
 
 async function mapLimit(items, limit, fn) {
@@ -209,6 +227,12 @@ async function dispatch(req, res, route, url, ctx) {
       return res.end("<p>This unsubscribe link is invalid or has expired.</p>");
     }
     await sql(`update saved_apps set alerts_enabled = false where user_id = $1`, [userId]);
+    // Area watches feed the same digest, so the same link silences them.
+    try {
+      await sql(`update area_watches set alerts_enabled = false where user_id = $1`, [userId]);
+    } catch {
+      // Table may not exist yet on a fresh database — nothing to silence.
+    }
     res.statusCode = 200;
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
@@ -245,12 +269,74 @@ async function dispatch(req, res, route, url, ctx) {
   const user = await currentUser(req);
 
   if (route === "/api/me") {
-    if (!user) return sendPrivate(res, 200, { user: null, saves: [], lists: [] });
-    const [saves, lists] = await Promise.all([loadSaves(user.id, ctx), loadLists(user.id)]);
-    return sendPrivate(res, 200, { user: { email: user.email }, saves, lists });
+    if (!user) return sendPrivate(res, 200, { user: null, saves: [], lists: [], watches: [] });
+    const [saves, lists, watches] = await Promise.all([
+      loadSaves(user.id, ctx),
+      loadLists(user.id),
+      loadWatches(user.id),
+    ]);
+    return sendPrivate(res, 200, { user: { email: user.email }, saves, lists, watches });
   }
 
   if (!user) return sendPrivate(res, 401, { error: "sign in required" });
+
+  if (route === "/api/watches" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const name = String(body?.name ?? "").trim().slice(0, 80);
+    const lat = Number(body?.lat);
+    const lng = Number(body?.lng);
+    const radius = Math.round(Number(body?.radius_m));
+    if (!name) return sendPrivate(res, 400, { error: "name required" });
+    // Loose Ireland bounds — a watch on Null Island alerts on nothing forever.
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 51 || lat > 56 || lng < -11 || lng > -5)
+      return sendPrivate(res, 400, { error: "location must be in Ireland" });
+    if (!Number.isFinite(radius) || radius < MIN_RADIUS_M || radius > MAX_RADIUS_M)
+      return sendPrivate(res, 400, { error: `radius must be ${MIN_RADIUS_M}-${MAX_RADIUS_M} m` });
+    await ensureWatchSchema();
+    const count = await sql(`select count(*)::int as n from area_watches where user_id = $1`, [user.id]);
+    if ((count[0]?.n ?? 0) >= MAX_WATCHES_PER_USER)
+      return sendPrivate(res, 400, { error: `limit of ${MAX_WATCHES_PER_USER} watched areas reached` });
+    const rows = await sql(
+      `insert into area_watches (user_id, name, lat, lng, radius_m)
+       values ($1, $2, $3, $4, $5)
+       returning id, name, lat, lng, radius_m, alerts_enabled, created_at`,
+      [user.id, name, lat, lng, radius]
+    );
+    const watch = rows[0];
+    // Seed: everything already in the window is pre-existing, not news.
+    const hits = findWatchHits(ctx.applications, watch, watchWindowStart());
+    for (const h of hits) {
+      for (const kind of h.kinds) {
+        await sql(
+          `insert into area_watch_alerted (watch_id, authority_id, planning_reference, kind)
+           values ($1, $2, $3, $4) on conflict do nothing`,
+          [watch.id, h.app.authority_id, h.app.planning_reference, kind]
+        );
+      }
+    }
+    return sendPrivate(res, 200, watch);
+  }
+
+  const watchMatch = route.match(/^\/api\/watches\/(\d+)$/);
+  if (watchMatch) {
+    const id = Number(watchMatch[1]);
+    if (req.method === "DELETE") {
+      await sql(`delete from area_watches where id = $1 and user_id = $2`, [id, user.id]);
+      return sendPrivate(res, 200, { ok: true });
+    }
+    if (req.method === "PATCH") {
+      const body = await readJsonBody(req);
+      if (typeof body?.alerts_enabled === "boolean")
+        await sql(`update area_watches set alerts_enabled = $3 where id = $1 and user_id = $2`, [id, user.id, body.alerts_enabled]);
+      const rows = await sql(
+        `select id, name, lat, lng, radius_m, alerts_enabled, created_at
+         from area_watches where id = $1 and user_id = $2`,
+        [id, user.id]
+      );
+      return sendPrivate(res, 200, rows[0] ?? null);
+    }
+    return sendPrivate(res, 405, { error: "PATCH or DELETE" });
+  }
 
   if (route === "/api/saves" && req.method === "POST") {
     const body = await readJsonBody(req);
@@ -434,6 +520,51 @@ async function handleCron(req, res, ctx) {
     }
   });
 
+  // Area watches: sweep the bundle for recent activity inside each circle
+  // that this watch hasn't alerted on yet. Detection failure must never block
+  // the saved-app digests.
+  const watchNewsByUser = new Map();
+  let watchHitsFound = 0;
+  try {
+    await ensureWatchSchema();
+    const watches = await sql(
+      `select id, user_id, name, lat, lng, radius_m from area_watches where alerts_enabled`
+    );
+    const since = watchWindowStart();
+    for (const w of watches) {
+      const hits = findWatchHits(ctx.applications, w, since);
+      if (!hits.length) continue;
+      const alerted = await sql(
+        `select authority_id, planning_reference, kind from area_watch_alerted where watch_id = $1`,
+        [w.id]
+      );
+      const seen = new Set(alerted.map((r) => `${r.authority_id}|${r.planning_reference}|${r.kind}`));
+      for (const h of hits) {
+        for (const kind of h.kinds) {
+          const key = `${h.app.authority_id}|${h.app.planning_reference}|${kind}`;
+          if (seen.has(key)) continue;
+          await sql(
+            `insert into area_watch_alerted (watch_id, authority_id, planning_reference, kind)
+             values ($1, $2, $3, $4) on conflict do nothing`,
+            [w.id, h.app.authority_id, h.app.planning_reference, kind]
+          );
+          if (!watchNewsByUser.has(w.user_id)) watchNewsByUser.set(w.user_id, new Map());
+          const byWatch = watchNewsByUser.get(w.user_id);
+          if (!byWatch.has(w.id)) byWatch.set(w.id, { name: w.name, items: [] });
+          byWatch.get(w.id).items.push({
+            address: h.app.address_text ?? h.app.planning_reference,
+            reference: h.app.planning_reference,
+            summary: watchHitSummary(h.app, kind),
+            authority_id: h.app.authority_id,
+          });
+          watchHitsFound++;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("area-watch sweep failed", err);
+  }
+
   const origin = process.env.APP_ORIGIN ?? `https://${req.headers.host}`;
   const users = await sql(
     `select id, email, coalesce(last_digest_at, created_at) as since from users`
@@ -449,7 +580,8 @@ async function handleCron(req, res, ctx) {
        order by e.detected_at`,
       [u.id, u.since]
     );
-    if (!rows.length) continue;
+    const watchNews = watchNewsByUser.get(u.id);
+    if (!rows.length && !watchNews) continue;
     const byApp = new Map();
     for (const r of rows) {
       const key = `${r.authority_id}|${r.planning_reference}`;
@@ -464,11 +596,20 @@ async function handleCron(req, res, ctx) {
       }
       byApp.get(key).summaries.push(r.summary);
     }
+    const areaSections = watchNews
+      ? [...watchNews.values()].map((wn) => ({
+          name: wn.name,
+          items: wn.items.map((i) => ({
+            ...i,
+            url: `${origin}/#app=${encodeURIComponent(i.authority_id)}:${encodeURIComponent(i.reference)}`,
+          })),
+        }))
+      : [];
     const unsubUrl = `${origin}/api/alerts/unsubscribe?u=${u.id}&t=${unsubscribeToken(u.id)}`;
     try {
       await sendEmail({
         to: u.email,
-        ...buildDigestEmail([...byApp.values()], unsubUrl),
+        ...buildDigestEmail([...byApp.values()], unsubUrl, areaSections),
         headers: { "List-Unsubscribe": `<${unsubUrl}>` },
       });
       emailsSent++;
@@ -478,5 +619,10 @@ async function handleCron(req, res, ctx) {
     }
   }
 
-  return sendPrivate(res, 200, { checked: targets.length, events: eventsWritten, emails: emailsSent });
+  return sendPrivate(res, 200, {
+    checked: targets.length,
+    events: eventsWritten,
+    watch_hits: watchHitsFound,
+    emails: emailsSent,
+  });
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { accountApi, type Me, type SavedApp, type SavedList } from "../accountApi";
+import { accountApi, type AreaWatch, type Me, type SavedApp, type SavedList } from "../accountApi";
 import type { PointFeatureCollection } from "../api";
 import { StatusBadge } from "./ResultsList";
 import MapView from "./MapView";
@@ -12,6 +12,8 @@ interface Props {
   onRefresh: () => Promise<Me>;
   onOpenApp: (authorityId: string, reference: string) => Promise<void>;
   onGoSearch: () => void;
+  /** Show a watched area's circle on the main map. */
+  onViewWatch: (watch: AreaWatch) => void;
 }
 
 const DECIDED = new Set(["granted", "refused", "split", "decided", "withdrawn", "invalid"]);
@@ -271,7 +273,7 @@ function ListSectionHead({
   );
 }
 
-export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSearch }: Props) {
+export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSearch, onViewWatch }: Props) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [view, setView] = useState<"register" | "map">("register");
@@ -579,6 +581,59 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
           )}
         </>
       )}
+
+      <section className="watch-section" aria-label="Watched areas">
+        <div className="reg-section-head">
+          <h3>
+            Watched areas{" "}
+            {(me.watches?.length ?? 0) > 0 && <span className="reg-count">{me.watches!.length}</span>}
+          </h3>
+        </div>
+        {(me.watches?.length ?? 0) === 0 ? (
+          <div className="account-empty">
+            <strong>No areas watched yet</strong>
+            <p>
+              Pick a point on the map and a radius, and we'll email you the day anything new lands
+              inside it — planning applications, An Coimisiún Pleanála cases, or work commencing.
+            </p>
+            <button type="button" onClick={onGoSearch}>Watch an area on the map</button>
+          </div>
+        ) : (
+          me.watches!.map((w) => (
+            <div key={w.id} className="watch-row">
+              <button type="button" className="watch-row-main" onClick={() => onViewWatch(w)} title="Show on the map">
+                <strong>{w.name}</strong>
+                <span className="watch-row-sub">
+                  within {w.radius_m < 1000 ? `${w.radius_m} m` : `${w.radius_m / 1000} km`} · added {fmtDate(w.created_at.slice(0, 10))}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`saved-bell${w.alerts_enabled ? " saved-bell-on" : ""}`}
+                aria-pressed={w.alerts_enabled}
+                title={w.alerts_enabled ? "Alerts on — click to pause" : "Alerts paused — click to resume"}
+                onClick={async () => {
+                  await accountApi.updateWatch(w.id, { alerts_enabled: !w.alerts_enabled });
+                  await onRefresh();
+                }}
+              >
+                <BellIcon on={w.alerts_enabled} />
+              </button>
+              <button
+                type="button"
+                className="watch-delete"
+                title="Stop watching this area"
+                onClick={async () => {
+                  await accountApi.deleteWatch(w.id);
+                  await onRefresh();
+                }}
+              >
+                <XIcon size={13} />
+              </button>
+            </div>
+          ))
+        )}
+      </section>
     </div>
   );
 }

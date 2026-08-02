@@ -28,10 +28,21 @@ export interface SavedList {
   item_ids: number[];
 }
 
+export interface AreaWatch {
+  id: number;
+  name: string;
+  lat: number;
+  lng: number;
+  radius_m: number;
+  alerts_enabled: boolean;
+  created_at: string;
+}
+
 export interface Me {
   user: { email: string } | null;
   saves: SavedApp[];
   lists: SavedList[];
+  watches?: AreaWatch[];
 }
 
 export const saveKey = (authorityId: string, reference: string) => `${authorityId}|${reference}`;
@@ -55,4 +66,9 @@ export const accountApi = {
     j<{ ok: boolean }>(`/api/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ saved_app_id: savedAppId }) }),
   removeFromList: (listId: number, savedAppId: number) =>
     j<{ ok: boolean }>(`/api/lists/${listId}/items/${savedAppId}`, { method: "DELETE" }),
+  createWatch: (watch: { name: string; lat: number; lng: number; radius_m: number }) =>
+    j<AreaWatch>("/api/watches", { method: "POST", body: JSON.stringify(watch) }),
+  updateWatch: (id: number, patch: { alerts_enabled?: boolean }) =>
+    j<AreaWatch | null>(`/api/watches/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteWatch: (id: number) => j<{ ok: boolean }>(`/api/watches/${id}`, { method: "DELETE" }),
 };

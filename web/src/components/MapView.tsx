@@ -58,22 +58,47 @@ export const STATUS_STYLE: Record<string, { color: string; letter: string; label
 
 const IRELAND_EAST_BOUNDS: [number, number, number, number] = [-7.2, 52.9, -5.9, 53.7];
 
+/** Geodesic circle as a GeoJSON polygon — the alert-area preview. */
+export function circlePolygon(lat: number, lng: number, radiusM: number, steps = 64): GeoJSON.Feature {
+  const ring: [number, number][] = [];
+  const dLat = radiusM / 111_320;
+  const dLng = radiusM / (111_320 * Math.cos((lat * Math.PI) / 180));
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * 2 * Math.PI;
+    ring.push([lng + dLng * Math.cos(a), lat + dLat * Math.sin(a)]);
+  }
+  return { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} };
+}
+
+export interface WatchCircle {
+  lat: number;
+  lng: number;
+  radius_m: number;
+  /** Draft mode: the centre pin can be dragged (and the map clicked) to move it. */
+  draggable?: boolean;
+}
+
 interface Props {
   data: PointFeatureCollection | null;
   /** Site boundaries (id/status properties) shown on pin hover/selection. */
   polygons: GeoJSON.FeatureCollection | null;
+  /** Alert-area preview: a circle plus (in draft mode) a draggable centre pin. */
+  watchCircle?: WatchCircle | null;
+  onWatchMove?: (lat: number, lng: number) => void;
   selectedId: number | null;
   hoveredId: number | null;
   onSelect: (id: number) => void;
   onBoundsChange: (bbox: [number, number, number, number]) => void;
   /** Fired only on a user-driven pan/zoom (not programmatic flyTo). */
   onUserMove?: () => void;
-  flyTo?: { lat: number; lng: number } | null;
+  flyTo?: { lat: number; lng: number; zoom?: number } | null;
 }
 
 export default function MapView({
   data,
   polygons,
+  watchCircle,
+  onWatchMove,
   selectedId,
   hoveredId,
   onSelect,
@@ -94,6 +119,11 @@ export default function MapView({
   onBoundsChangeRef.current = onBoundsChange;
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const onWatchMoveRef = useRef(onWatchMove);
+  onWatchMoveRef.current = onWatchMove;
+  const watchCircleRef = useRef(watchCircle);
+  watchCircleRef.current = watchCircle;
+  const watchMarkerRef = useRef<maplibregl.Marker | null>(null);
   // Map-side pin hover (distinct from list hover, which arrives as a prop).
   const mapHoverIdRef = useRef<number | null>(null);
   const setMapHover = (map: maplibregl.Map, id: number | null) => {
@@ -358,6 +388,28 @@ export default function MapView({
         map.on("mouseleave", `ov-${layer}-fill`, () => (map.getCanvas().style.cursor = ""));
       }
 
+      // Alert-area preview (watch creation and "view watch"): one circle.
+      map.addSource("watch-circle", { type: "geojson", data: EMPTY_FC as never });
+      map.addLayer({
+        id: "watch-circle-fill",
+        type: "fill",
+        source: "watch-circle",
+        paint: { "fill-color": "#0b62d6", "fill-opacity": 0.1 },
+      });
+      map.addLayer({
+        id: "watch-circle-line",
+        type: "line",
+        source: "watch-circle",
+        paint: { "line-color": "#0b62d6", "line-width": 2, "line-dasharray": [2, 1.5] },
+      });
+      // In draft mode a map click moves the centre — dragging the pin is
+      // fiddly on touch screens; tapping where you mean is not.
+      map.on("click", (e) => {
+        if (!watchCircleRef.current?.draggable || !onWatchMoveRef.current) return;
+        const hitPin = map.queryRenderedFeatures(e.point, { layers: ["pins", "clusters"] }).length > 0;
+        if (!hitPin) onWatchMoveRef.current(e.lngLat.lat, e.lngLat.lng);
+      });
+
       // Site boundaries, revealed per-application on pin hover/selection —
       // always-on polygons read as visual noise, and a boundary with no pin
       // context answers nothing. Added before the pin layers so pins stay on
@@ -568,6 +620,33 @@ export default function MapView({
     }
   }, [polygons]);
 
+  // Draw (or clear) the alert-area circle and manage its centre pin.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const source = map.getSource("watch-circle") as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    if (!watchCircle) {
+      source.setData(EMPTY_FC as never);
+      watchMarkerRef.current?.remove();
+      watchMarkerRef.current = null;
+      return;
+    }
+    source.setData(circlePolygon(watchCircle.lat, watchCircle.lng, watchCircle.radius_m) as never);
+    if (!watchMarkerRef.current) {
+      watchMarkerRef.current = new maplibregl.Marker({ color: "#0b62d6", draggable: Boolean(watchCircle.draggable) })
+        .setLngLat([watchCircle.lng, watchCircle.lat])
+        .addTo(map);
+      watchMarkerRef.current.on("dragend", () => {
+        const pos = watchMarkerRef.current?.getLngLat();
+        if (pos) onWatchMoveRef.current?.(pos.lat, pos.lng);
+      });
+    } else {
+      watchMarkerRef.current.setLngLat([watchCircle.lng, watchCircle.lat]);
+      watchMarkerRef.current.setDraggable(Boolean(watchCircle.draggable));
+    }
+  }, [watchCircle]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
@@ -577,7 +656,7 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (map && flyTo) {
-      map.flyTo({ center: [flyTo.lng, flyTo.lat], zoom: Math.max(map.getZoom(), 15) });
+      map.flyTo({ center: [flyTo.lng, flyTo.lat], zoom: flyTo.zoom ?? Math.max(map.getZoom(), 15) });
     }
   }, [flyTo]);
 

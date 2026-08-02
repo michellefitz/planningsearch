@@ -18,7 +18,7 @@ import MapView, { STATUS_STYLE } from "./components/MapView";
 import ChatPanel from "./components/ChatPanel";
 import AccountPanel from "./components/AccountPanel";
 import PrePlannerPanel from "./components/PrePlannerPanel";
-import { accountApi, saveKey, type Me, type SavedApp } from "./accountApi";
+import { accountApi, saveKey, type AreaWatch, type Me, type SavedApp } from "./accountApi";
 import type { AgentAppRef } from "./agentApi";
 import { coverageSummary } from "./coverage";
 
@@ -53,7 +53,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AppDetail | null>(null);
-  const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null);
+  const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"search" | "ask" | "account" | "preplan">("search");
   // Mobile only: the layout shows one of map / list at a time (a toggle),
@@ -70,6 +70,12 @@ export default function App() {
   const [canSearchArea, setCanSearchArea] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  // Area-watch creation (draggable circle + card) and read-only preview of a
+  // saved watch. Only one circle shows at a time; a draft wins.
+  const [watchDraft, setWatchDraft] = useState<{ name: string; lat: number; lng: number; radius_m: number } | null>(null);
+  const [watchView, setWatchView] = useState<AreaWatch | null>(null);
+  const [watchSaving, setWatchSaving] = useState(false);
+  const [watchNotice, setWatchNotice] = useState<string | null>(null);
 
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const nearRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -167,6 +173,40 @@ export default function App() {
   const searchThisArea = () => {
     setCanSearchArea(false);
     runSearch({ ...state, useMapArea: true });
+  };
+
+  // Start an area-watch draft at the current map centre; the user positions it
+  // by dragging the pin or tapping the map, then names and saves it.
+  const startWatchDraft = () => {
+    const b = bboxRef.current;
+    const center = b
+      ? { lat: (b[1] + b[3]) / 2, lng: (b[0] + b[2]) / 2 }
+      : { lat: 53.35, lng: -6.26 };
+    setWatchView(null);
+    setWatchNotice(null);
+    setWatchDraft({ name: "", radius_m: 1000, ...center });
+  };
+
+  const saveWatchDraft = async () => {
+    if (!watchDraft) return;
+    setWatchSaving(true);
+    setWatchNotice(null);
+    try {
+      const watch = await accountApi.createWatch({
+        name: watchDraft.name.trim() || "Watched area",
+        lat: watchDraft.lat,
+        lng: watchDraft.lng,
+        radius_m: watchDraft.radius_m,
+      });
+      await refreshMe();
+      setWatchDraft(null);
+      setWatchView(watch);
+      setWatchNotice(`Watching ${watch.name} — new applications and commencements land in your daily email.`);
+    } catch {
+      setWatchNotice("Could not save that area — try again.");
+    } finally {
+      setWatchSaving(false);
+    }
   };
 
   // Pins follow the viewport, independently of the list. Panning re-fetches
@@ -639,6 +679,14 @@ export default function App() {
           <MapView
             data={mapData}
             polygons={sitePolygons}
+            watchCircle={
+              watchDraft
+                ? { lat: watchDraft.lat, lng: watchDraft.lng, radius_m: watchDraft.radius_m, draggable: true }
+                : watchView
+                  ? { lat: watchView.lat, lng: watchView.lng, radius_m: watchView.radius_m }
+                  : null
+            }
+            onWatchMove={(lat, lng) => setWatchDraft((d) => (d ? { ...d, lat, lng } : d))}
             selectedId={selectedId}
             hoveredId={hoveredId}
             onSelect={select}
@@ -654,9 +702,72 @@ export default function App() {
             }}
             flyTo={flyTo}
           />
-          {canSearchArea && (
+          {canSearchArea && !watchDraft && (
             <button type="button" className="search-area-btn" onClick={searchThisArea}>
               Search this area
+            </button>
+          )}
+          {!watchDraft && (
+            <button
+              type="button"
+              className="watch-area-btn"
+              onClick={startWatchDraft}
+              title="Get a daily email about new applications and commencements around a point"
+            >
+              + Watch an area
+            </button>
+          )}
+          {watchDraft && (
+            <div className="watch-card" role="dialog" aria-label="Watch this area">
+              <strong>Watch this area</strong>
+              <p className="watch-hint">
+                Drag the pin or tap the map to centre it. Anything new inside the circle —
+                applications, An Coimisiún Pleanála cases, commencements — lands in your daily email.
+              </p>
+              <input
+                type="text"
+                value={watchDraft.name}
+                placeholder="Name it — e.g. Home, Maynooth office"
+                maxLength={80}
+                onChange={(e) => setWatchDraft({ ...watchDraft, name: e.target.value })}
+              />
+              <div className="watch-radius-row" role="radiogroup" aria-label="Radius">
+                {[250, 500, 1000, 2000].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    className={`chip ${watchDraft.radius_m === r ? "chip-on" : ""}`}
+                    onClick={() => setWatchDraft({ ...watchDraft, radius_m: r })}
+                  >
+                    {r < 1000 ? `${r} m` : `${r / 1000} km`}
+                  </button>
+                ))}
+              </div>
+              {watchNotice && <p className="watch-notice">{watchNotice}</p>}
+              <div className="watch-actions">
+                {me?.user ? (
+                  <button type="button" className="watch-save" disabled={watchSaving} onClick={saveWatchDraft}>
+                    {watchSaving ? "Saving…" : "Save watch"}
+                  </button>
+                ) : (
+                  <button type="button" className="watch-save" onClick={() => setMode("account")}>
+                    Sign in to save
+                  </button>
+                )}
+                <button type="button" className="watch-cancel" onClick={() => { setWatchDraft(null); setWatchNotice(null); }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {!watchDraft && watchView && (
+            <button
+              type="button"
+              className="watch-viewing-chip"
+              onClick={() => { setWatchView(null); setWatchNotice(null); }}
+              title="Hide this watched area"
+            >
+              {watchNotice ?? `Watching: ${watchView.name}`} ✕
             </button>
           )}
           {/* A map that quietly stops drawing pins reads as "there's nothing
@@ -743,6 +854,14 @@ export default function App() {
                 }
               }}
               onGoSearch={() => setMode("search")}
+              onViewWatch={(w) => {
+                setWatchDraft(null);
+                setWatchNotice(null);
+                setWatchView(w);
+                setMode("search");
+                // Zoom so the whole circle fits: 250 m → 15 down to 2 km → 12.
+                setFlyTo({ lat: w.lat, lng: w.lng, zoom: 15 - Math.log2(w.radius_m / 250) });
+              }}
             />
           </div>
         </main>
