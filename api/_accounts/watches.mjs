@@ -17,7 +17,8 @@ import { sql } from "./db.mjs";
 
 export const WATCH_WINDOW_DAYS = 60;
 export const MIN_RADIUS_M = 100;
-export const MAX_RADIUS_M = 5000;
+// 10 km covers the rural case — a townland watcher's "anywhere near me".
+export const MAX_RADIUS_M = 10000;
 export const MAX_WATCHES_PER_USER = 10;
 
 /** Mirrors scripts/migrate-accounts.mjs — the script needs DATABASE_URL,

@@ -85,6 +85,9 @@ interface Props {
   /** Alert-area preview: a circle plus (in draft mode) a draggable centre pin. */
   watchCircle?: WatchCircle | null;
   onWatchMove?: (lat: number, lng: number) => void;
+  /** Watch-creation mode: hide the application pins so the circle is the map's
+      only subject. */
+  hideApps?: boolean;
   selectedId: number | null;
   hoveredId: number | null;
   onSelect: (id: number) => void;
@@ -99,6 +102,7 @@ export default function MapView({
   polygons,
   watchCircle,
   onWatchMove,
+  hideApps,
   selectedId,
   hoveredId,
   onSelect,
@@ -619,6 +623,14 @@ export default function MapView({
       (map.getSource("site-polygons") as maplibregl.GeoJSONSource).setData(polygons as never);
     }
   }, [polygons]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    for (const layer of ["clusters", "cluster-count", "pins", "pin-letters"]) {
+      if (map.getLayer(layer)) map.setLayoutProperty(layer, "visibility", hideApps ? "none" : "visible");
+    }
+  }, [hideApps]);
 
   // Draw (or clear) the alert-area circle and manage its centre pin.
   useEffect(() => {

@@ -175,8 +175,9 @@ export default function App() {
     runSearch({ ...state, useMapArea: true });
   };
 
-  // Start an area-watch draft at the current map centre; the user positions it
-  // by dragging the pin or tapping the map, then names and saves it.
+  // Start an area-watch draft at the current map centre. Entering the draft
+  // switches the whole screen into a focused map-only mode (panel, filters,
+  // pins and competing CTAs all hidden) — see the `watch-mode` layout class.
   const startWatchDraft = () => {
     const b = bboxRef.current;
     const center = b
@@ -184,7 +185,47 @@ export default function App() {
       : { lat: 53.35, lng: -6.26 };
     setWatchView(null);
     setWatchNotice(null);
+    setMobileView("map");
+    setCanSearchArea(false);
     setWatchDraft({ name: "", radius_m: 1000, ...center });
+  };
+
+  // Place search inside watch mode: jump the map (and the pin) to a town,
+  // suburb or Eircode. The application register doubles as a gazetteer — every
+  // settlement has applications, and their coordinates are already local.
+  const [watchPlaceQ, setWatchPlaceQ] = useState("");
+  const watchPlaceSearch = async (q: string) => {
+    const query = q.trim();
+    if (!query) return;
+    setWatchNotice(null);
+    try {
+      const res = await api.search(new URLSearchParams({ q: query, limit: "10" }));
+      const hit = res.results.find((r) => r.lat != null && r.lng != null);
+      if (!hit) {
+        setWatchNotice("Couldn't find that place — try a nearby town or an Eircode.");
+        return;
+      }
+      setWatchDraft((d) => (d ? { ...d, lat: hit.lat!, lng: hit.lng! } : d));
+      setFlyTo({ lat: hit.lat!, lng: hit.lng!, zoom: 14 });
+    } catch {
+      setWatchNotice("Search failed — try again.");
+    }
+  };
+
+  const watchUseMyLocation = () => {
+    if (!navigator.geolocation) {
+      setWatchNotice("Your browser doesn't share location — search for a place instead.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setWatchDraft((d) => (d ? { ...d, lat, lng } : d));
+        setFlyTo({ lat, lng, zoom: 14 });
+      },
+      () => setWatchNotice("Couldn't get your location — search for a place instead."),
+      { timeout: 8000 }
+    );
   };
 
   const saveWatchDraft = async () => {
@@ -578,7 +619,7 @@ export default function App() {
       {/* The dashboard is a full-screen destination, but the map stays mounted
           behind it (hidden, not unmounted) so returning keeps its position. */}
       <div
-        className={`layout ${mode === "search" && mobileView === "map" ? "m-map" : "m-panel"}${panelCollapsed ? " panel-collapsed" : ""}`}
+        className={`layout ${mode === "search" && (mobileView === "map" || watchDraft) ? "m-map" : "m-panel"}${panelCollapsed ? " panel-collapsed" : ""}${watchDraft ? " watch-mode" : ""}`}
         hidden={mode === "account" || mode === "preplan"}
       >
         <div className="side-panel">
@@ -679,6 +720,7 @@ export default function App() {
           <MapView
             data={mapData}
             polygons={sitePolygons}
+            hideApps={Boolean(watchDraft)}
             watchCircle={
               watchDraft
                 ? { lat: watchDraft.lat, lng: watchDraft.lng, radius_m: watchDraft.radius_m, draggable: true }
@@ -718,47 +760,70 @@ export default function App() {
             </button>
           )}
           {watchDraft && (
-            <div className="watch-card" role="dialog" aria-label="Watch this area">
-              <strong>Watch this area</strong>
-              <p className="watch-hint">
-                Drag the pin or tap the map to centre it. Anything new inside the circle —
-                applications, An Coimisiún Pleanála cases, commencements — lands in your daily email.
-              </p>
-              <input
-                type="text"
-                value={watchDraft.name}
-                placeholder="Name it — e.g. Home, Maynooth office"
-                maxLength={80}
-                onChange={(e) => setWatchDraft({ ...watchDraft, name: e.target.value })}
-              />
-              <div className="watch-radius-row" role="radiogroup" aria-label="Radius">
-                {[250, 500, 1000, 2000].map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    className={`chip ${watchDraft.radius_m === r ? "chip-on" : ""}`}
-                    onClick={() => setWatchDraft({ ...watchDraft, radius_m: r })}
-                  >
-                    {r < 1000 ? `${r} m` : `${r / 1000} km`}
-                  </button>
-                ))}
+            <>
+              <div className="watch-banner" role="status">
+                <strong>Watch this area</strong>
+                <span>
+                  Tap the map or drag the pin to place the circle — we'll email you when anything
+                  new lands inside it.
+                </span>
               </div>
-              {watchNotice && <p className="watch-notice">{watchNotice}</p>}
-              <div className="watch-actions">
-                {me?.user ? (
-                  <button type="button" className="watch-save" disabled={watchSaving} onClick={saveWatchDraft}>
-                    {watchSaving ? "Saving…" : "Save watch"}
+              <div className="watch-card" role="dialog" aria-label="Watch this area">
+                <form
+                  className="watch-place-row"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void watchPlaceSearch(watchPlaceQ);
+                  }}
+                >
+                  <input
+                    type="search"
+                    value={watchPlaceQ}
+                    placeholder="Find a town, address or Eircode…"
+                    aria-label="Find a place"
+                    onChange={(e) => setWatchPlaceQ(e.target.value)}
+                  />
+                  <button type="submit" aria-label="Go to place">Go</button>
+                  <button type="button" onClick={watchUseMyLocation} title="Centre on my location">
+                    My location
                   </button>
-                ) : (
-                  <button type="button" className="watch-save" onClick={() => setMode("account")}>
-                    Sign in to save
+                </form>
+                <div className="watch-radius-row" role="radiogroup" aria-label="Radius">
+                  {[250, 500, 1000, 2000, 5000, 10000].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      className={`chip ${watchDraft.radius_m === r ? "chip-on" : ""}`}
+                      onClick={() => setWatchDraft({ ...watchDraft, radius_m: r })}
+                    >
+                      {r < 1000 ? `${r} m` : `${r / 1000} km`}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={watchDraft.name}
+                  placeholder="Name it — e.g. Home, Maynooth office"
+                  maxLength={80}
+                  onChange={(e) => setWatchDraft({ ...watchDraft, name: e.target.value })}
+                />
+                {watchNotice && <p className="watch-notice">{watchNotice}</p>}
+                <div className="watch-actions">
+                  {me?.user ? (
+                    <button type="button" className="watch-save" disabled={watchSaving} onClick={saveWatchDraft}>
+                      {watchSaving ? "Saving…" : "Save watch"}
+                    </button>
+                  ) : (
+                    <button type="button" className="watch-save" onClick={() => setMode("account")}>
+                      Sign in to save
+                    </button>
+                  )}
+                  <button type="button" className="watch-cancel" onClick={() => { setWatchDraft(null); setWatchNotice(null); }}>
+                    Cancel
                   </button>
-                )}
-                <button type="button" className="watch-cancel" onClick={() => { setWatchDraft(null); setWatchNotice(null); }}>
-                  Cancel
-                </button>
+                </div>
               </div>
-            </div>
+            </>
           )}
           {!watchDraft && watchView && (
             <button
@@ -854,6 +919,10 @@ export default function App() {
                 }
               }}
               onGoSearch={() => setMode("search")}
+              onAddWatch={() => {
+                setMode("search");
+                startWatchDraft();
+              }}
               onViewWatch={(w) => {
                 setWatchDraft(null);
                 setWatchNotice(null);

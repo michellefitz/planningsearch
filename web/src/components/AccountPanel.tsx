@@ -14,6 +14,8 @@ interface Props {
   onGoSearch: () => void;
   /** Show a watched area's circle on the main map. */
   onViewWatch: (watch: AreaWatch) => void;
+  /** Jump to the map in watch-creation mode. */
+  onAddWatch: () => void;
 }
 
 const DECIDED = new Set(["granted", "refused", "split", "decided", "withdrawn", "invalid"]);
@@ -273,7 +275,7 @@ function ListSectionHead({
   );
 }
 
-export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSearch, onViewWatch }: Props) {
+export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSearch, onViewWatch, onAddWatch }: Props) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [view, setView] = useState<"register" | "map">("register");
@@ -596,7 +598,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
               Pick a point on the map and a radius, and we'll email you the day anything new lands
               inside it — planning applications, An Coimisiún Pleanála cases, or work commencing.
             </p>
-            <button type="button" onClick={onGoSearch}>Watch an area on the map</button>
+            <button type="button" onClick={onAddWatch}>Watch an area on the map</button>
           </div>
         ) : (
           me.watches!.map((w) => (
@@ -632,6 +634,11 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
               </button>
             </div>
           ))
+        )}
+        {(me.watches?.length ?? 0) > 0 && (
+          <button type="button" className="list-new-btn" onClick={onAddWatch}>
+            + Watch a new area
+          </button>
         )}
       </section>
     </div>

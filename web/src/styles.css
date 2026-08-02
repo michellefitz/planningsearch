@@ -2173,12 +2173,53 @@ a.ov-pop-sub {
   color: var(--action);
 }
 
+/* Watch-creation is a focused mode: the map is the whole screen and the
+   circle is its only subject. Everything that competes — the search panel,
+   layers, legend, truncation note, collapse toggle — goes. */
+.watch-mode .side-panel,
+.watch-mode .panel-collapse-btn,
+.watch-mode .map-overlays,
+.watch-mode .legend,
+.watch-mode .map-truncated {
+  display: none !important;
+}
+.watch-mode .map-wrap {
+  width: 100%;
+  flex: 1;
+}
+
+.watch-banner {
+  position: absolute;
+  z-index: 7;
+  top: 0.9rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(460px, calc(100% - 1.5rem));
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  box-shadow: 0 4px 18px rgba(26, 29, 33, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink-2);
+  text-align: center;
+}
+.watch-banner strong {
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
 .watch-card {
   position: absolute;
   z-index: 7;
-  right: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
   bottom: 1rem;
-  width: min(320px, calc(100% - 1.5rem));
+  width: min(420px, calc(100% - 1.5rem));
   background: #fff;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
@@ -2189,20 +2230,36 @@ a.ov-pop-sub {
   gap: 0.6rem;
   font-size: 0.85rem;
 }
-.watch-card strong {
-  font-size: 0.95rem;
-}
-.watch-hint {
-  margin: 0;
-  color: var(--ink-2);
-  font-size: 0.78rem;
-  line-height: 1.5;
-}
-.watch-card input[type="text"] {
+.watch-card input[type="text"],
+.watch-card input[type="search"] {
   font: inherit;
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--line-strong);
   border-radius: 7px;
+}
+.watch-place-row {
+  display: flex;
+  gap: 0.4rem;
+}
+.watch-place-row input {
+  flex: 1;
+  min-width: 0;
+}
+.watch-place-row button {
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.watch-place-row button:hover {
+  border-color: var(--action);
+  color: var(--action);
 }
 .watch-radius-row {
   display: flex;
