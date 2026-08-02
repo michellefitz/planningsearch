@@ -1,5 +1,20 @@
 # Backlog
 
+## Shipped 2026-08-02 — area-watch alerts (PR #14)
+
+The top persona ask. Watch a point + radius (250 m–2 km, map-first UI with a
+draggable pin and circle preview); the daily digest gains an "In <area>"
+section for new applications (council + ACP direct) and commencement
+notices inside the circle. Detection: bundle sweep in the check-updates cron,
+60-day recency window + per-watch alerted keys (seeded at creation). Tables
+`area_watches` / `area_watch_alerted` (lazy ensureSchema, harvest pattern).
+Follow-ons deliberately deferred:
+- Drawn/townland polygons (user direction: radius first; schema takes a
+  polygon column later; UI could preview a suburb boundary to accept/adjust).
+- Instant (non-digest) alerts; per-watch event-type toggles.
+- Site polygons hover (PR #13) + watches share map plumbing — a "watch this
+  scheme's area" shortcut from an ACP case is cheap now.
+
 ## Shipped 2026-07-30 — coverage floors stated, and the register deepened
 
 Closes the last P0 ("Per-council coverage floors, unstated") and takes the
