@@ -91,6 +91,24 @@ const STATEMENTS = [
   `alter table agile_enrichment add column if not exists application_type text`,
   `create index if not exists agile_enrichment_fetched_idx
      on agile_enrichment (fetched_at)`,
+  `create table if not exists area_watches (
+    id bigint generated always as identity primary key,
+    user_id bigint not null references users(id) on delete cascade,
+    name text not null,
+    lat double precision not null,
+    lng double precision not null,
+    radius_m integer not null,
+    alerts_enabled boolean not null default true,
+    created_at timestamptz not null default now()
+  )`,
+  `create table if not exists area_watch_alerted (
+    watch_id bigint not null references area_watches(id) on delete cascade,
+    authority_id text not null,
+    planning_reference text not null,
+    kind text not null,
+    alerted_at timestamptz not null default now(),
+    primary key (watch_id, authority_id, planning_reference, kind)
+  )`,
   `create table if not exists preplan_reports (
     id bigint generated always as identity primary key,
     project_id bigint not null references preplan_projects(id) on delete cascade,
