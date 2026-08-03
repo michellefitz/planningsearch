@@ -696,6 +696,11 @@ body {
   padding: 0.45rem 0.9rem;
 }
 
+/* Desktop keeps the word; the magnifier is the phone form. */
+.btn-search-icon {
+  display: none;
+}
+
 /* Icon-only "near me" — the label lives in the tooltip/aria-label. */
 .search-bar .btn-icon {
   padding: 0.45rem;
@@ -1448,10 +1453,24 @@ body {
   .search-bar .btn {
     padding: 0.5rem 0.9rem;
   }
-  /* Keep the icon button square and thumb-sized (the rule above would stretch it). */
+  /* Submit becomes a magnifier: the word "Search" was taking enough of a 402px
+     row that the input truncated its own placeholder. Same square, thumb-sized
+     footprint as the near-me button beside it. */
+  .btn-search-label {
+    display: none;
+  }
+  .btn-search-icon {
+    display: block;
+  }
+  .search-bar .btn-search,
   .search-bar .btn-icon {
+    /* Square, and matched to the input's height so the row reads as one. */
     width: 2.5rem;
-    padding: 0.5rem;
+    height: 2.5rem;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+    line-height: 1;
   }
   /* Still a comfortable tap target — the row is the target, not just the text. */
   .filters summary {

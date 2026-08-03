@@ -537,7 +537,11 @@ export default function App() {
         <h1>
           PlanView <span className="beta">beta</span>
         </h1>
-        {(mode === "search" || mode === "ask") && modeTabs("mode-tabs-top")}
+        {/* Not while drafting a watch: that mode hides the side panel to leave
+            the map alone with the circle, and these tabs used to live in the
+            panel, so they went with it. Now they are up here they have to be
+            withheld deliberately, or Ask would switch a panel nobody can see. */}
+        {(mode === "search" || mode === "ask") && !watchDraft && modeTabs("mode-tabs-top")}
         {/* Account lives in the top bar, where a web app puts it — not as a
             third panel tab. Signing in and the dashboard are app-level
             destinations, not modes of the search panel. */}

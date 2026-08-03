@@ -82,8 +82,25 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
           }}
           autoComplete="off"
         />
-        <button type="submit" className="btn btn-primary">
-          Search
+        {/* Labelled on desktop, a magnifier on a phone — the word cost the
+            input enough width to truncate its own placeholder. aria-label
+            carries the name either way, so the button is never unnamed. */}
+        <button type="submit" className="btn btn-primary btn-search" aria-label="Search">
+          <span className="btn-search-label">Search</span>
+          <svg
+            className="btn-search-icon"
+            aria-hidden="true"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <circle cx="10.5" cy="10.5" r="6.5" />
+            <path d="M15.5 15.5 21 21" />
+          </svg>
         </button>
         <button
           type="button"
