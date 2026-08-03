@@ -92,6 +92,21 @@ export interface ReportSections {
   precedents?: { items: PrecedentItem[]; deep_dives: DeepDive[] } | Unavailable;
   area_stats?: { authority: RateBlock; within_2km: RateBlock } | Unavailable;
   local_plan?: { authority_id: string; name: string; url: string } | Unavailable;
+  /** Only present when the proposal is to build a house on a site. */
+  rural_housing?: {
+    rates: { radius_m: number; within_radius: RateBlock; authority_one_off: RateBlock; authority_all: RateBlock };
+    reasons_read: number;
+    themes: Array<{ key: string; label: string; count: number; of: number }>;
+    local_need_quote: string | null;
+    decisions: Array<{
+      planning_reference: string;
+      authority_id: string;
+      distance_m: number;
+      decision_date: string | null;
+      source: string;
+      themes: string[];
+    }>;
+  };
 }
 
 export interface PreplanReport {

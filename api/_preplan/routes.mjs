@@ -10,6 +10,7 @@ import {
   PREPLAN_SYNTHESIS_PROMPT,
   PRECEDENT_SUMMARY_PROMPT,
   PRECEDENT_RADIUS_M,
+  RURAL_REASON_QUESTION,
   haversineMeters,
 } from "./pipeline.mjs";
 import { getDesignations, getFloodGround, getHeritagePoints } from "./pipeline.mjs";
@@ -118,6 +119,33 @@ function buildDeps(host, ctx) {
       const result = await ctx.executeAgentTool(tool, input);
       if (!result || result.error || !result.document || !result.answer) return null;
       return { document: result.document, answer: result.answer };
+    },
+    /**
+     * Why a refused application was refused, in the council's own words.
+     *
+     * Two routes, because the councils differ: the four Agile-hosted ones
+     * publish conditions and refusal reasons as structured text, and Kildare —
+     * the county where one-off houses are a routine application type — is
+     * eplanning, so its reasons exist only inside a scanned decision order.
+     * That one goes through the model, which is slower and less exact, so it
+     * is the fallback rather than the default.
+     */
+    async getDecisionReasons(p) {
+      const conditions = await ctx.executeAgentTool("get_conditions", { application_id: p.id });
+      const items = conditions?.items ?? conditions?.conditions?.items ?? [];
+      const reasons = items
+        .filter((i) => String(i.code ?? "").toUpperCase() === "R")
+        .map((i) => String(i.text ?? "").trim())
+        .filter(Boolean);
+      if (reasons.length) return { text: reasons.join("\n\n"), source: "register" };
+
+      const read = await ctx.executeAgentTool("read_document", {
+        application_id: p.id,
+        title: "decision",
+        question: RURAL_REASON_QUESTION,
+      });
+      if (!read || read.error || !read.answer) return null;
+      return { text: String(read.answer), source: "decision document" };
     },
     async summarisePrecedents(items) {
       const raw = await ctx.callClaude(PRECEDENT_SUMMARY_PROMPT, JSON.stringify(items), 1000, 30000);

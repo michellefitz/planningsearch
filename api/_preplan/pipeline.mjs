@@ -295,6 +295,18 @@ export function intentTokens(intent) {
 
 export const PRECEDENT_RADIUS_M = 1000;
 
+/** Decisions read per report for the rural section. Each is a live fetch (and
+ *  for Kildare a scanned PDF through the model), so the count is bounded. */
+export const RURAL_REASON_READS = 5;
+
+/** Asked of a scanned decision order when a council publishes no structured
+ *  reasons. Quote-shaped on purpose: the value is the council's own wording of
+ *  the test, not our paraphrase of it. */
+export const RURAL_REASON_QUESTION =
+  "This application to build a one-off house was refused. List the council's reasons for refusal, " +
+  "quoting the operative wording of each. If a reason concerns rural housing policy or local need, " +
+  "quote that reason in full. Do not summarise or interpret \u2014 reproduce what the order says.";
+
 // Invalid/incomplete applications never got a planning judgement, so they say
 // nothing about how this proposal would fare.
 const IRRELEVANT_STATUSES = new Set(["invalid", "incomplete"]);
@@ -354,6 +366,114 @@ function rateBlock(rows) {
     grant_rate: decided ? Math.round((granted / decided) * 100) : null,
     appealed,
     median_decision_days: median(days),
+  };
+}
+
+/* ---------- one-off houses ---------- */
+
+/**
+ * Is the user proposing to build a house on a site, rather than alter one?
+ * Only then is the rural-housing section relevant — for an extension none of
+ * this applies.
+ */
+export function isOneOffIntent(intent) {
+  const t = `${intent ?? ""}`;
+  if (/\b(extension|extend|attic|conversion|convert|garage|dormer|porch|retention)\b/i.test(t)) {
+    return false;
+  }
+  return /\b(?:build|construct|erect|new)\b[\s\S]{0,40}\b(?:house|dwelling|home|bungalow)\b|\b(?:one[- ]off|self[- ]build)\b/i.test(
+    t
+  );
+}
+
+/**
+ * What one-off houses are actually refused for. Counted over refusal reasons
+ * read from 36 refused one-off houses across the three councils that publish
+ * them: zoning 86%, local need 61%, sightlines 50%, visual amenity 47%,
+ * precedent 36%, sprawl 28%, ribbon 25%, wastewater 19%.
+ *
+ * These are the tests an applicant is judged against, so the labels are
+ * written as the thing to satisfy rather than as jargon.
+ */
+export const RURAL_REFUSAL_THEMES = [
+  {
+    key: "local_need",
+    label: "Rural housing policy — demonstrating a local need",
+    re: /\blocal need|housing need|rural housing policy|genuine need|intrinsic (?:part of|link)|local rural|bona ?fide|social or economic (?:need|link)/i,
+  },
+  {
+    key: "zoning",
+    label: "The site's zoning objective (greenbelt and similar)",
+    re: /\bgreenbelt|green belt|zoning objective|zoned\b/i,
+  },
+  {
+    key: "ribbon",
+    label: "Ribbon development along the road",
+    re: /\bribbon(?: development)?|linear development/i,
+  },
+  {
+    key: "sprawl",
+    label: "Urban-generated housing / suburbanising the countryside",
+    re: /\bsprawl|suburbanis|urban generated|urban-generated/i,
+  },
+  {
+    key: "wastewater",
+    label: "Wastewater treatment and percolation on the site",
+    re: /\bpercolation|waste ?water|effluent|groundwater|septic/i,
+  },
+  {
+    key: "access",
+    label: "Site access, sightlines and road safety",
+    re: /\bsight ?lines?|traffic hazard|road safety|vehicular access/i,
+  },
+  {
+    key: "visual",
+    label: "Visual amenity and landscape character",
+    re: /\bvisual (?:amenity|impact)|landscape|character of the area/i,
+  },
+  {
+    key: "precedent",
+    label: "Setting a precedent for further development",
+    re: /\bprecedent\b/i,
+  },
+];
+
+/** Which of the rural tests a refusal cites. */
+export function classifyRefusalThemes(text) {
+  const t = `${text ?? ""}`;
+  if (!t.trim()) return [];
+  return RURAL_REFUSAL_THEMES.filter((th) => th.re.test(t)).map((th) => th.key);
+}
+
+/**
+ * The sentence a refusal uses to state the local-need test, for quoting
+ * verbatim — it is the clearest statement of what an applicant has to prove,
+ * and it is the council's own wording rather than ours.
+ */
+export function localNeedQuote(text) {
+  const theme = RURAL_REFUSAL_THEMES[0];
+  for (const sentence of `${text ?? ""}`.split(/(?<=[.;])\s+/)) {
+    const s = sentence.replace(/\s+/g, " ").trim();
+    if (s.length >= 40 && s.length <= 400 && theme.re.test(s)) return s;
+  }
+  return null;
+}
+
+/**
+ * How one-off houses fare here against everything else the council decides.
+ * The contrast is the point: measured over the register they run at 20-57%
+ * against council baselines of 82-87%.
+ */
+export function oneOffRates(authorityRows, lat, lng, radiusM = 5000) {
+  const oneOff = authorityRows.filter((r) => r.is_one_off);
+  const near = oneOff.filter(
+    (r) => r.lat != null && r.lng != null && haversineMeters(lat, lng, r.lat, r.lng) <= radiusM
+  );
+  return {
+    radius_m: radiusM,
+    within_radius: rateBlock(near),
+    authority_one_off: rateBlock(oneOff),
+    authority_all: rateBlock(authorityRows),
   };
 }
 
@@ -518,6 +638,66 @@ export async function* generateReport(input, deps) {
     precedents.deep_dives = dives;
     sections.precedents = precedents;
     yield { type: "section", name: "precedents", data: precedents };
+  }
+
+  // Rural housing: only for a proposal to build a house, and only where the
+  // register actually holds one-off houses nearby to learn from.
+  if (isOneOffIntent(input.intent)) {
+    const rows = await rowsPromise;
+    if (rows?.authority?.length) {
+      const rates = oneOffRates(rows.authority, input.lat, input.lng);
+      // Refused ones first and nearest first: a refusal states the test, a
+      // grant rarely explains why it passed.
+      const refused = rows.nearby
+        .filter((r) => r.is_one_off && r.status === "refused")
+        .map((r) => ({ ...r, distance_m: Math.round(haversineMeters(input.lat, input.lng, r.lat, r.lng)) }))
+        .sort((a, b) => a.distance_m - b.distance_m)
+        .slice(0, RURAL_REASON_READS);
+
+      const themeCounts = new Map();
+      const decisions = [];
+      let quote = null;
+      if (refused.length && deps.getDecisionReasons) {
+        yield { type: "progress", step: "Reading why nearby one-off houses were refused…" };
+        for (const r of refused) {
+          let read = null;
+          try {
+            read = await deps.getDecisionReasons(r);
+          } catch {
+            // A council that won't answer costs one precedent, not the section.
+          }
+          if (!read?.text) continue;
+          const themes = classifyRefusalThemes(read.text);
+          for (const t of themes) themeCounts.set(t, (themeCounts.get(t) ?? 0) + 1);
+          if (!quote) quote = localNeedQuote(read.text);
+          decisions.push({
+            planning_reference: r.planning_reference,
+            authority_id: r.authority_id,
+            distance_m: r.distance_m,
+            decision_date: r.decision_date ?? null,
+            source: read.source,
+            themes,
+          });
+        }
+      }
+
+      sections.rural_housing = {
+        rates,
+        reasons_read: decisions.length,
+        // Ranked by how often each test actually appeared, not by our ordering.
+        themes: [...themeCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([key, count]) => ({
+            key,
+            label: RURAL_REFUSAL_THEMES.find((t) => t.key === key)?.label ?? key,
+            count,
+            of: decisions.length,
+          })),
+        local_need_quote: quote,
+        decisions,
+      };
+      yield { type: "section", name: "rural_housing", data: sections.rural_housing };
+    }
   }
 
   yield { type: "progress", step: "Writing the considerations…" };

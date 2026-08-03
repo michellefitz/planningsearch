@@ -129,6 +129,7 @@ export default function ReportView({
   const floodGround = s.flood_ground;
   const precedents = s.precedents;
   const stats = s.area_stats;
+  const rural = s.rural_housing;
   const localPlan = s.local_plan;
   const { overview, rest: narrative } = splitNarrative(report.narrative);
   const precMapUrl =
@@ -342,6 +343,72 @@ export default function ReportView({
           </>
         )}
       </section>
+
+      {/* Only for a proposal to build a house on a site. These run at a far
+          lower grant rate than everything else a council decides, and the test
+          they turn on — local need — is nowhere in the register: it is stated
+          in the refusals, which is why this section quotes them. */}
+      {rural && (
+        <section className="report-section">
+          <h3>Building a one-off house here</h3>
+          <div className="report-stats">
+            <Rates label={`One-off houses within ${Math.round(rural.rates.radius_m / 1000)} km`} r={rural.rates.within_radius} />
+            <Rates label="One-off houses, whole authority" r={rural.rates.authority_one_off} />
+            <Rates label="All applications, whole authority" r={rural.rates.authority_all} />
+          </div>
+          {rural.rates.authority_one_off.grant_rate != null &&
+            rural.rates.authority_all.grant_rate != null && (
+              <p className="report-plan">
+                A one-off house is decided against a different test than an ordinary application,
+                and the gap between those two rates is that test.
+              </p>
+            )}
+
+          {rural.themes.length > 0 ? (
+            <>
+              <h4 className="rp-subhead">
+                What nearby refusals turned on{" "}
+                <span className="rp-muted">
+                  (read from {rural.reasons_read} refused application{rural.reasons_read === 1 ? "" : "s"})
+                </span>
+              </h4>
+              <ul className="rural-themes">
+                {rural.themes.map((t) => (
+                  <li key={t.key}>
+                    <span className="rural-theme-label">{t.label}</span>
+                    <span className="rural-theme-count">
+                      {t.count} of {t.of}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="report-none">
+              No refused one-off houses nearby had readable reasons, so there is nothing to
+              generalise from here — check the council&rsquo;s own file for the ones listed above.
+            </p>
+          )}
+
+          {rural.local_need_quote && (
+            <>
+              <h4 className="rp-subhead">How local need was put, in the council&rsquo;s words</h4>
+              <blockquote className="rural-quote">{rural.local_need_quote}</blockquote>
+            </>
+          )}
+
+          {rural.decisions.length > 0 && (
+            <p className="caveat">
+              Read from{" "}
+              {rural.decisions
+                .map((d) => `${d.planning_reference} (${(d.distance_m / 1000).toFixed(1)} km, ${d.source})`)
+                .join("; ")}
+              . Refusal reasons are specific to those sites — they show what the council weighs,
+              not what it would decide for yours.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="report-section report-narrative">
         <h3>Considerations</h3>
