@@ -184,6 +184,31 @@ describe("featureToRecord", () => {
     expect(rec.lng).toBeNull();
   });
 
+  it("recognises every council's spelling of the one-off-house flag", () => {
+    // Counted against the live feed: South Dublin writes "Yes", Kildare "One",
+    // Fingal "Single House" (space-padded). Matching only Y/Yes dropped the
+    // latter two, so ~5,600 one-off houses fell back to the description
+    // heuristic for a signal the register had already given us.
+    const flagged = (value: string) =>
+      featureToRecord({
+        attributes: {
+          ...CARLOW_SAMPLE.attributes,
+          PlanningAuthority: "Kildare County Council",
+          // A description with no domestic wording, so the flag is what decides.
+          DevelopmentDescription: "development at this site",
+          OneOffHouse: value,
+        },
+        geometry: { x: -6.59, y: 53.38 },
+      })!.is_domestic_guess;
+
+    for (const yes of ["Y", "Yes", "One", "Single House", "Single House    ", " one "]) {
+      expect(flagged(yes)).toBe(1);
+    }
+    for (const no of ["No", "", " ", "None", "Two"]) {
+      expect(flagged(no)).toBe(0);
+    }
+  });
+
   it("never reads AreaofSite as hectares", () => {
     // Measured against true site geometry (300 samples per authority), four of
     // the five councils publish AreaofSite in square metres and only Kildare in

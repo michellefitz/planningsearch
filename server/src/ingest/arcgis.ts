@@ -88,6 +88,10 @@ export const FIELD_MAP = {
   expiryDate: "ExpiryDate",
 } as const;
 
+/** The four spellings the councils use for "this is a one-off house". "No" and
+ *  the empty string are the negatives, so the match has to be anchored. */
+export const ONE_OFF_HOUSE_RE = /^\s*(?:y|yes|one|single house)\s*$/i;
+
 type Attributes = Record<string, unknown>;
 
 export interface ArcgisFeature {
@@ -172,7 +176,13 @@ export function featureToRecord(
 
   // The dataset's own one-off-house flag is a strong domestic signal on top
   // of the description heuristic.
-  const oneOff = /^y(es)?$/i.test(str(attrs, FIELD_MAP.oneOffHouse) ?? "");
+  // Each council writes this flag in its own words. Counted against the live
+  // feed: South Dublin "Yes" (33,106 rows, the only one that fills it for
+  // every application), Kildare "One" (3,098), Fingal "Single House" (2,508,
+  // space-padded), and Dublin City and DLR never populate it at all. Matching
+  // only Y/Yes — as this did — silently dropped Kildare's and Fingal's,
+  // leaving those two to the description heuristic alone.
+  const oneOff = ONE_OFF_HOUSE_RE.test(str(attrs, FIELD_MAP.oneOffHouse) ?? "");
   const withdrawnDate = isoDate(attrs, FIELD_MAP.withdrawn);
   // A decided appeal supersedes the council's decision (An Bord Pleanála's
   // outcome is the operative one) — but only when it's a clear grant/refuse.
