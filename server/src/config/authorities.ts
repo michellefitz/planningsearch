@@ -27,6 +27,13 @@ export interface AuthorityConfig {
    * e.g. "Dun Laoghaire Rathdown" vs "Dún Laoghaire-Rathdown").
    */
   nationalDbLike: string;
+  /**
+   * Names the LIKE above would also catch, excluded from the ingest WHERE.
+   * SQL LIKE has no word boundaries, so "%Meath%" matches Westmeath — the
+   * name resolver drops those rows, but without this the fetch drags ~5,500
+   * of them across the wire on every build.
+   */
+  nationalDbNotLike?: string[];
   /** Best-effort link to the application (or a pre-filled search) on the official portal. */
   portalUrlForReference: (reference: string) => string;
   /** Rough bounding box [west, south, east, north] used for sanity-checking ingested geometry. */
@@ -115,6 +122,40 @@ export const AUTHORITIES: AuthorityConfig[] = [
       `https://www.eplanning.ie/KildareCC/searchtypes?query=${encodeURIComponent(ref)}`,
     bbox: [-7.17, 52.94, -6.45, 53.45],
   },
+  // Meath and Wicklow run the same LGMA eplanning system as Kildare, on their
+  // own council slugs, with iDocs document servers on their own hosts. Nothing
+  // about them needed new ingest machinery — the national feed carries both at
+  // 100% for description, address, status, decision and detail link, with site
+  // boundaries for 100% of Meath and 98% of Wicklow.
+  {
+    id: "meath",
+    name: "Meath County Council",
+    shortName: "Meath",
+    sourceSystem: "eplanning",
+    portalBaseUrl: "https://www.eplanning.ie/MeathCC",
+    gisUrl: "https://meathcoco.maps.arcgis.com/apps/webappviewer/index.html?id=e268775bc8dc4b40bc9e3f8878e45862",
+    nationalDbNames: ["Meath County Council", "Meath"],
+    nationalDbLike: "Meath",
+    nationalDbNotLike: ["Westmeath"],
+    portalUrlForReference: (ref) =>
+      `https://www.eplanning.ie/MeathCC/searchtypes?query=${encodeURIComponent(ref)}`,
+    // Measured from 2,000 sampled feed geometries, trimmed to the 99.6% range
+    // so a mistyped coordinate can't widen the sanity box.
+    bbox: [-7.3, 53.38, -6.21, 53.91],
+  },
+  {
+    id: "wicklow",
+    name: "Wicklow County Council",
+    shortName: "Wicklow",
+    sourceSystem: "eplanning",
+    portalBaseUrl: "https://www.eplanning.ie/WicklowCC",
+    gisUrl: "https://wicklow.maps.arcgis.com/apps/webappviewer/index.html?id=57b22c27e7c049fbac54117da1a20f60",
+    nationalDbNames: ["Wicklow County Council", "Wicklow"],
+    nationalDbLike: "Wicklow",
+    portalUrlForReference: (ref) =>
+      `https://www.eplanning.ie/WicklowCC/searchtypes?query=${encodeURIComponent(ref)}`,
+    bbox: [-6.79, 52.68, -6.01, 53.23],
+  },
 ];
 
 export const AUTHORITY_BY_ID = new Map(AUTHORITIES.map((a) => [a.id, a]));
@@ -137,8 +178,13 @@ export function authorityIdForNationalName(name: string): string | null {
   const ordered = [...AUTHORITIES].sort(
     (a, b) => b.nationalDbLike.length - a.nationalDbLike.length
   );
+  // Whole words, not a raw substring: "Westmeath County Council" contains
+  // "Meath", and matching loosely filed every Westmeath application under
+  // Meath. Padding both sides makes " meath " fail to match " westmeath ",
+  // while "Dun Laoghaire Rathdown" still matches on its own words.
+  const padded = ` ${needle} `;
   for (const a of ordered) {
-    if (needle.includes(normalizeName(a.nationalDbLike))) return a.id;
+    if (padded.includes(` ${normalizeName(a.nationalDbLike)} `)) return a.id;
   }
   return null;
 }

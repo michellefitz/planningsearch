@@ -315,9 +315,15 @@ export async function fetchPage(opts: FetchPageOptions): Promise<ArcgisFeature[]
  * consistent about accents/hyphens (e.g. Dún Laoghaire-Rathdown).
  */
 export function buildWhereClause(sinceIso?: string): string {
-  const likes = AUTHORITIES.map(
-    (a) => `${FIELD_MAP.authority} LIKE '%${a.nationalDbLike.replace(/'/g, "''")}%'`
-  );
+  const likes = AUTHORITIES.map((a) => {
+    const esc = (v: string) => v.replace(/'/g, "''");
+    let clause = `${FIELD_MAP.authority} LIKE '%${esc(a.nationalDbLike)}%'`;
+    // LIKE has no word boundaries: "%Meath%" also matches Westmeath.
+    for (const not of a.nationalDbNotLike ?? []) {
+      clause += ` AND ${FIELD_MAP.authority} NOT LIKE '%${esc(not)}%'`;
+    }
+    return a.nationalDbNotLike?.length ? `(${clause})` : clause;
+  });
   const authorityClause = `(${likes.join(" OR ")})`;
   if (!sinceIso) return authorityClause;
   return `${authorityClause} AND ${FIELD_MAP.received} >= TIMESTAMP '${sinceIso} 00:00:00'`;

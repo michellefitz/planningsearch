@@ -121,6 +121,14 @@ function haversineKm(aLat, aLng, bLat, bLng) {
  * South Dublin: the agile portal loads documents from the council's own DMS,
  * a plain HTML page addressable by planning reference (links are direct PDFs).
  */
+/** iDocs document servers for the LGMA eplanning councils — same product, one
+ *  host each. Mirrors IDOCS_HOST in server/src/documents.ts. */
+const IDOCS_HOST = {
+  kildare: "https://idocsweb.kildarecoco.ie/iDocsWebDPSS",
+  meath: "https://idocswebdpss.meathcoco.ie/iDocsWebDPSS",
+  wicklow: "https://WicklowCoCo.ePlanning.ie/idocswebDPSS",
+};
+
 function scannedFilesUrl(authorityId, sourceUrl, reference) {
   if (authorityId === "south-dublin" && reference) {
     return `https://planning.southdublin.ie/Home/Documents?regref=${encodeURIComponent(reference)}`;
@@ -130,10 +138,11 @@ function scannedFilesUrl(authorityId, sourceUrl, reference) {
     const ref = encodeURIComponent(reference).replace(/%2F/gi, "/");
     return `https://webapps.dublincity.ie/PublicAccess_Live/SearchResult/RunThirdPartySearch?FileSystemId=PL&Folder1_Ref=${ref}`;
   }
-  if (authorityId !== "kildare" || !sourceUrl) return null;
+  const idocs = IDOCS_HOST[authorityId];
+  if (!idocs || !sourceUrl) return null;
   const m = sourceUrl.match(/AppFileRefDetails\/(\d+)/i);
   return m
-    ? `https://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id=${m[1]}`
+    ? `${idocs}/listFiles.aspx?catalog=planning&id=${m[1]}`
     : null;
 }
 

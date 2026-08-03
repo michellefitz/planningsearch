@@ -16,6 +16,17 @@
  * anything heavier is Phase 0/2 territory per the PRD.
  */
 
+/**
+ * iDocs document servers for the LGMA eplanning councils. Same product, one
+ * host each — the detail page links to copyright.aspx (an acceptance gate) and
+ * listFiles.aspx is the listing behind it.
+ */
+const IDOCS_HOST: Record<string, string> = {
+  kildare: "https://idocsweb.kildarecoco.ie/iDocsWebDPSS",
+  meath: "https://idocswebdpss.meathcoco.ie/iDocsWebDPSS",
+  wicklow: "https://WicklowCoCo.ePlanning.ie/idocswebDPSS",
+};
+
 export function deriveScannedFilesUrl(
   authorityId: string,
   sourceUrl: string | null | undefined,
@@ -31,11 +42,10 @@ export function deriveScannedFilesUrl(
     return `https://webapps.dublincity.ie/PublicAccess_Live/SearchResult/RunThirdPartySearch?FileSystemId=PL&Folder1_Ref=${ref}`;
   }
   if (!sourceUrl) return null;
-  if (authorityId === "kildare") {
+  const idocs = IDOCS_HOST[authorityId];
+  if (idocs) {
     const m = sourceUrl.match(/AppFileRefDetails\/(\d+)/i);
-    if (m) {
-      return `https://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id=${m[1]}`;
-    }
+    if (m) return `${idocs}/listFiles.aspx?catalog=planning&id=${m[1]}`;
   }
   return null;
 }

@@ -16,6 +16,18 @@ interface SeedTown {
 }
 
 const TOWNS: Record<string, SeedTown[]> = {
+  meath: [
+    { name: "Navan, Co. Meath", lat: 53.6528, lng: -6.6814 },
+    { name: "Ashbourne, Co. Meath", lat: 53.5119, lng: -6.3994 },
+    { name: "Trim, Co. Meath", lat: 53.5551, lng: -6.7914 },
+    { name: "Dunboyne, Co. Meath", lat: 53.4192, lng: -6.4747 },
+  ],
+  wicklow: [
+    { name: "Bray, Co. Wicklow", lat: 53.2028, lng: -6.0983 },
+    { name: "Greystones, Co. Wicklow", lat: 53.1441, lng: -6.0703 },
+    { name: "Arklow, Co. Wicklow", lat: 52.7936, lng: -6.1428 },
+    { name: "Blessington, Co. Wicklow", lat: 53.1706, lng: -6.5333 },
+  ],
   "dublin-city": [
     { name: "Drumcondra, Dublin 9", lat: 53.3697, lng: -6.2531 },
     { name: "Rathmines, Dublin 6", lat: 53.3211, lng: -6.2654 },
@@ -137,6 +149,12 @@ function refFor(authorityId: string, year: number, seq: number): string {
       return `SD${yy}A/${n}`;
     case "kildare":
       return `${yy}/${400 + seq}`;
+    // Meath and Wicklow are eplanning councils like Kildare: bare numeric
+    // references rather than a council-prefixed pattern.
+    case "meath":
+      return `${yy}/${600 + seq}`;
+    case "wicklow":
+      return `${yy}/${800 + seq}`;
     default:
       return `${yy}/${n}`;
   }

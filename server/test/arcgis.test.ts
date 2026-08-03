@@ -31,13 +31,24 @@ const CARLOW_SAMPLE: ArcgisFeature = {
 };
 
 describe("authorityIdForNationalName", () => {
-  it("matches all five authorities including accent/hyphen variants", () => {
+  it("matches every covered authority including accent/hyphen variants", () => {
     expect(authorityIdForNationalName("Dublin City Council")).toBe("dublin-city");
     expect(authorityIdForNationalName("Fingal County Council")).toBe("fingal");
     expect(authorityIdForNationalName("Dun Laoghaire Rathdown County Council")).toBe("dlr");
     expect(authorityIdForNationalName("Dún Laoghaire-Rathdown County Council")).toBe("dlr");
     expect(authorityIdForNationalName("South Dublin County Council")).toBe("south-dublin");
     expect(authorityIdForNationalName("Kildare County Council")).toBe("kildare");
+    expect(authorityIdForNationalName("Meath County Council")).toBe("meath");
+    expect(authorityIdForNationalName("Wicklow County Council")).toBe("wicklow");
+  });
+
+  it("does not read Westmeath as Meath", () => {
+    // The matcher was a raw substring, and "westmeath county council" contains
+    // "meath" — every one of Westmeath's ~5,500 applications would have been
+    // filed under Meath the moment Meath was added.
+    expect(authorityIdForNationalName("Westmeath County Council")).toBeNull();
+    // The same class of trap for anything else that ends in a covered name.
+    expect(authorityIdForNationalName("North Tipperary County Council")).toBeNull();
   });
   it("rejects out-of-scope authorities", () => {
     expect(authorityIdForNationalName("Carlow County Council")).toBeNull();
@@ -243,5 +254,9 @@ describe("buildWhereClause", () => {
     expect(where).toContain("PlanningAuthority LIKE '%Laoghaire%'");
     expect(where).toContain("PlanningAuthority LIKE '%South Dublin%'");
     expect(where).toContain("ReceivedDate >= TIMESTAMP '2024-07-18 00:00:00'");
+    // LIKE has no word boundaries, so Meath carries an explicit exclusion —
+    // otherwise the fetch drags every Westmeath application across the wire.
+    expect(where).toContain("PlanningAuthority LIKE '%Meath%'");
+    expect(where).toContain("PlanningAuthority NOT LIKE '%Westmeath%'");
   });
 });
