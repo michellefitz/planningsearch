@@ -18,7 +18,9 @@ import {
   deriveApplicationType,
   extractResidentialUnits,
   guessIsDomestic,
+  isOneOffHouse,
   normalizeStatus,
+  ONE_OFF_HOUSE_FLAG_RE,
 } from "../normalize.js";
 import { extractEircode } from "./ppr.js";
 import {
@@ -87,10 +89,6 @@ export const FIELD_MAP = {
   siteArea: "AreaofSite",
   expiryDate: "ExpiryDate",
 } as const;
-
-/** The four spellings the councils use for "this is a one-off house". "No" and
- *  the empty string are the negatives, so the match has to be anchored. */
-export const ONE_OFF_HOUSE_RE = /^\s*(?:y|yes|one|single house)\s*$/i;
 
 type Attributes = Record<string, unknown>;
 
@@ -182,7 +180,7 @@ export function featureToRecord(
   // space-padded), and Dublin City and DLR never populate it at all. Matching
   // only Y/Yes — as this did — silently dropped Kildare's and Fingal's,
   // leaving those two to the description heuristic alone.
-  const oneOff = ONE_OFF_HOUSE_RE.test(str(attrs, FIELD_MAP.oneOffHouse) ?? "");
+  const oneOff = ONE_OFF_HOUSE_FLAG_RE.test(str(attrs, FIELD_MAP.oneOffHouse) ?? "");
   const withdrawnDate = isoDate(attrs, FIELD_MAP.withdrawn);
   // A decided appeal supersedes the council's decision (An Bord Pleanála's
   // outcome is the operative one) — but only when it's a clear grant/refuse.
@@ -211,6 +209,7 @@ export function featureToRecord(
     application_type: deriveApplicationType(typeRaw, description),
     application_type_raw: typeRaw,
     is_domestic_guess: oneOff || guessIsDomestic(description) ? 1 : 0,
+    is_one_off: isOneOffHouse(description, str(attrs, FIELD_MAP.oneOffHouse)) ? 1 : 0,
     status: withdrawnDate
       ? "withdrawn"
       : appealStatus && appealStatus !== "unknown"

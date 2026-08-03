@@ -9,7 +9,7 @@
  * commencement data for SHD cases come from the DHLGH SHD tracker table,
  * joined on the 6-digit case id.
  */
-import { extractResidentialUnits, normalizeStatus } from "../normalize.js";
+import { extractResidentialUnits, isOneOffHouse, normalizeStatus } from "../normalize.js";
 import { ringsToMultiPolygon } from "./geom.js";
 import type { ApplicationRecord } from "../db.js";
 import type { CanonicalApplicationType, CanonicalStatus } from "../normalize.js";
@@ -206,6 +206,7 @@ export async function fetchAcpDirectRecords(
       application_type: typeForCategory(category),
       application_type_raw: category || null,
       is_domestic_guess: 0,
+      is_one_off: isOneOffHouse(description) ? 1 : 0,
       status,
       status_raw: decisionRaw,
       received_date: epochToIso(a.LODGEDON),

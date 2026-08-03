@@ -19,6 +19,7 @@ import {
   expandDecisionCode,
   extractResidentialUnits,
   guessIsDomestic,
+  isOneOffHouse,
   normalizeStatus,
 } from "../normalize.js";
 import { extractEircode } from "./ppr.js";
@@ -381,6 +382,7 @@ export function eplanningItemToRecord(item: EplanningListItem, now: string): App
     application_type: deriveApplicationType(item.applicationTypeRaw, item.description),
     application_type_raw: item.applicationTypeRaw,
     is_domestic_guess: guessIsDomestic(item.description) ? 1 : 0,
+    is_one_off: isOneOffHouse(item.description) ? 1 : 0,
     // Status from the list wording plus the single-letter decision code.
     status: normalizeStatus(item.statusText, expandDecisionCode(item.decisionCode)),
     status_raw: item.statusText,

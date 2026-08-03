@@ -292,6 +292,51 @@ export function guessIsDomestic(description: string | null | undefined): boolean
   return score >= 2;
 }
 
+/* ---------- one-off houses ---------- */
+
+/**
+ * A new dwelling, as descriptions phrase it: a building verb, then a dwelling
+ * noun within a few words.
+ */
+const NEW_DWELLING_RE =
+  /\b(?:construct|erect|build|provision of|permission for)\w*\s+(?:\w+\s+){0,6}?(?:dwelling|dwellinghouse|house|bungalow|residence)/i;
+/** Work on a house that already exists — the opposite of a one-off. */
+const EXISTING_HOUSE_WORK_RE =
+  /\b(?:extension|extend|conversion|convert|attic|garage|porch|retention of|renovat|refurbish|alteration|dormer|replacement window)\b/i;
+/**
+ * The rural signature. A one-off house has no sewer to connect to, so it must
+ * treat its own wastewater — and it says so, because the treatment system is
+ * part of what is being applied for. Measured over the register, this is the
+ * most reliable marker in the text: "local need", the thing these applications
+ * actually turn on, appears in 3 descriptions out of 132,162.
+ */
+const OWN_WASTEWATER_RE =
+  /\b(?:septic tank|waste ?water treatment|treatment system|treatment plant|percolation|proprietary treatment|puraflo|bio ?cycle|effluent)\b/i;
+
+/**
+ * Is this an application to build a one-off house?
+ *
+ * `flagRaw` is the register's own OneOffHouse field, which is authoritative
+ * where a council fills it — but South Dublin is the only one of the five that
+ * fills it for every application, so the description carries the rest.
+ *
+ * These are the hardest applications to get through: they run at a 20–57%
+ * grant rate against an 82–87% baseline, depending on the council.
+ */
+export function isOneOffHouse(
+  description: string | null | undefined,
+  flagRaw?: string | null
+): boolean {
+  if (flagRaw && ONE_OFF_HOUSE_FLAG_RE.test(flagRaw)) return true;
+  const text = `${description ?? ""}`;
+  if (!text || EXISTING_HOUSE_WORK_RE.test(text)) return false;
+  return NEW_DWELLING_RE.test(text) && OWN_WASTEWATER_RE.test(text);
+}
+
+/** The four spellings the councils use for "this is a one-off house". "No" and
+ *  the empty string are the negatives, so the match has to be anchored. */
+export const ONE_OFF_HOUSE_FLAG_RE = /^\s*(?:y|yes|one|single house)\s*$/i;
+
 /**
  * A unit noun directly after the count, behind at most one qualifier from a
  * closed list.

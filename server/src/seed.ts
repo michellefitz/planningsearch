@@ -189,6 +189,7 @@ export function generateSeedRecords(): ApplicationRecord[] {
         ),
         application_type_raw: /retention/i.test(description) ? "Retention" : "Permission",
         is_domestic_guess: guessIsDomestic(description) ? 1 : 0,
+        is_one_off: 0,
         status: normalizeStatus(plan.statusRaw, plan.decisionRaw),
         status_raw: plan.statusRaw,
         received_date: received,

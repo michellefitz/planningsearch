@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS applications (
   application_type TEXT,
   application_type_raw TEXT,
   is_domestic_guess INTEGER NOT NULL DEFAULT 0,
+  is_one_off INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL,
   status_raw TEXT,
   received_date TEXT,
@@ -128,6 +129,7 @@ export function openDb(dbPath: string = DB_PATH, opts: OpenDbOptions = {}): Data
   db.exec(SCHEMA);
   // Migrate existing databases that predate later columns.
   try { db.exec("ALTER TABLE applications ADD COLUMN ai_summary TEXT"); } catch {}
+  try { db.exec("ALTER TABLE applications ADD COLUMN is_one_off INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { db.exec("ALTER TABLE applications ADD COLUMN num_residential_units INTEGER"); } catch {}
   try { db.exec("ALTER TABLE applications ADD COLUMN floor_area_sqm REAL"); } catch {}
   try { db.exec("ALTER TABLE applications ADD COLUMN site_area_ha REAL"); } catch {}
@@ -177,6 +179,8 @@ export interface ApplicationRecord {
   application_type: string;
   application_type_raw: string | null;
   is_domestic_guess: number;
+  /** An application to build a one-off house — see isOneOffHouse. */
+  is_one_off: number;
   status: string;
   status_raw: string | null;
   received_date: string | null;
@@ -215,7 +219,7 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
   const upsert = db.prepare(`
     INSERT INTO applications (
       authority_id, planning_reference, description, application_type, application_type_raw,
-      is_domestic_guess, status, status_raw, received_date, validated_date,
+      is_domestic_guess, is_one_off, status, status_raw, received_date, validated_date,
       further_info_requested_date, further_info_received_date, decision_due_date,
       submissions_by_date,
       decision, decision_raw, decision_date, appeal_status, appeal_reference,
@@ -225,7 +229,7 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       lat, lng, geom_polygon, source_url, last_synced
     ) VALUES (
       @authority_id, @planning_reference, @description, @application_type, @application_type_raw,
-      @is_domestic_guess, @status, @status_raw, @received_date, @validated_date,
+      @is_domestic_guess, @is_one_off, @status, @status_raw, @received_date, @validated_date,
       @further_info_requested_date, @further_info_received_date, @decision_due_date,
       @submissions_by_date,
       @decision, @decision_raw, @decision_date, @appeal_status, @appeal_reference,
@@ -239,6 +243,7 @@ export function upsertApplication(db: Database.Database, rec: ApplicationRecord)
       application_type = excluded.application_type,
       application_type_raw = excluded.application_type_raw,
       is_domestic_guess = excluded.is_domestic_guess,
+      is_one_off = excluded.is_one_off,
       status = excluded.status,
       status_raw = excluded.status_raw,
       received_date = excluded.received_date,

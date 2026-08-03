@@ -3,6 +3,7 @@ import {
   deriveApplicationType,
   extractResidentialUnits,
   guessIsDomestic,
+  isOneOffHouse,
   normalizeApplicationType,
   normalizeStatus,
 } from "../src/normalize.js";
@@ -221,6 +222,52 @@ describe("guessIsDomestic", () => {
 
   it("handles empty input", () => {
     expect(guessIsDomestic(null)).toBe(false);
+  });
+});
+
+describe("isOneOffHouse", () => {
+  it("takes the council's own flag when it gives one", () => {
+    // Each council spells it differently; all four mean the same thing.
+    for (const flag of ["Y", "Yes", "One", "Single House    "]) {
+      expect(isOneOffHouse("development at this site", flag)).toBe(true);
+    }
+    for (const flag of ["No", "", " ", "Two"]) {
+      expect(isOneOffHouse("development at this site", flag)).toBe(false);
+    }
+  });
+
+  it("reads the rural signature out of the description", () => {
+    // Verbatim openings from the register. A one-off house has no sewer, so it
+    // applies for its own treatment system — that pairing is the marker.
+    expect(
+      isOneOffHouse("Construct new 2 bedroom dwelling house, car port, wastewater treatment")
+    ).toBe(true);
+    expect(
+      isOneOffHouse(
+        "Proposed erection of 3 bed bungalow, installation of wastewater treatment plant and percolation area"
+      )
+    ).toBe(true);
+    expect(
+      isOneOffHouse(
+        "the construction of a two storey dwelling, foul water to on site effluent treatment system"
+      )
+    ).toBe(true);
+  });
+
+  it("is not fooled by work on a house that already exists", () => {
+    // Each of these has both a dwelling word and a treatment word, and none is
+    // an application to build a new house.
+    expect(isOneOffHouse("Extension to dwelling and upgrade of septic tank")).toBe(false);
+    expect(isOneOffHouse("Retention of dwelling and existing wastewater treatment system")).toBe(false);
+    expect(isOneOffHouse("Conversion of attic in dwelling served by a septic tank")).toBe(false);
+  });
+
+  it("does not claim a house on a serviced site is one-off", () => {
+    // No treatment plant means a sewer, which means it is not the rural case.
+    expect(isOneOffHouse("Construction of a two storey dwelling and garden shed")).toBe(false);
+    expect(isOneOffHouse("Installation of a wastewater treatment system")).toBe(false);
+    expect(isOneOffHouse(null)).toBe(false);
+    expect(isOneOffHouse("")).toBe(false);
   });
 });
 
