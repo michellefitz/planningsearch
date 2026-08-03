@@ -20,6 +20,7 @@ const base: ApplicationRecord = {
   application_type: "permission",
   application_type_raw: "Permission",
   is_domestic_guess: 1,
+  is_one_off: 0,
   status: "pending",
   status_raw: "New Application",
   received_date: "2026-05-01",
