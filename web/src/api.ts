@@ -144,6 +144,7 @@ export interface SearchState {
   statuses: string[];
   types: string[];
   domesticOnly: boolean;
+  oneOffOnly: boolean;
   appealedOnly: boolean;
   commencedOnly: boolean;
   receivedFrom: string;
@@ -187,6 +188,7 @@ export const EMPTY_SEARCH: SearchState = {
   statuses: [...DEFAULT_STATUSES],
   types: [],
   domesticOnly: false,
+  oneOffOnly: false,
   appealedOnly: false,
   commencedOnly: false,
   receivedFrom: "",
@@ -210,6 +212,7 @@ export function searchParams(
   if (s.statuses.length) p.set("status", s.statuses.join(","));
   if (s.types.length) p.set("type", s.types.join(","));
   if (s.domesticOnly) p.set("domestic", "1");
+  if (s.oneOffOnly) p.set("one_off", "1");
   if (s.appealedOnly) p.set("appealed", "1");
   if (s.commencedOnly) p.set("commenced", "1");
   if (s.receivedFrom) p.set("receivedFrom", s.receivedFrom);

@@ -75,6 +75,7 @@ function filtersFromQuery(q: Record<string, unknown>): SearchFilters {
     statuses: csv(q.status),
     types: csv(q.type),
     domesticOnly: q.domestic === "1" || q.domestic === "true",
+    oneOffOnly: q.one_off === "1" || q.one_off === "true",
     appealedOnly: q.appealed === "1" || q.appealed === "true",
     commencedOnly: q.commenced === "1" || q.commenced === "true",
     receivedFrom: typeof q.receivedFrom === "string" ? q.receivedFrom : undefined,

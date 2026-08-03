@@ -1721,6 +1721,7 @@ function applyFilters(rows, p) {
   const excludeStatuses = csv(p.get("excludeStatus"));
   const types = csv(p.get("type"));
   const domestic = p.get("domestic") === "1" || p.get("domestic") === "true";
+  const oneOff = p.get("one_off") === "1" || p.get("one_off") === "true";
   const appealed = p.get("appealed") === "1" || p.get("appealed") === "true";
   const commenced = p.get("commenced") === "1" || p.get("commenced") === "true";
   const rf = p.get("receivedFrom"), rt = p.get("receivedTo");
@@ -1733,6 +1734,7 @@ function applyFilters(rows, p) {
     if (excludeStatuses && excludeStatuses.includes(a.status)) return false;
     if (types && !types.includes(a.application_type)) return false;
     if (domestic && a.is_domestic_guess !== 1) return false;
+    if (oneOff && a.is_one_off !== 1) return false;
     if (appealed && !a.appeal_reference) return false;
     if (commenced && !a.commencement_date) return false;
     if (rf && (!a.received_date || a.received_date < rf)) return false;

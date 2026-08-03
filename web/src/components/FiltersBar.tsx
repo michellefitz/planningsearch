@@ -50,6 +50,7 @@ function appliedFilters(meta: Meta | null, s: SearchState, onChange: (n: SearchS
     out.push({ key: "minunits", label, remove: () => onChange({ ...s, minUnits: 0 }) });
   }
   if (s.domesticOnly) out.push({ key: "domestic", label: "Domestic only", remove: () => onChange({ ...s, domesticOnly: false }) });
+  if (s.oneOffOnly) out.push({ key: "oneoff", label: "One-off houses", remove: () => onChange({ ...s, oneOffOnly: false }) });
   if (s.appealedOnly) out.push({ key: "appealed", label: "Appealed", remove: () => onChange({ ...s, appealedOnly: false }) });
   if (s.commencedOnly) out.push({ key: "commenced", label: "Work commenced", remove: () => onChange({ ...s, commencedOnly: false }) });
   if (s.useMapArea) out.push({ key: "maparea", label: "Current map area", remove: () => onChange({ ...s, useMapArea: false }) });
@@ -152,6 +153,15 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
             onChange={(e) => onChange({ ...state, domesticOnly: e.target.checked })}
           />
           Domestic only <em className="hint">(best-effort filter, not an official category)</em>
+        </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={state.oneOffOnly}
+            onChange={(e) => onChange({ ...state, oneOffOnly: e.target.checked })}
+          />
+          One-off houses{" "}
+          <em className="hint">(a new house on its own site — far harder to get through)</em>
         </label>
         <label className="toggle-row">
           <input

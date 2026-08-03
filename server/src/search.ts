@@ -6,6 +6,8 @@ export interface SearchFilters {
   statuses?: string[];
   types?: string[];
   domesticOnly?: boolean;
+  /** Only applications to build a one-off house (see isOneOffHouse). */
+  oneOffOnly?: boolean;
   appealedOnly?: boolean;
   commencedOnly?: boolean;
   /** Statuses to drop (e.g. invalid/incomplete junk) — applied as NOT IN. */
@@ -167,6 +169,7 @@ function buildWhere(f: SearchFilters, alias = "a"): WhereClause {
     clauses.push(`${alias}.status NOT IN (${keys.join(",")})`);
   }
   if (f.domesticOnly) clauses.push(`${alias}.is_domestic_guess = 1`);
+  if (f.oneOffOnly) clauses.push(`${alias}.is_one_off = 1`);
   if (f.appealedOnly) clauses.push(`${alias}.appeal_reference IS NOT NULL`);
   if (f.commencedOnly) clauses.push(`${alias}.commencement_date IS NOT NULL`);
   if (f.receivedFrom) {

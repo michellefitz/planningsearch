@@ -86,6 +86,17 @@ beforeAll(() => {
   });
   upsertApplication(db, {
     ...base,
+    planning_reference: "RURAL/01",
+    authority_id: "kildare",
+    is_one_off: 1,
+    status: "refused",
+    description: "Construction of a dwelling house with wastewater treatment system and percolation area",
+    address_text: "Ballymore Eustace, Co. Kildare",
+    lat: 53.1349,
+    lng: -6.6217,
+  });
+  upsertApplication(db, {
+    ...base,
     planning_reference: "F26A/0311",
     authority_id: "fingal",
     status: "appealed",
@@ -139,6 +150,16 @@ describe("search", () => {
     expect(results[0].planning_reference).toBe("F26A/0102");
   });
 
+  it("isolates one-off houses", () => {
+    // A new house on its own site, which is decided against a different test
+    // than an extension and refused far more often — worth its own lens.
+    const { results } = search(db, { oneOffOnly: true });
+    expect(results).toHaveLength(1);
+    expect(results[0].planning_reference).toBe("RURAL/01");
+    // And it composes with the other filters rather than replacing them.
+    expect(search(db, { oneOffOnly: true, statuses: ["granted"] }).results).toHaveLength(0);
+  });
+
   it("filters by domestic heuristic", () => {
     const { results } = search(db, { domesticOnly: true });
     expect(results.every((r) => r.is_domestic_guess === 1)).toBe(true);
@@ -170,37 +191,38 @@ describe("search", () => {
 describe("aggregateApplications", () => {
   it("counts the whole matching set with breakdowns", () => {
     const agg = aggregateApplications(db, {});
-    expect(agg.total).toBe(4);
+    expect(agg.total).toBe(5);
     expect(agg.granted).toBe(1);
-    expect(agg.refused).toBe(1);
+    // The refused pair: the Dublin City office block and the Kildare one-off.
+    expect(agg.refused).toBe(2);
     expect(agg.by_status.pending).toBe(1);
     expect(agg.by_status.appealed).toBe(1);
     expect(agg.appealed).toBe(1);
-    // Breaks down by planning authority (2 fingal, 1 kildare, 1 dublin-city).
+    // Breaks down by planning authority (2 fingal, 2 kildare, 1 dublin-city).
     expect(agg.by_authority.fingal).toBe(2);
-    expect(agg.by_authority.kildare).toBe(1);
+    expect(agg.by_authority.kildare).toBe(2);
     expect(agg.by_authority["dublin-city"]).toBe(1);
   });
 
   it("respects excludeStatuses (junk filtering)", () => {
     const agg = aggregateApplications(db, { excludeStatuses: ["pending", "appealed"] });
-    expect(agg.total).toBe(2);
+    expect(agg.total).toBe(3);
     expect(agg.by_status.pending).toBeUndefined();
     expect(agg.granted).toBe(1);
-    expect(agg.refused).toBe(1);
+    expect(agg.refused).toBe(2);
   });
 
   it("counts over a keyword-filtered set", () => {
     const agg = aggregateApplications(db, { q: "extension" });
     expect(agg.total).toBeGreaterThan(0);
-    expect(agg.total).toBeLessThanOrEqual(4);
+    expect(agg.total).toBeLessThanOrEqual(5);
   });
 });
 
 describe("search excludeStatuses", () => {
   it("drops excluded statuses from results and total", () => {
     const { results, total } = search(db, { excludeStatuses: ["pending", "appealed"] });
-    expect(total).toBe(2);
+    expect(total).toBe(3);
     expect(results.every((r) => r.status !== "pending" && r.status !== "appealed")).toBe(true);
   });
 });
