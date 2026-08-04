@@ -1426,6 +1426,19 @@ async function fetchAppealDocumentBase64(url, maxBytes = 12_000_000, trace) {
 
 const APPEAL_SUMMARY_CACHE = new Map();
 
+const AI_RATE_WINDOW = 60_000;
+const AI_RATE_MAX = 30;
+let aiRateStart = Date.now();
+let aiRateCount = 0;
+function aiRateOk() {
+  const now = Date.now();
+  if (now - aiRateStart > AI_RATE_WINDOW) {
+    aiRateStart = now;
+    aiRateCount = 0;
+  }
+  return ++aiRateCount <= AI_RATE_MAX;
+}
+
 async function summariseDescription(description, applicationType, trace) {
   if (!description) {
     trace?.push({ step: "summarise", error: "no description to summarise" });
@@ -2935,6 +2948,7 @@ export default async function handler(req, res) {
     if (!caseUrl) return send(res, 200, { supported: false });
     const cached = APPEAL_SUMMARY_CACHE.get(app.id);
     if (cached) return send(res, 200, { supported: true, ...cached });
+    if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
 
     const debug = p.get("debug") === "1";
     const trace = debug ? [] : undefined;
@@ -2970,6 +2984,7 @@ export default async function handler(req, res) {
     }
     const cached = DECISION_SUMMARY_CACHE.get(app.id);
     if (cached) return send(res, 200, { supported: true, ...cached });
+    if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
     const debug = p.get("debug") === "1";
     const trace = debug ? [] : undefined;
     const files = await fetchScannedFileList(listUrl, trace);
@@ -3122,6 +3137,7 @@ export default async function handler(req, res) {
   if (em) {
     const app = BUNDLE.applications.find((a) => a.id === Number(em[1]));
     if (!app) return send(res, 404, { error: "Application not found" });
+    if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
 
     let description = app.description ?? null;
     let parties = { applicant: null, agent: null };

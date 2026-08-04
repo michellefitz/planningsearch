@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { sql } from "./db.mjs";
 import {
   clearSessionCookie, parseCookies, randomToken,
@@ -16,6 +17,14 @@ import {
 } from "./watches.mjs";
 
 const AGILE = new Set(["dublin-city", "fingal", "dlr", "south-dublin"]);
+
+function verifyBearer(req, secret) {
+  if (!secret) return false;
+  const auth = req.headers.authorization ?? "";
+  const expected = `Bearer ${secret}`;
+  if (auth.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(expected));
+}
 
 const AUTH_RATE_WINDOW = 900_000;
 const AUTH_RATE_MAX = 5;
@@ -332,7 +341,7 @@ document.getElementById("btn").onclick = async function() {
     // production rebuild so the baked bundle re-exports (and merges the fresh
     // harvest). The hook deploys main as-is.
     const secret = process.env.CRON_SECRET;
-    if (!secret || req.headers.authorization !== `Bearer ${secret}`)
+    if (!verifyBearer(req, secret))
       return sendPrivate(res, 401, { error: "unauthorized" });
     const hook = process.env.DEPLOY_HOOK_URL;
     if (!hook) return sendPrivate(res, 500, { error: "DEPLOY_HOOK_URL not set" });
@@ -385,16 +394,17 @@ document.getElementById("btn").onclick = async function() {
       [user.id, name, lat, lng, radius]
     );
     const watch = rows[0];
-    // Seed: everything already in the window is pre-existing, not news.
     const hits = findWatchHits(ctx.applications, watch, watchWindowStart());
-    for (const h of hits) {
-      for (const kind of h.kinds) {
-        await sql(
-          `insert into area_watch_alerted (watch_id, authority_id, planning_reference, kind)
-           values ($1, $2, $3, $4) on conflict do nothing`,
-          [watch.id, h.app.authority_id, h.app.planning_reference, kind]
-        );
-      }
+    const seedRows = hits.flatMap((h) =>
+      h.kinds.map((kind) => [watch.id, h.app.authority_id, h.app.planning_reference, kind])
+    );
+    if (seedRows.length) {
+      const vals = seedRows.map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`).join(", ");
+      await sql(
+        `insert into area_watch_alerted (watch_id, authority_id, planning_reference, kind)
+         values ${vals} on conflict do nothing`,
+        seedRows.flat()
+      );
     }
     return sendPrivate(res, 200, watch);
   }
@@ -422,10 +432,13 @@ document.getElementById("btn").onclick = async function() {
 
   if (route === "/api/saves" && req.method === "POST") {
     const body = await readJsonBody(req);
-    const authorityId = String(body?.authority_id ?? "");
-    const reference = String(body?.planning_reference ?? "");
+    const authorityId = String(body?.authority_id ?? "").slice(0, 80);
+    const reference = String(body?.planning_reference ?? "").slice(0, 80);
     if (!authorityId || !reference)
       return sendPrivate(res, 400, { error: "authority_id and planning_reference required" });
+    const saveCount = await sql(`select count(*)::int as n from saved_apps where user_id = $1`, [user.id]);
+    if ((saveCount[0]?.n ?? 0) >= 200)
+      return sendPrivate(res, 400, { error: "limit of 200 saved applications reached" });
     await sql(
       `insert into saved_apps (user_id, authority_id, planning_reference)
        values ($1, $2, $3)
@@ -461,8 +474,11 @@ document.getElementById("btn").onclick = async function() {
 
   if (route === "/api/lists" && req.method === "POST") {
     const body = await readJsonBody(req);
-    const name = String(body?.name ?? "").trim();
+    const name = String(body?.name ?? "").trim().slice(0, 80);
     if (!name) return sendPrivate(res, 400, { error: "name required" });
+    const listCount = await sql(`select count(*)::int as n from lists where user_id = $1`, [user.id]);
+    if ((listCount[0]?.n ?? 0) >= 50)
+      return sendPrivate(res, 400, { error: "limit of 50 lists reached" });
     const rows = await sql(
       `insert into lists (user_id, name, position)
        values ($1, $2, coalesce((select max(position) + 1 from lists where user_id = $1), 0))
@@ -508,7 +524,7 @@ document.getElementById("btn").onclick = async function() {
     if (req.method === "PATCH") {
       const body = await readJsonBody(req);
       if (typeof body?.name === "string" && body.name.trim())
-        await sql(`update lists set name = $3 where id = $1 and user_id = $2`, [id, user.id, body.name.trim()]);
+        await sql(`update lists set name = $3 where id = $1 and user_id = $2`, [id, user.id, body.name.trim().slice(0, 80)]);
       if (typeof body?.alerts_enabled === "boolean")
         await sql(
           `update saved_apps set alerts_enabled = $3 where user_id = $2
@@ -526,7 +542,7 @@ document.getElementById("btn").onclick = async function() {
 
 async function handleCron(req, res, ctx) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.authorization !== `Bearer ${secret}`)
+  if (!verifyBearer(req, secret))
     return sendPrivate(res, 401, { error: "unauthorized" });
 
   const targets = await sql(
