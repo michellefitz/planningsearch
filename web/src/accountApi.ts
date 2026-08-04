@@ -17,6 +17,9 @@ export interface SavedApp {
   events_seen_at: string;
   created_at: string;
   has_update: boolean;
+  /** Most recent recorded change on this application, if any. */
+  latest_event_summary?: string | null;
+  latest_event_at?: string | null;
   app: AppSummary | null;
 }
 

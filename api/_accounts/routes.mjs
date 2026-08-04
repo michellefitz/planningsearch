@@ -5,7 +5,7 @@ import {
   unsubscribeToken, verifyUnsubscribeToken,
 } from "./tokens.mjs";
 import { magicLinkEmail, sendEmail } from "./email.mjs";
-import { diffSnapshots, snapshotFromBundleApp } from "./diff.mjs";
+import { diffSnapshots, fmtEventDate, normalizeStatus, snapshotFromBundleApp } from "./diff.mjs";
 import { fetchLiveNationalSnapshot } from "./live.mjs";
 import { fetchKildareLiveSnapshot } from "./kildare.mjs";
 import { buildDigestEmail } from "./digest.mjs";
@@ -76,8 +76,15 @@ async function seedSnapshot(authorityId, reference, ctx) {
 
 async function loadSaves(userId, ctx) {
   const saves = await sql(
-    `select id, authority_id, planning_reference, alerts_enabled, events_seen_at, created_at
-     from saved_apps where user_id = $1 order by created_at desc`,
+    `select s.id, s.authority_id, s.planning_reference, s.alerts_enabled, s.events_seen_at, s.created_at,
+            e.summary as latest_event_summary, e.detected_at as latest_event_at
+     from saved_apps s
+     left join lateral (
+       select summary, detected_at from app_events
+       where authority_id = s.authority_id and planning_reference = s.planning_reference
+       order by detected_at desc limit 1
+     ) e on true
+     where s.user_id = $1 order by s.created_at desc`,
     [userId]
   );
   const updated = await sql(
@@ -506,6 +513,30 @@ async function handleCron(req, res, ctx) {
             [t.authority_id, t.planning_reference, e.event_type, e.field, e.old_value, e.new_value, e.summary]
           );
           eventsWritten++;
+        }
+      }
+      // Decision-due reminder: the statutory decide-by date is today or
+      // tomorrow and the case still reads undecided. One event per due date —
+      // the anti-join makes re-runs and FI-extended dates idempotent.
+      const due = app?.decision_due_date;
+      if (due) {
+        const today = new Date().toISOString().slice(0, 10);
+        const tomorrow = new Date(Date.now() + 86400_000).toISOString().slice(0, 10);
+        const undecided = !["granted", "refused", "split", "withdrawn", "invalid", "exempt", "not_exempt", "decided"]
+          .includes(normalizeStatus(next.status, next.decision));
+        if (undecided && (due === today || due === tomorrow)) {
+          const summary = `Decision due ${due === today ? "today" : "tomorrow"} (${fmtEventDate(due)}) — the council must decide by then unless it requests further information`;
+          const inserted = await sql(
+            `insert into app_events (authority_id, planning_reference, event_type, field, old_value, new_value, summary)
+             select $1, $2, 'reminder', 'decision_due', null, $3, $4
+             where not exists (
+               select 1 from app_events
+               where authority_id = $1 and planning_reference = $2
+                 and field = 'decision_due' and new_value = $3
+             ) returning id`,
+            [t.authority_id, t.planning_reference, due, summary]
+          );
+          if (inserted.length) eventsWritten++;
         }
       }
       await sql(

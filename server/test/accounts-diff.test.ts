@@ -93,14 +93,42 @@ describe("diffSnapshots", () => {
 
     const done = diffSnapshots(next, { ...next, completion_date: "2026-07-01" });
     expect(done).toHaveLength(1);
-    expect(done[0]).toMatchObject({ event_type: "commencement", summary: "Works recorded complete" });
+    expect(done[0].event_type).toBe("commencement");
+    expect(done[0].summary).toBe("Works recorded complete (1 Jul 2026)");
   });
 
-  it("further info dates map to further_info events", () => {
+  it("further info dates map to further_info events with the date and consequence", () => {
     const prev = { ...BASE, status: "pending" };
     const events = diffSnapshots(prev, { ...BASE, status: "pending", further_info_requested_date: "2026-07-10" });
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ event_type: "further_info", summary: "Further information requested" });
+    expect(events[0].event_type).toBe("further_info");
+    expect(events[0].summary).toBe(
+      "Further information requested on 10 Jul 2026 — the decision clock pauses until it arrives"
+    );
+  });
+
+  it("a bare decision date on an undecided case says the outcome is still coming", () => {
+    // The Deerpark Road email: the register published a decision *date* with
+    // no readable outcome, and "Decision date recorded: 2026-07-24" told the
+    // reader nothing. Say what it means instead.
+    const prev = { ...BASE, status: "pending" };
+    const events = diffSnapshots(prev, { ...BASE, status: "pending", decision_date: "2026-07-24" });
+    expect(events).toHaveLength(1);
+    expect(events[0].summary).toBe(
+      "The register recorded a decision dated 24 Jul 2026 — the outcome isn't published yet; we'll email again when it is"
+    );
+  });
+
+  it("suppresses a bare decision-date change when the outcome is already known", () => {
+    // Register backfilling paperwork: "granted" was announced weeks ago, the
+    // date column filled in today. Not news.
+    const prev = { ...BASE, status: "granted", decision: "GRANT PERMISSION" };
+    const next = { ...BASE, status: "granted", decision: "GRANT PERMISSION", decision_date: "2026-07-24" };
+    expect(diffSnapshots(prev, next)).toHaveLength(0);
+    // A shifting date on a decided case is equally not news.
+    expect(
+      diffSnapshots({ ...prev, decision_date: "2026-07-20" }, next)
+    ).toHaveLength(0);
   });
 
   it("a value disappearing raises no alert — it means a source didn't answer", () => {
