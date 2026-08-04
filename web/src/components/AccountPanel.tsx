@@ -101,6 +101,12 @@ function RegisterRow({
       <span className="reg-main">
         <strong className="reg-address">{s.app?.address_text ?? s.planning_reference}</strong>
         {s.has_update && !updated && <span className="badge-updated">Updated</span>}
+        {s.latest_event_summary && (
+          <span className="reg-latest">
+            {s.latest_event_summary}
+            {s.latest_event_at && ` · ${fmtDate(s.latest_event_at.slice(0, 10))}`}
+          </span>
+        )}
       </span>
       <span className="reg-meta">
         <span className="ref">{s.planning_reference}</span>

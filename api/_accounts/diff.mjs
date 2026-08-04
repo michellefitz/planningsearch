@@ -101,23 +101,38 @@ const PAIRED = {
 
 const label = (v) => STATUS_LABELS[v] ?? v ?? "—";
 
-function summarize(field, oldV, newV) {
+/** ISO date → "24 Jul 2026" (email copy); non-dates pass through. */
+export function fmtEventDate(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(`${v ?? ""}`);
+  if (!m) return `${v ?? ""}`;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${Number(m[3])} ${months[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+function summarize(field, oldV, newV, next) {
   if (newV == null) return `${field.replace(/_/g, " ")} cleared`;
   switch (field) {
     case "status": return `Status changed: ${label(oldV)} → ${label(newV)}`;
     case "decision": return oldV == null ? `Decision issued: ${newV}` : `Decision updated: ${oldV} → ${newV}`;
-    case "decision_date": return `Decision date recorded: ${newV}`;
+    // Fires only when the date moved with no readable outcome alongside it
+    // (a paired decision change suppresses this event) — say so, rather than
+    // announcing a bare date the reader can't act on.
+    case "decision_date":
+      return `The register recorded a decision dated ${fmtEventDate(newV)} — the outcome isn't published yet; we'll email again when it is`;
     case "appeal_reference": return `Appeal lodged with An Coimisiún Pleanála (${newV})`;
     case "appeal_status": return `Appeal status: ${newV}`;
     case "appeal_decision": return `Appeal decided: ${newV}`;
-    case "appeal_decision_date": return `Appeal decision date: ${newV}`;
-    case "appeal_lodged_date": return `Appeal lodged date: ${newV}`;
+    case "appeal_decision_date": return `Appeal decision date recorded: ${fmtEventDate(newV)}`;
+    case "appeal_lodged_date": return `Appeal lodged on ${fmtEventDate(newV)}`;
     case "commencement_notice": return `Commencement notice filed — work is starting`;
-    case "commencement_date": return `Commencement date: ${newV}`;
-    case "completion_date": return `Works recorded complete`;
-    case "further_info_requested_date": return `Further information requested`;
-    case "further_info_received_date": return `Further information received`;
-    case "final_grant_date": return `Final grant issued`;
+    case "commencement_date": return `Work on site recorded as commencing ${fmtEventDate(newV)}`;
+    case "completion_date": return `Works recorded complete (${fmtEventDate(newV)})`;
+    case "further_info_requested_date":
+      return `Further information requested on ${fmtEventDate(newV)} — the decision clock pauses until it arrives`;
+    case "further_info_received_date":
+      return `Further information received on ${fmtEventDate(newV)} — the council has 4 weeks to decide`;
+    case "final_grant_date":
+      return `Final grant issued ${fmtEventDate(newV)}${next?.decision ? ` — ${next.decision}` : ""}`;
     default: return `${field.replace(/_/g, " ")}: ${newV}`;
   }
 }
@@ -164,6 +179,23 @@ export function diffSnapshots(prev, next) {
   for (const [child, parent] of Object.entries(PAIRED)) {
     if (changed.has(parent)) changed.delete(child);
   }
+  // A decision date moving on its own, when the outcome is already known and
+  // unchanged, is the register backfilling paperwork ("granted" said weeks
+  // ago, date recorded today). Announcing it reads as an update with nothing
+  // in it — the exact complaint that prompted this rule. Only alert on a bare
+  // date when the case still reads undecided (a decision now exists and the
+  // outcome is coming).
+  const TERMINAL = new Set([
+    "granted", "refused", "split", "withdrawn", "invalid", "exempt", "not_exempt", "decided",
+  ]);
+  if (
+    changed.has("decision_date") &&
+    !changed.has("decision") &&
+    !changed.has("status") &&
+    TERMINAL.has(normalizeStatus(next.status, next.decision))
+  ) {
+    changed.delete("decision_date");
+  }
   const events = [];
   for (const field of SNAPSHOT_FIELDS) {
     if (!changed.has(field)) continue;
@@ -174,7 +206,7 @@ export function diffSnapshots(prev, next) {
       event_type: EVENT_TYPE[field],
       old_value,
       new_value,
-      summary: summarize(field, old_value, new_value),
+      summary: summarize(field, old_value, new_value, next),
     });
   }
   return events;
