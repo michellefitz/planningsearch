@@ -82,6 +82,9 @@ export default function App() {
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const nearRef = useRef<{ lat: number; lng: number } | null>(null);
   const searchSeq = useRef(0);
+  const flyOnNextSearch = useRef(false);
+  const pinSeq = useRef(0);
+  const pinTimer = useRef<number | null>(null);
   const identifiedEmailRef = useRef<string | null>(null);
   // True while we're applying a URL (initial load or back/forward), so the
   // selection effect doesn't push a duplicate history entry straight back.
@@ -114,7 +117,14 @@ export default function App() {
 
   const runSearch = useCallback(
     async (s: SearchState) => {
+      if (pinTimer.current != null) {
+        window.clearTimeout(pinTimer.current);
+        pinTimer.current = null;
+      }
+      ++pinSeq.current;
       const seq = ++searchSeq.current;
+      const shouldFly = flyOnNextSearch.current;
+      flyOnNextSearch.current = false;
       setLoading(true);
       setError(null);
       try {
@@ -133,6 +143,11 @@ export default function App() {
         setFuzzy(listRes.fuzzy);
         setMapData(geo);
         setSitePolygons(polys);
+        if (shouldFly && listRes.results.length > 0) {
+          const r = listRes.results[0];
+          if (r.lat != null && r.lng != null)
+            setFlyTo({ lat: r.lat, lng: r.lng, zoom: 14 });
+        }
       } catch {
         if (seq === searchSeq.current) setError("Search failed — is the server running?");
       } finally {
@@ -258,8 +273,6 @@ export default function App() {
   // only the map layer — debounced, because moveend fires continuously during
   // a drag — so the payload stays proportional to what's on screen rather than
   // to the whole register.
-  const pinSeq = useRef(0);
-  const pinTimer = useRef<number | null>(null);
   const refreshPins = useCallback((s: SearchState) => {
     if (pinTimer.current != null) window.clearTimeout(pinTimer.current);
     pinTimer.current = window.setTimeout(async () => {
@@ -654,6 +667,7 @@ export default function App() {
               onChange={(q) => setState((s) => ({ ...s, q }))}
               onSubmit={(q) => {
                 posthog.capture("search_submitted", { has_query: Boolean(q.trim()) });
+                if (q.trim()) flyOnNextSearch.current = true;
                 applyState({ ...state, q });
                 // On mobile, a keyword search wants results — switch to the list.
                 if (q.trim()) setMobileView("list");
