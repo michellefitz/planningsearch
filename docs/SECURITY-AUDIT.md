@@ -143,15 +143,26 @@
 
 ---
 
-## Fix priority (pre-launch)
+## Fix status
 
-1. Rate-limit `/api/agent` + add disconnect abort — **critical cost risk**
-2. Vercel WAF rule on `/api/auth/request-link` — minutes of work
-3. Set `APP_ORIGIN` in Vercel env — minutes of work
-4. Throw on missing `CRON_SECRET` — one line
-5. Magic link verify → POST flow — prevents email-scanner breakage
-6. Security headers in build config — 15 minutes
-7. Rate-limit/auth-gate Haiku summary routes
-8. Verify Mapbox + Google Maps token restrictions in dashboards
-9. Cap preplan reports per user
-10. Cap saves/lists per user + string length limits
+| # | Status | PR |
+|---|--------|-----|
+| 1 | Fixed | #19 — Agent rate limit (20/hr/IP), disconnect abort, body+message caps |
+| 2 | Fixed | #19 — Auth request-link rate limit (5/15min/IP) |
+| 3 | Fixed | #19 — APP_ORIGIN required (already set in Vercel prod) |
+| 4 | Fixed | #19 — CRON_SECRET throws when missing |
+| 5 | Fixed | #19 — Magic link two-step verify (GET page → POST consumes) |
+| 6 | Fixed | #19 — Security headers (nosniff, DENY, referrer, permissions) |
+| 7 | Fixed | #20 — Global AI rate limit (30/min) on Haiku summary routes |
+| 8 | Manual | Verify Mapbox + Google Maps token URL restrictions in dashboards |
+| 9 | Fixed | #20 — Preplan reports capped at 5/user/day |
+| 10 | Fixed | #20 — Saves capped at 200, lists at 50 per user |
+| 11 | Fixed | #20 — String inputs truncated to 80 chars |
+| 12 | Fixed | #20 — Timing-safe cron Bearer comparison |
+| 13 | Open | Session invalidation on re-auth (low priority) |
+| 14 | Fixed | #19 — Agent message content capped at 10K chars |
+| 15 | Fixed | #19 — readJsonBody size limits (100KB/50KB) |
+| 16 | Fixed | #20 — Watch seeding batched into single INSERT |
+| 17 | Fixed | #20 — robots.txt disallowing /api/ |
+| 18 | Open | Session hygiene — rotation, idle timeout, cleanup (low priority) |
+| 19 | Open | Unescaped fallbackUrl in doc proxy HTML (not exploitable) |
