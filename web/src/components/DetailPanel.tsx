@@ -440,14 +440,14 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
       )}
 
       {state.phase === "idle" && (
-        <>
+        <div className="doc-placeholder">
           <div className="doc-skeleton" aria-hidden="true">
             <span /><span /><span />
           </div>
           <button type="button" className="btn" onClick={load}>
             Load case details
           </button>
-        </>
+        </div>
       )}
       {state.phase === "loading" && (
         <span className="hint loading-line">Fetching the national case record…</span>
@@ -582,32 +582,42 @@ function DecisionSection({
     <section aria-labelledby="decision-h" aria-busy={conditionsLoading || undefined}>
       <h3 id="decision-h">Decision</h3>
       {decision && (
-        <p className="decision-headline">
-          <span className={outcomeClass(decision)}>{titleCase(decision)}</span>
-          {decisionDate && <span className="hint"> · {fmtDate(decisionDate)}</span>}
+        <div className="decision-lines">
+          <p className="decision-line">
+            <span className={outcomeClass(decision)}>{titleCase(decision)}</span>
+            {decisionDate && <span className="hint"> · {fmtDate(decisionDate)}</span>}
+          </p>
           {d.appeal_decision && (
-            <>
-              <span className="hint"> → on appeal: </span>
-              <span className={outcomeClass(d.appeal_decision) || "appeal-outcome"}>
+            <p className="decision-line">
+              <span className={outcomeClass(d.appeal_decision)}>
                 {titleCase(d.appeal_decision)}
               </span>
+              <span className="hint"> on appeal</span>
               {d.appeal_decision_date && <span className="hint"> · {fmtDate(d.appeal_decision_date)}</span>}
-            </>
+            </p>
           )}
-        </p>
+        </div>
       )}
       {d.commencement_date ? (
         <p className="commencement-line">
           {d.commencement_date > new Date().toISOString().slice(0, 10)
             ? "Work due to commence on site"
             : "Work has commenced on site"}
-          <span className="hint"> · {d.commencement_date}</span>
-          {d.commencement_notice && <span className="hint"> · notice {d.commencement_notice}</span>}
-          {d.commencement_units != null && d.commencement_units > 0 && (
-            <span className="hint"> · {d.commencement_units} units</span>
+          <span className="hint"> · {fmtDate(d.commencement_date)}</span>
+          {d.commencement_notice && (
+            <span className="hint">
+              {" · notice "}
+              <a
+                href={`https://data.nbco.gov.ie/dataset/bcms/resource/0774e781-7af8-46da-b623-872e74cf541e?q=${encodeURIComponent(d.commencement_notice)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {d.commencement_notice}
+              </a>
+            </span>
           )}
           {d.completion_date && (
-            <span className="commencement-done"> · completion certified {d.completion_date}</span>
+            <span className="hint"> · completion certified {fmtDate(d.completion_date)}</span>
           )}
         </p>
       ) : null}
@@ -682,14 +692,14 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
   return (
     <div className="scanned-files">
       {state.phase === "idle" && (
-        <>
+        <div className="doc-placeholder">
           <div className="doc-skeleton" aria-hidden="true">
             <span /><span /><span /><span />
           </div>
           <button type="button" className="btn" onClick={load}>
             Load the file list
           </button>
-        </>
+        </div>
       )}
       {state.phase === "loading" && (
         <span className="hint loading-line">Fetching the file list from the council…</span>

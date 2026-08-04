@@ -2523,14 +2523,16 @@ a.ov-pop-sub {
 
 /* ── Decision substance (conditions / refusal reasons) ─────────────── */
 
-.decision-headline {
-  font-size: 0.82rem;
-  font-weight: 550;
+.decision-lines {
   margin: 0 0 0.75rem;
 }
-/* Dates keep the headline's size — only weight and colour step down. */
-.decision-headline .hint {
-  font-size: inherit;
+.decision-line {
+  font-size: 0.82rem;
+  font-weight: 500;
+  margin: 0;
+  line-height: 1.6;
+}
+.decision-line .hint {
   font-weight: 400;
   color: var(--ink-2);
 }
@@ -2645,17 +2647,17 @@ a.ov-pop-sub {
 /* BCMS commencement: did the permission actually get built on? */
 .commencement-line {
   margin: 0 0 0.85rem;
-  font-size: 0.86rem;
-  font-weight: 550;
-  color: #166534;
-}
-.commencement-done {
-  color: #166534;
-  font-weight: 550;
-}
-.commencement-none {
-  color: var(--ink-3);
+  font-size: 0.82rem;
   font-weight: 400;
+  color: var(--ink);
+}
+.commencement-line a {
+  color: var(--action);
+  text-decoration: none;
+}
+.commencement-line a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 /* ---------- Secondary pills (type / appeal / commencement) ---------- */
 /* Axes the single status badge can't carry, shown next to it in the list and
@@ -2967,22 +2969,28 @@ a.pill:hover {
 .results-skeleton span:nth-child(4) { animation-delay: 0.6s; }
 .results-skeleton span:nth-child(5) { animation-delay: 0.8s; }
 
-.doc-skeleton {
+.doc-placeholder {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.doc-placeholder .doc-skeleton {
   display: grid;
-  gap: 0.35rem;
-  margin-bottom: 0.6rem;
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
 }
-.doc-skeleton span {
+.doc-placeholder .doc-skeleton span {
   display: block;
-  height: 0.75rem;
-  border-radius: 4px;
+  height: 0.65rem;
+  border-radius: 3px;
   background: var(--surface-2);
-  opacity: 0.5;
+  opacity: 0.45;
 }
-.doc-skeleton span:nth-child(1) { width: 70%; }
-.doc-skeleton span:nth-child(2) { width: 55%; }
-.doc-skeleton span:nth-child(3) { width: 62%; }
-.doc-skeleton span:nth-child(4) { width: 48%; }
+.doc-placeholder .doc-skeleton span:nth-child(1) { width: 70%; }
+.doc-placeholder .doc-skeleton span:nth-child(2) { width: 55%; }
+.doc-placeholder .doc-skeleton span:nth-child(3) { width: 62%; }
+.doc-placeholder .doc-skeleton span:nth-child(4) { width: 48%; }
 
 .appeal-outcome {
   font-weight: 620;
