@@ -5,6 +5,7 @@ import { StatusBadge } from "./ResultsList";
 import MapView from "./MapView";
 import { PencilIcon, XIcon } from "./icons";
 import { fmtDate } from "../api";
+import { posthog } from "../posthog";
 
 interface Props {
   me: Me | null;
@@ -313,6 +314,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                 setState("sending");
                 try {
                   await accountApi.requestLink(email);
+                  posthog.capture("sign_in_link_requested");
                   setState("sent");
                 } catch {
                   setState("error");

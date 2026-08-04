@@ -9,6 +9,7 @@ import {
 } from "../preplanApi";
 import ReportView from "./ReportView";
 import { XIcon } from "./icons";
+import { posthog } from "../posthog";
 
 type View =
   | { kind: "list" }
@@ -129,6 +130,7 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
         address: location.address,
         eircode: location.eircode ?? null,
       });
+      posthog.capture("preplanner_project_created", { has_eircode: Boolean(location.eircode) });
       onCreated(project);
     } catch {
       setError("Couldn’t save the project — try again.");
@@ -318,6 +320,7 @@ export default function PrePlannerPanel({
     }
     refresh();
     if (reportId != null) {
+      posthog.capture("preplanner_report_generated");
       await openReport(reportId);
     } else {
       setError(failed ? "Report generation failed — the sections gathered were saved to the project." : null);
