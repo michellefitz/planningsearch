@@ -21,6 +21,7 @@ import PrePlannerPanel from "./components/PrePlannerPanel";
 import { accountApi, saveKey, type AreaWatch, type Me, type SavedApp } from "./accountApi";
 import type { AgentAppRef } from "./agentApi";
 import { coverageSummary } from "./coverage";
+import { posthog } from "./posthog";
 
 /**
  * An open application is a real, shareable address: /application/{council}/{ref}.
@@ -80,6 +81,7 @@ export default function App() {
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const nearRef = useRef<{ lat: number; lng: number } | null>(null);
   const searchSeq = useRef(0);
+  const identifiedEmailRef = useRef<string | null>(null);
   // True while we're applying a URL (initial load or back/forward), so the
   // selection effect doesn't push a duplicate history entry straight back.
   const applyingUrl = useRef(false);
@@ -240,6 +242,7 @@ export default function App() {
         radius_m: watchDraft.radius_m,
       });
       await refreshMe();
+      posthog.capture("area_watch_created", { radius_m: watch.radius_m });
       setWatchDraft(null);
       setWatchView(watch);
       setWatchNotice(`Watching ${watch.name} — new applications and commencements land in your daily email.`);
@@ -280,6 +283,12 @@ export default function App() {
   const refreshMe = useCallback(async (): Promise<Me> => {
     try {
       const data = await accountApi.me();
+      if (data.user && identifiedEmailRef.current !== data.user.email) {
+        // The /api/me response exposes no stable account ID, so email is the
+        // only available distinct-id fallback. Keep it as a person property too.
+        posthog.identify(data.user.email, { email: data.user.email });
+        identifiedEmailRef.current = data.user.email;
+      }
       setMe(data);
       return data;
     } catch {
@@ -293,6 +302,8 @@ export default function App() {
   const signOut = useCallback(async () => {
     try {
       await accountApi.logout();
+      posthog.reset();
+      identifiedEmailRef.current = null;
       await refreshMe();
       setMode("search");
     } catch {
@@ -315,6 +326,11 @@ export default function App() {
     setSelectedId(id);
     try {
       const d = await api.detail(id);
+      posthog.capture("application_viewed", {
+        authority_id: d.authority_id,
+        application_type: d.application_type,
+        status: d.status,
+      });
       setDetail(d);
       // Give the open application its own history entry so it can be linked,
       // bookmarked and dismissed with the browser's Back button.
@@ -351,6 +367,7 @@ export default function App() {
       }));
       try {
         await accountApi.unsave(existing.id);
+        posthog.capture("application_unsaved", { authority_id: authorityId });
       } catch {
         setError("Could not update your saved applications.");
         await refreshMe();
@@ -372,6 +389,7 @@ export default function App() {
       setMe((m) => m && ({ ...m, saves: [temp, ...m.saves] }));
       try {
         const real = await accountApi.save(authorityId, reference);
+        posthog.capture("application_saved", { authority_id: authorityId });
         setMe((m) => m && ({ ...m, saves: m.saves.map((s) => (s.id === temp.id ? real : s)) }));
       } catch {
         setError("Could not update your saved applications.");
@@ -634,6 +652,7 @@ export default function App() {
               value={state.q}
               onChange={(q) => setState((s) => ({ ...s, q }))}
               onSubmit={(q) => {
+                posthog.capture("search_submitted", { has_query: Boolean(q.trim()) });
                 applyState({ ...state, q });
                 // On mobile, a keyword search wants results — switch to the list.
                 if (q.trim()) setMobileView("list");

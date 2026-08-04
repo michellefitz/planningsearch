@@ -8,6 +8,7 @@ import {
 } from "../agentApi";
 import { renderMarkdown as renderText } from "../markdown";
 import { StatusBadge } from "./ResultsList";
+import { posthog } from "../posthog";
 
 interface Props {
   onSelectApp: (id: number) => void;
@@ -202,6 +203,7 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
     const q = input.trim();
     if (!q || busy) return;
     setInput("");
+    posthog.capture("chat_question_submitted", { question_length: q.length });
     setBusy(true);
     setStatus(null);
     // A previous reply may still be drip-revealing — complete it instantly.
