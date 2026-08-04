@@ -236,6 +236,14 @@ async function dispatch(req, res, route, url, ctx) {
     ]);
     const project = projects[0];
     if (!project) return send(res, 404, { error: "project not found" });
+    const recent = await sql(
+      `select count(*)::int as n from preplan_reports r
+       join preplan_projects p on p.id = r.project_id
+       where p.user_id = $1 and r.generated_at > now() - interval '1 day'`,
+      [user.id]
+    );
+    if ((recent[0]?.n ?? 0) >= 5)
+      return send(res, 429, { error: "Report limit reached — you can generate up to 5 reports per day." });
 
     const inserted = await sql(
       `insert into preplan_reports (project_id, status) values ($1, 'running') returning id`,
