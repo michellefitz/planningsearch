@@ -8,10 +8,6 @@ interface Props {
   onChange: (next: SearchState) => void;
 }
 
-function toggle(list: string[], value: string): string[] {
-  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-}
-
 interface Applied {
   key: string;
   label: string;
@@ -25,11 +21,13 @@ function appliedFilters(meta: Meta | null, s: SearchState, onChange: (n: SearchS
     out.push({ key: `auth-${id}`, label, remove: () => onChange({ ...s, authorities: s.authorities.filter((v) => v !== id) }) });
   }
   if (statusesCustomised(s)) {
-    const label =
-      s.statuses.length <= 3
-        ? s.statuses.map((k) => STATUS_STYLE[k]?.label ?? k).join(", ")
-        : `Status · ${s.statuses.length} selected`;
-    out.push({ key: "statuses", label, remove: () => onChange({ ...s, statuses: [...DEFAULT_STATUSES] }) });
+    for (const k of s.statuses) {
+      const label = STATUS_STYLE[k]?.label ?? k;
+      out.push({ key: `status-${k}`, label, remove: () => {
+        const next = s.statuses.filter((v) => v !== k);
+        onChange({ ...s, statuses: next.length === 0 ? [...DEFAULT_STATUSES] : next });
+      }});
+    }
   }
   for (const t of s.types) {
     out.push({ key: `type-${t}`, label: meta?.application_types[t] ?? t, remove: () => onChange({ ...s, types: s.types.filter((v) => v !== t) }) });
@@ -136,20 +134,15 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
 
       <fieldset>
         <legend>Type</legend>
-        <div className="chip-row">
-          {Object.entries(meta?.application_types ?? {})
+        <MultiSelect
+          allLabel="All types"
+          ariaLabel="Filter by application type"
+          options={Object.entries(meta?.application_types ?? {})
             .filter(([k]) => k !== "other")
-            .map(([key, label]) => (
-              <label key={key} className={`chip ${state.types.includes(key) ? "chip-on" : ""}`}>
-                <input
-                  type="checkbox"
-                  checked={state.types.includes(key)}
-                  onChange={() => onChange({ ...state, types: toggle(state.types, key) })}
-                />
-                {label}
-              </label>
-            ))}
-        </div>
+            .map(([k, label]) => ({ id: k, label }))}
+          selected={state.types}
+          onChange={(types) => onChange({ ...state, types })}
+        />
       </fieldset>
 
       <fieldset>
@@ -191,46 +184,49 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
           </div>
         </fieldset>
 
-        <label className="toggle-row" title="Best-effort classification, not an official planning category">
-          <input
-            type="checkbox"
-            checked={state.domesticOnly}
-            onChange={(e) => onChange({ ...state, domesticOnly: e.target.checked })}
-          />
-          Domestic only
-        </label>
-        <label className="toggle-row" title="A new house on its own site — distinct from extensions or estates">
-          <input
-            type="checkbox"
-            checked={state.oneOffOnly}
-            onChange={(e) => onChange({ ...state, oneOffOnly: e.target.checked })}
-          />
-          One-off houses
-        </label>
-        <label className="toggle-row" title="Application has a record with An Coimisiún Pleanála">
-          <input
-            type="checkbox"
-            checked={state.appealedOnly}
-            onChange={(e) => onChange({ ...state, appealedOnly: e.target.checked })}
-          />
-          Appealed
-        </label>
-        <label className="toggle-row" title="A commencement notice was filed with building control">
-          <input
-            type="checkbox"
-            checked={state.commencedOnly}
-            onChange={(e) => onChange({ ...state, commencedOnly: e.target.checked })}
-          />
-          Work commenced
-        </label>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={state.useMapArea}
-            onChange={(e) => onChange({ ...state, useMapArea: e.target.checked })}
-          />
-          Limit to current map area
-        </label>
+        <fieldset>
+          <legend>Other</legend>
+          <label className="toggle-row" title="Best-effort classification, not an official planning category">
+            <input
+              type="checkbox"
+              checked={state.domesticOnly}
+              onChange={(e) => onChange({ ...state, domesticOnly: e.target.checked })}
+            />
+            Domestic only
+          </label>
+          <label className="toggle-row" title="A new house on its own site — distinct from extensions or estates">
+            <input
+              type="checkbox"
+              checked={state.oneOffOnly}
+              onChange={(e) => onChange({ ...state, oneOffOnly: e.target.checked })}
+            />
+            One-off houses
+          </label>
+          <label className="toggle-row" title="Application has a record with An Coimisiún Pleanála">
+            <input
+              type="checkbox"
+              checked={state.appealedOnly}
+              onChange={(e) => onChange({ ...state, appealedOnly: e.target.checked })}
+            />
+            Appealed
+          </label>
+          <label className="toggle-row" title="A commencement notice was filed with building control">
+            <input
+              type="checkbox"
+              checked={state.commencedOnly}
+              onChange={(e) => onChange({ ...state, commencedOnly: e.target.checked })}
+            />
+            Work commenced
+          </label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={state.useMapArea}
+              onChange={(e) => onChange({ ...state, useMapArea: e.target.checked })}
+            />
+            Limit to current map area
+          </label>
+        </fieldset>
       </details>
     </details>
     </>

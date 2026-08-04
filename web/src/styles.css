@@ -666,10 +666,6 @@ body {
   .layout.m-panel .map-wrap {
     display: none;
   }
-  /* The count already shows in the toggle bar, so drop the list's own tally. */
-  .results-scroll .results > .list-note {
-    display: none;
-  }
 }
 
 /* ---------- Search ---------- */
@@ -959,7 +955,7 @@ body {
   letter-spacing: 0.07em;
   color: var(--ink-3);
   padding: 0;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.2rem;
 }
 
 .chip-row {
@@ -1263,6 +1259,10 @@ body {
   color: var(--ink-3);
   font-size: 0.78rem;
   margin: 0.6rem 0 0.35rem;
+}
+
+.results-scroll .results > .list-note {
+  display: none;
 }
 
 .list-note p {
