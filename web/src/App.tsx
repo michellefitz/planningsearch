@@ -676,6 +676,18 @@ export default function App() {
               <span className="vt-count" role="status">
                 {total.toLocaleString()} result{total === 1 ? "" : "s"}
               </span>
+              <label className="sort-inline">
+                <select
+                  value={state.sort}
+                  onChange={(e) => applyState({ ...state, sort: e.target.value })}
+                  aria-label="Sort results"
+                >
+                  <option value="relevance">Best match</option>
+                  <option value="received">Date received</option>
+                  <option value="decision">Decision date</option>
+                  <option value="distance">Distance</option>
+                </select>
+              </label>
               <div className="vt-seg">
                 <button
                   type="button"

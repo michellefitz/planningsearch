@@ -428,8 +428,14 @@ body {
   }
 }
 
-/* The map/list toggle is a mobile affordance; both panes show at ≥768px. */
 .view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.35rem 0 0;
+}
+
+.vt-seg {
   display: none;
 }
 
@@ -583,12 +589,13 @@ body {
     flex-basis: 100%;
     border-bottom: 1px solid var(--line);
     padding-bottom: 0.3rem;
+    margin: 0;
+    border-radius: 0;
+    padding-left: 0;
+    padding-right: 0;
   }
 
   .view-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
     margin: 0;
     flex: 0 0 auto;
   }
@@ -865,19 +872,24 @@ body {
   transform: rotate(225deg) translateY(-1px);
 }
 
+.filters[open] {
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  padding: 0.5rem 0.8rem 0.6rem;
+  margin: 0.6rem -0.8rem 0.2rem;
+}
+
 .filters summary:hover {
   color: var(--ink);
 }
 
-/* Active filters, spelled out: one removable chip per applied filter sits
-   under the (usually collapsed) editor, so the state of the list is always
-   legible. Clicking a chip removes that filter. */
+/* Active-filter chips sit above the filter panel, always visible. */
 .applied-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.28rem;
-  margin: 0.35rem 0 0.1rem;
+  margin: 0.4rem 0 0;
 }
 
 .applied-chip {
@@ -1194,17 +1206,55 @@ body {
   background: var(--surface);
 }
 
-/* Sort sits on one line with its control, not wrapped like the checkboxes. */
-.toggle-row.sort-row {
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.15rem;
+.filters-advanced {
+  border-top: 1px solid var(--line);
+  margin-top: 0.45rem;
+  padding-top: 0.3rem;
 }
 
-.hint {
-  color: var(--ink-3);
+.filters-advanced > summary {
+  cursor: pointer;
   font-size: 0.72rem;
-  font-style: normal;
+  font-weight: 500;
+  color: var(--ink-3);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0;
+  user-select: none;
+}
+
+.filters-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.filters-advanced > summary::after {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 1.5px solid var(--ink-3);
+  border-bottom: 1.5px solid var(--ink-3);
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 120ms ease;
+}
+
+.filters-advanced[open] > summary::after {
+  transform: rotate(225deg) translateY(-1px);
+}
+
+.filters-advanced > summary:hover {
+  color: var(--ink-2);
+}
+
+.sort-inline select {
+  font-family: inherit;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 /* ---------- Results ---------- */
