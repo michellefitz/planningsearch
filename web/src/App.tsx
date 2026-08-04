@@ -48,7 +48,7 @@ export default function App() {
   const [results, setResults] = useState<AppSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [fuzzy, setFuzzy] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [mapData, setMapData] = useState<PointFeatureCollection | null>(null);
   const [sitePolygons, setSitePolygons] = useState<GeoJSON.FeatureCollection | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -70,6 +70,7 @@ export default function App() {
   // Shown after the user pans/zooms the map: a one-tap "search this area".
   const [canSearchArea, setCanSearchArea] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   // Area-watch creation (draggable circle + card) and read-only preview of a
   // saved watch. Only one circle shows at a time; a draft wins.
@@ -400,7 +401,7 @@ export default function App() {
 
   useEffect(() => {
     void (async () => {
-      const freshMe = await refreshMe();
+      const freshMe = await refreshMe().finally(() => setAuthChecked(true));
       const hash = window.location.hash;
       if (hash === "#account") setMode("account");
       if (hash === "#auth-expired") {
@@ -564,7 +565,7 @@ export default function App() {
             third panel tab. Signing in and the dashboard are app-level
             destinations, not modes of the search panel. */}
         <nav className="app-nav" aria-label="Account" ref={navRef}>
-          {me?.user ? (
+          {!authChecked ? null : me?.user ? (
             <>
               {/* Signed in, the top bar carried four controls — two links, the
                   email and Sign out — which on a phone left no room for

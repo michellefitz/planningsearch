@@ -330,6 +330,7 @@ body {
   position: relative;
   flex: 1;
   min-height: 40dvh;
+  background: #e8eaed;
 }
 
 .map-container {
@@ -2904,6 +2905,15 @@ a.pill:hover {
     animation: none;
   }
 }
+
+.results-skeleton {
+  padding: 0 0.2rem;
+}
+.results-skeleton span {
+  height: 4.5rem;
+}
+.results-skeleton span:nth-child(4) { animation-delay: 0.6s; }
+.results-skeleton span:nth-child(5) { animation-delay: 0.8s; }
 
 .appeal-outcome {
   font-weight: 620;
