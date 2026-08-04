@@ -11,10 +11,11 @@ export function sha256Hex(s) {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
-// HMAC keyed on CRON_SECRET so unsubscribe links need no DB token or schema change.
 export function unsubscribeToken(userId) {
+  const key = process.env.CRON_SECRET;
+  if (!key) throw new Error("CRON_SECRET is required for unsubscribe tokens");
   return crypto
-    .createHmac("sha256", process.env.CRON_SECRET ?? "")
+    .createHmac("sha256", key)
     .update(`unsub:${userId}`)
     .digest("hex");
 }

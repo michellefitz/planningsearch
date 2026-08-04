@@ -2456,7 +2456,7 @@ async function* parseAgentSse(body) {
   }
 }
 
-async function* runAgent(messages) {
+async function* runAgent(messages, signal) {
   const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
   if (!apiKey) {
     yield { type: "error", message: "The agent is not configured on this deployment (missing API key)." };
@@ -2466,6 +2466,7 @@ async function* runAgent(messages) {
   const msgs = messages.map((m) => ({ role: m.role, content: m.content }));
 
   for (let turn = 0; turn < AGENT_MAX_TURNS; turn++) {
+    if (signal?.aborted) return;
     let res;
     try {
       res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -2475,6 +2476,7 @@ async function* runAgent(messages) {
           "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
         },
+        signal,
         body: JSON.stringify({
           model: AGENT_MODEL,
           max_tokens: AGENT_MAX_TOKENS,
@@ -2485,6 +2487,7 @@ async function* runAgent(messages) {
         }),
       });
     } catch {
+      if (signal?.aborted) return;
       yield { type: "error", message: "Could not reach the AI service." };
       yield { type: "done" };
       return;
@@ -2574,9 +2577,15 @@ async function* runAgent(messages) {
   yield { type: "done" };
 }
 
-async function readJsonBody(req) {
+const AGENT_BODY_MAX = 100_000;
+async function readJsonBody(req, maxBytes = AGENT_BODY_MAX) {
   const chunks = [];
-  for await (const c of req) chunks.push(c);
+  let total = 0;
+  for await (const c of req) {
+    total += c.length;
+    if (total > maxBytes) return null;
+    chunks.push(c);
+  }
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
@@ -2584,9 +2593,32 @@ async function readJsonBody(req) {
   }
 }
 
+const AGENT_MSG_MAX_CHARS = 10_000;
+const AGENT_RATE_WINDOW = 3600_000;
+const AGENT_RATE_MAX = 20;
+const agentRateMap = new Map();
+function agentRateOk(ip) {
+  const now = Date.now();
+  let rec = agentRateMap.get(ip);
+  if (!rec || now - rec.start > AGENT_RATE_WINDOW) {
+    rec = { start: now, count: 0 };
+    agentRateMap.set(ip, rec);
+  }
+  rec.count++;
+  if (agentRateMap.size > 10_000) {
+    for (const [k, v] of agentRateMap) {
+      if (now - v.start > AGENT_RATE_WINDOW) agentRateMap.delete(k);
+    }
+  }
+  return rec.count <= AGENT_RATE_MAX;
+}
+
 async function handleAgentRoute(req, res) {
   if (req.method !== "POST") return send(res, 405, { error: "POST only" });
+  const ip = (req.headers["x-forwarded-for"] ?? req.socket?.remoteAddress ?? "").split(",")[0].trim();
+  if (!agentRateOk(ip)) return send(res, 429, { error: "Rate limit exceeded — try again later." });
   const body = await readJsonBody(req);
+  if (!body) return send(res, 400, { error: "Invalid or oversized request body" });
   const messages = (body?.messages ?? [])
     .filter(
       (m) =>
@@ -2594,23 +2626,27 @@ async function handleAgentRoute(req, res) {
         typeof m?.content === "string" &&
         m.content.trim().length > 0
     )
-    .map((m) => ({ role: m.role, content: m.content }))
+    .map((m) => ({ role: m.role, content: m.content.slice(0, AGENT_MSG_MAX_CHARS) }))
     .slice(-30);
   while (messages.length && messages[0].role !== "user") messages.shift();
   if (!messages.length || messages[messages.length - 1].role !== "user") {
     return send(res, 400, { error: "messages must end with a user message" });
   }
+  const ac = new AbortController();
+  req.on("close", () => ac.abort());
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   });
   try {
-    for await (const ev of runAgent(messages)) {
+    for await (const ev of runAgent(messages, ac.signal)) {
+      if (res.destroyed) break;
       res.write(`data: ${JSON.stringify(ev)}\n\n`);
     }
   } catch {
-    res.write(`data: ${JSON.stringify({ type: "error", message: "Agent crashed" })}\n\n`);
+    if (!res.destroyed)
+      res.write(`data: ${JSON.stringify({ type: "error", message: "Agent crashed" })}\n\n`);
   } finally {
     res.end();
   }
