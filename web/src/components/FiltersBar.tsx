@@ -1,4 +1,4 @@
-import { DEFAULT_STATUSES, fmtDate, MIN_UNITS_OPTIONS, type Meta, type SearchState } from "../api";
+import { DEFAULT_STATUSES, HIDDEN_BY_DEFAULT_STATUSES, fmtDate, MIN_UNITS_OPTIONS, type Meta, type SearchState } from "../api";
 import { STATUS_STYLE } from "./MapView";
 import MultiSelect from "./MultiSelect";
 
@@ -18,8 +18,6 @@ interface Applied {
   remove: () => void;
 }
 
-/** One removable chip per active filter, so the state of the list is legible
-    without opening the panel. */
 function appliedFilters(meta: Meta | null, s: SearchState, onChange: (n: SearchState) => void): Applied[] {
   const out: Applied[] = [];
   for (const id of s.authorities) {
@@ -30,7 +28,7 @@ function appliedFilters(meta: Meta | null, s: SearchState, onChange: (n: SearchS
     const label =
       s.statuses.length <= 3
         ? s.statuses.map((k) => STATUS_STYLE[k]?.label ?? k).join(", ")
-        : `Status · ${s.statuses.length} of ${DEFAULT_STATUSES.length}`;
+        : `Status · ${s.statuses.length} selected`;
     out.push({ key: "statuses", label, remove: () => onChange({ ...s, statuses: [...DEFAULT_STATUSES] }) });
   }
   for (const t of s.types) {
@@ -57,151 +55,22 @@ function appliedFilters(meta: Meta | null, s: SearchState, onChange: (n: SearchS
   return out;
 }
 
+const ALL_STATUS_KEYS = [...DEFAULT_STATUSES, ...HIDDEN_BY_DEFAULT_STATUSES];
+
+const STATUS_OPTIONS = ALL_STATUS_KEYS
+  .filter((k) => k !== "unknown")
+  .map((k) => ({ id: k, label: STATUS_STYLE[k]?.label ?? k }));
+
 export default function FiltersBar({ meta, state, onChange }: Props) {
   const applied = appliedFilters(meta, state, onChange);
+  const activeCount = applied.length;
+
+  const statusSelection = statusesCustomised(state) ? state.statuses : [];
+  const handleStatusChange = (selected: string[]) =>
+    onChange({ ...state, statuses: selected.length === 0 ? [...DEFAULT_STATUSES] : selected });
+
   return (
     <>
-    <details className="filters" open={false}>
-      <summary>Filters</summary>
-      <fieldset>
-        {/* A dropdown, not chips: this list grows toward all 31 local authorities. */}
-        <legend>Council</legend>
-        <MultiSelect
-          allLabel="All councils"
-          ariaLabel="Filter by council"
-          options={(meta?.authorities ?? []).map((a) => ({ id: a.id, label: a.short_name }))}
-          selected={state.authorities}
-          onChange={(authorities) => onChange({ ...state, authorities })}
-        />
-      </fieldset>
-      <fieldset>
-        <legend>Status</legend>
-        <div className="chip-row">
-          {Object.entries(STATUS_STYLE)
-            .filter(([k]) => k !== "unknown")
-            .map(([key, s]) => (
-              <label key={key} className={`chip ${state.statuses.includes(key) ? "chip-on" : ""}`}>
-                <input
-                  type="checkbox"
-                  checked={state.statuses.includes(key)}
-                  onChange={() => onChange({ ...state, statuses: toggle(state.statuses, key) })}
-                />
-                <span className="dot" style={{ background: s.color }} aria-hidden="true" />
-                {s.label}
-              </label>
-            ))}
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend>Type</legend>
-        <div className="chip-row">
-          {Object.entries(meta?.application_types ?? {})
-            .filter(([k]) => k !== "other")
-            .map(([key, label]) => (
-              <label key={key} className={`chip ${state.types.includes(key) ? "chip-on" : ""}`}>
-                <input
-                  type="checkbox"
-                  checked={state.types.includes(key)}
-                  onChange={() => onChange({ ...state, types: toggle(state.types, key) })}
-                />
-                {label}
-              </label>
-            ))}
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend>Received between</legend>
-        <div className="date-row">
-          <input
-            type="date"
-            aria-label="Received from"
-            value={state.receivedFrom}
-            onChange={(e) => onChange({ ...state, receivedFrom: e.target.value })}
-          />
-          <span aria-hidden="true">–</span>
-          <input
-            type="date"
-            aria-label="Received to"
-            value={state.receivedTo}
-            onChange={(e) => onChange({ ...state, receivedTo: e.target.value })}
-          />
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend>Development size</legend>
-        <div className="chip-row">
-          {MIN_UNITS_OPTIONS.map((o) => (
-            <label key={o.value} className={`chip ${state.minUnits === o.value ? "chip-on" : ""}`}>
-              <input
-                type="radio"
-                name="min-units"
-                checked={state.minUnits === o.value}
-                onChange={() => onChange({ ...state, minUnits: o.value })}
-              />
-              {o.label}
-            </label>
-          ))}
-        </div>
-        <em className="hint">Residential unit counts come from the register and the application wording — small schemes without a stated count are excluded when a size is set.</em>
-      </fieldset>
-      <fieldset>
-        <legend>More</legend>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={state.domesticOnly}
-            onChange={(e) => onChange({ ...state, domesticOnly: e.target.checked })}
-          />
-          Domestic only <em className="hint">(best-effort filter, not an official category)</em>
-        </label>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={state.oneOffOnly}
-            onChange={(e) => onChange({ ...state, oneOffOnly: e.target.checked })}
-          />
-          One-off houses{" "}
-          <em className="hint">(a new house on its own site — far harder to get through)</em>
-        </label>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={state.appealedOnly}
-            onChange={(e) => onChange({ ...state, appealedOnly: e.target.checked })}
-          />
-          Appealed to An Coimisiún Pleanála <em className="hint">(has an appeal on record)</em>
-        </label>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={state.commencedOnly}
-            onChange={(e) => onChange({ ...state, commencedOnly: e.target.checked })}
-          />
-          Work commenced <em className="hint">(commencement notice filed with building control)</em>
-        </label>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={state.useMapArea}
-            onChange={(e) => onChange({ ...state, useMapArea: e.target.checked })}
-          />
-          Limit to current map area
-        </label>
-        <label className="toggle-row sort-row">
-          Sort by{" "}
-          <select
-            value={state.sort}
-            onChange={(e) => onChange({ ...state, sort: e.target.value })}
-            aria-label="Sort results"
-          >
-            <option value="relevance">Best match</option>
-            <option value="received">Date received</option>
-            <option value="decision">Decision date</option>
-            <option value="distance">Distance</option>
-          </select>
-        </label>
-      </fieldset>
-    </details>
     {applied.length > 0 && (
       <div className="applied-row" role="group" aria-label="Active filters">
         {applied.map((f) => (
@@ -225,6 +94,7 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
                 statuses: [...DEFAULT_STATUSES],
                 types: [],
                 domesticOnly: false,
+                oneOffOnly: false,
                 appealedOnly: false,
                 commencedOnly: false,
                 receivedFrom: "",
@@ -239,16 +109,136 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
         )}
       </div>
     )}
+    <details className="filters" open={false}>
+      <summary>Filters{activeCount > 0 && ` (${activeCount})`}</summary>
+
+      <fieldset>
+        <legend>Council</legend>
+        <MultiSelect
+          allLabel="All councils"
+          ariaLabel="Filter by council"
+          options={(meta?.authorities ?? []).map((a) => ({ id: a.id, label: a.short_name }))}
+          selected={state.authorities}
+          onChange={(authorities) => onChange({ ...state, authorities })}
+        />
+      </fieldset>
+
+      <fieldset>
+        <legend>Status</legend>
+        <MultiSelect
+          allLabel="All statuses"
+          ariaLabel="Filter by status"
+          options={STATUS_OPTIONS}
+          selected={statusSelection}
+          onChange={handleStatusChange}
+        />
+      </fieldset>
+
+      <fieldset>
+        <legend>Type</legend>
+        <div className="chip-row">
+          {Object.entries(meta?.application_types ?? {})
+            .filter(([k]) => k !== "other")
+            .map(([key, label]) => (
+              <label key={key} className={`chip ${state.types.includes(key) ? "chip-on" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={state.types.includes(key)}
+                  onChange={() => onChange({ ...state, types: toggle(state.types, key) })}
+                />
+                {label}
+              </label>
+            ))}
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Received between</legend>
+        <div className="date-row">
+          <input
+            type="date"
+            aria-label="Received from"
+            value={state.receivedFrom}
+            onChange={(e) => onChange({ ...state, receivedFrom: e.target.value })}
+          />
+          <span aria-hidden="true">–</span>
+          <input
+            type="date"
+            aria-label="Received to"
+            value={state.receivedTo}
+            onChange={(e) => onChange({ ...state, receivedTo: e.target.value })}
+          />
+        </div>
+      </fieldset>
+
+      <details className="filters-advanced">
+        <summary>Advanced</summary>
+
+        <fieldset>
+          <legend>Development size</legend>
+          <div className="chip-row">
+            {MIN_UNITS_OPTIONS.map((o) => (
+              <label key={o.value} className={`chip ${state.minUnits === o.value ? "chip-on" : ""}`}>
+                <input
+                  type="radio"
+                  name="min-units"
+                  checked={state.minUnits === o.value}
+                  onChange={() => onChange({ ...state, minUnits: o.value })}
+                />
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <label className="toggle-row" title="Best-effort classification, not an official planning category">
+          <input
+            type="checkbox"
+            checked={state.domesticOnly}
+            onChange={(e) => onChange({ ...state, domesticOnly: e.target.checked })}
+          />
+          Domestic only
+        </label>
+        <label className="toggle-row" title="A new house on its own site — distinct from extensions or estates">
+          <input
+            type="checkbox"
+            checked={state.oneOffOnly}
+            onChange={(e) => onChange({ ...state, oneOffOnly: e.target.checked })}
+          />
+          One-off houses
+        </label>
+        <label className="toggle-row" title="Application has a record with An Coimisiún Pleanála">
+          <input
+            type="checkbox"
+            checked={state.appealedOnly}
+            onChange={(e) => onChange({ ...state, appealedOnly: e.target.checked })}
+          />
+          Appealed
+        </label>
+        <label className="toggle-row" title="A commencement notice was filed with building control">
+          <input
+            type="checkbox"
+            checked={state.commencedOnly}
+            onChange={(e) => onChange({ ...state, commencedOnly: e.target.checked })}
+          />
+          Work commenced
+        </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={state.useMapArea}
+            onChange={(e) => onChange({ ...state, useMapArea: e.target.checked })}
+          />
+          Limit to current map area
+        </label>
+      </details>
+    </details>
     </>
   );
 }
 
-/** The Status filter gets an applied chip only when narrowed from its
- *  default (everything except invalid/incomplete) — the default view is "clean",
- *  not a filtered state the user set. */
 function statusesCustomised(s: SearchState): boolean {
   if (s.statuses.length !== DEFAULT_STATUSES.length) return true;
   const set = new Set(s.statuses);
   return DEFAULT_STATUSES.some((k) => !set.has(k));
 }
-
