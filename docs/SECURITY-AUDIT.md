@@ -154,7 +154,7 @@
 | 5 | Fixed | #19 — Magic link two-step verify (GET page → POST consumes) |
 | 6 | Fixed | #19 — Security headers (nosniff, DENY, referrer, permissions) |
 | 7 | Fixed | #20 — Global AI rate limit (30/min) on Haiku summary routes |
-| 8 | Manual | Verify Mapbox + Google Maps token URL restrictions in dashboards |
+| 8 | Fixed | Mapbox: new restricted token created + deployed. Google Maps: HTTP referrer restriction added. |
 | 9 | Fixed | #20 — Preplan reports capped at 5/user/day |
 | 10 | Fixed | #20 — Saves capped at 200, lists at 50 per user |
 | 11 | Fixed | #20 — String inputs truncated to 80 chars |
