@@ -17,6 +17,25 @@ import {
 
 const AGILE = new Set(["dublin-city", "fingal", "dlr", "south-dublin"]);
 
+const AUTH_RATE_WINDOW = 900_000;
+const AUTH_RATE_MAX = 5;
+const authRateMap = new Map();
+function authRateOk(ip) {
+  const now = Date.now();
+  let rec = authRateMap.get(ip);
+  if (!rec || now - rec.start > AUTH_RATE_WINDOW) {
+    rec = { start: now, count: 0 };
+    authRateMap.set(ip, rec);
+  }
+  rec.count++;
+  if (authRateMap.size > 10_000) {
+    for (const [k, v] of authRateMap) {
+      if (now - v.start > AUTH_RATE_WINDOW) authRateMap.delete(k);
+    }
+  }
+  return rec.count <= AUTH_RATE_MAX;
+}
+
 export function isAccountRoute(route) {
   return (
     route.startsWith("/api/auth/") ||
@@ -38,9 +57,14 @@ function sendPrivate(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
-async function readJsonBody(req) {
+async function readJsonBody(req, maxBytes = 50_000) {
   const chunks = [];
-  for await (const c of req) chunks.push(c);
+  let total = 0;
+  for await (const c of req) {
+    total += c.length;
+    if (total > maxBytes) return null;
+    chunks.push(c);
+  }
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
@@ -158,6 +182,8 @@ async function dispatch(req, res, route, url, ctx) {
 
   if (route === "/api/auth/request-link") {
     if (req.method !== "POST") return sendPrivate(res, 405, { error: "POST only" });
+    const ip = (req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
+    if (!authRateOk(ip)) return sendPrivate(res, 200, { ok: true });
     const body = await readJsonBody(req);
     const email = String(body?.email ?? "").trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
@@ -174,7 +200,8 @@ async function dispatch(req, res, route, url, ctx) {
        values ($1, $2, now() + interval '15 minutes')`,
       [sha256Hex(token), email]
     );
-    const origin = process.env.APP_ORIGIN ?? `https://${req.headers.host}`;
+    const origin = process.env.APP_ORIGIN;
+    if (!origin) return sendPrivate(res, 500, { error: "something went wrong" });
     const link = `${origin}/api/auth/verify?token=${token}`;
     await sendEmail({ to: email, ...magicLinkEmail(link) });
     return sendPrivate(res, 200, { ok: true });
@@ -182,34 +209,82 @@ async function dispatch(req, res, route, url, ctx) {
 
   if (route === "/api/auth/verify") {
     const token = p.get("token") ?? "";
-    const rows = token
-      ? await sql(
-          `update auth_tokens set used_at = now()
-           where token_hash = $1 and used_at is null and expires_at > now()
-           returning email`,
-          [sha256Hex(token)]
-        )
-      : [];
-    if (!rows.length) {
+    if (!token) {
       res.statusCode = 302;
       res.setHeader("Location", "/#auth-expired");
       return res.end();
     }
-    const users = await sql(
-      `insert into users (email) values ($1)
-       on conflict (email) do update set email = excluded.email returning id`,
-      [rows[0].email]
+
+    if (req.method === "POST") {
+      const body = await readJsonBody(req);
+      const postToken = String(body?.token ?? "");
+      const rows = postToken
+        ? await sql(
+            `update auth_tokens set used_at = now()
+             where token_hash = $1 and used_at is null and expires_at > now()
+             returning email`,
+            [sha256Hex(postToken)]
+          )
+        : [];
+      if (!rows.length) return sendPrivate(res, 400, { error: "expired" });
+      const users = await sql(
+        `insert into users (email) values ($1)
+         on conflict (email) do update set email = excluded.email returning id`,
+        [rows[0].email]
+      );
+      const sess = randomToken();
+      await sql(
+        `insert into sessions (token_hash, user_id, expires_at)
+         values ($1, $2, now() + interval '90 days')`,
+        [sha256Hex(sess), users[0].id]
+      );
+      res.setHeader("Set-Cookie", sessionCookie(sess));
+      return sendPrivate(res, 200, { ok: true });
+    }
+
+    const valid = await sql(
+      `select 1 from auth_tokens
+       where token_hash = $1 and used_at is null and expires_at > now()`,
+      [sha256Hex(token)]
     );
-    const sess = randomToken();
-    await sql(
-      `insert into sessions (token_hash, user_id, expires_at)
-       values ($1, $2, now() + interval '90 days')`,
-      [sha256Hex(sess), users[0].id]
-    );
-    res.statusCode = 302;
-    res.setHeader("Set-Cookie", sessionCookie(sess));
-    res.setHeader("Location", "/#account");
-    return res.end();
+    if (!valid.length) {
+      res.statusCode = 302;
+      res.setHeader("Location", "/#auth-expired");
+      return res.end();
+    }
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    return res.end(`<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to PlanView</title></head>
+<body style="font-family:Inter,system-ui,sans-serif;color:#1a1d21;max-width:400px;margin:80px auto;padding:0 16px;text-align:center;">
+<h2 style="color:#17456e;">Sign in to PlanView</h2>
+<p style="color:#5c6370;line-height:1.6;">Click below to complete sign-in.</p>
+<button id="btn" style="background:#0b62d6;color:#fff;border:none;padding:12px 32px;border-radius:8px;font-size:16px;cursor:pointer;">Complete sign-in</button>
+<p id="msg" style="color:#5c6370;display:none;"></p>
+<script>
+document.getElementById("btn").onclick = async function() {
+  this.disabled = true;
+  this.textContent = "Signing in…";
+  try {
+    const r = await fetch("/api/auth/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: ${JSON.stringify(token)} }),
+      credentials: "same-origin",
+    });
+    if (r.ok) { window.location.href = "/#account"; return; }
+    document.getElementById("msg").style.display = "";
+    document.getElementById("msg").textContent = "This link has expired. Please request a new one.";
+  } catch {
+    document.getElementById("msg").style.display = "";
+    document.getElementById("msg").textContent = "Something went wrong. Please try again.";
+  }
+  this.disabled = false;
+  this.textContent = "Complete sign-in";
+};
+</script>
+</body></html>`);
   }
 
   if (route === "/api/auth/logout") {
@@ -596,7 +671,8 @@ async function handleCron(req, res, ctx) {
     console.error("area-watch sweep failed", err);
   }
 
-  const origin = process.env.APP_ORIGIN ?? `https://${req.headers.host}`;
+  const origin = process.env.APP_ORIGIN;
+  if (!origin) return sendPrivate(res, 500, { error: "APP_ORIGIN not set" });
   const users = await sql(
     `select id, email, coalesce(last_digest_at, created_at) as since from users`
   );

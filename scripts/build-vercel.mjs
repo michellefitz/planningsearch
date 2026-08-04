@@ -68,6 +68,16 @@ fs.writeFileSync(
     {
       version: 3,
       routes: [
+        {
+          src: "/(.*)",
+          headers: {
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+            "Referrer-Policy": "strict-origin-when-cross-origin",
+            "Permissions-Policy": "geolocation=(self)",
+          },
+          continue: true,
+        },
         { src: "/api/(.*)", dest: "/api" },
         { handle: "filesystem" },
         { src: "/(.*)", dest: "/index.html" },
