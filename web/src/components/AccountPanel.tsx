@@ -557,6 +557,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                     e.preventDefault();
                     if (!newListName.trim()) return;
                     await accountApi.createList(newListName.trim());
+                    posthog.capture("saved_list_created");
                     setNewListName("");
                     setCreatingList(false);
                     await onRefresh();
