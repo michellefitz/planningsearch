@@ -152,6 +152,10 @@ function appealRef(d: AppDetail) {
   );
 }
 
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /** Colour the outcome word so grants and refusals read at a glance. */
 function outcomeClass(text: string): string {
   if (/refus/i.test(text)) return "outcome-refuse";
@@ -294,11 +298,11 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
     <div className="on-demand">
       {state.phase === "idle" && (
         <button type="button" className="btn ai" onClick={load}>
-          ✦ Read the decision order &amp; conditions
+          ✦ Summarise the decision
         </button>
       )}
       {state.phase === "loading" && (
-        <span className="hint loading-line">Reading the decision order…</span>
+        <span className="hint loading-line">Summarising the decision…</span>
       )}
       {state.phase === "failed" && (
         <>
@@ -420,7 +424,7 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
         </button>
       )}
       {summary.phase === "loading" && (
-        <span className="hint loading-line">Reading the case file…</span>
+        <span className="hint loading-line">Summarising the appeal…</span>
       )}
       {summary.phase === "failed" && (
         <p className="list-note">Couldn't generate a summary just now — try again shortly.</p>
@@ -435,21 +439,24 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
         </blockquote>
       )}
 
-      <div className="appeal-actions">
-        {d.appeal_url && (
-          <a className="btn portal" href={d.appeal_url} target="_blank" rel="noopener noreferrer">
-            Case file on An Coimisiún Pleanála ↗
-          </a>
-        )}
-        {state.phase === "idle" && (
+      {state.phase === "idle" && (
+        <>
+          <div className="doc-skeleton" aria-hidden="true">
+            <span /><span /><span />
+          </div>
           <button type="button" className="btn" onClick={load}>
             Load case details
           </button>
-        )}
-        {state.phase === "loading" && (
-          <span className="hint loading-line">Fetching the national case record…</span>
-        )}
-      </div>
+        </>
+      )}
+      {state.phase === "loading" && (
+        <span className="hint loading-line">Fetching the national case record…</span>
+      )}
+      {d.appeal_url && (
+        <a className="link-btn viewer-link" href={d.appeal_url} target="_blank" rel="noopener noreferrer">
+          Case file on An Coimisiún Pleanála ↗
+        </a>
+      )}
       {state.phase === "failed" && (
         <p className="list-note">
           Couldn't reach An Coimisiún Pleanála just now — use the case-file link above.
@@ -532,7 +539,16 @@ function ShareLink({ detail: d }: { detail: AppDetail }) {
       aria-label="Copy a link to this application"
       title="Copy a link to this application"
     >
-      {copied ? "Link copied" : "Share"}
+      {copied ? "Link copied" : (
+        <>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+            <polyline points="16 6 12 2 8 6" />
+            <line x1="12" y1="2" x2="12" y2="15" />
+          </svg>
+          {" "}Share
+        </>
+      )}
     </button>
   );
 }
@@ -567,17 +583,15 @@ function DecisionSection({
       <h3 id="decision-h">Decision</h3>
       {decision && (
         <p className="decision-headline">
-          <span className={outcomeClass(decision)}>{decision}</span>
-          {decisionDate && <span className="hint"> · {decisionDate}</span>}
-          {/* A decided appeal supersedes the council decision — say so right
-              where the council outcome is stated. */}
+          <span className={outcomeClass(decision)}>{titleCase(decision)}</span>
+          {decisionDate && <span className="hint"> · {fmtDate(decisionDate)}</span>}
           {d.appeal_decision && (
             <>
               <span className="hint"> → on appeal: </span>
               <span className={outcomeClass(d.appeal_decision) || "appeal-outcome"}>
-                {d.appeal_decision}
+                {titleCase(d.appeal_decision)}
               </span>
-              {d.appeal_decision_date && <span className="hint"> · {d.appeal_decision_date}</span>}
+              {d.appeal_decision_date && <span className="hint"> · {fmtDate(d.appeal_decision_date)}</span>}
             </>
           )}
         </p>
@@ -596,22 +610,7 @@ function DecisionSection({
             <span className="commencement-done"> · completion certified {d.completion_date}</span>
           )}
         </p>
-      ) : (
-        d.status === "granted" &&
-        d.decision_date && (
-          // Evidence, not proof — the permission number on a notice is typed by
-          // the submitter, many domestic works need no notice at all, and BCMS
-          // records only begin in 2014. Absence must not read as a finding.
-          <p className="commencement-line commencement-none">
-            No matching commencement notice found.{" "}
-            <span className="hint">
-              Not proof that work hasn't started: notices aren't required for all works,
-              the permission number on a notice is typed by the submitter, and building
-              control records begin in 2014.
-            </span>
-          </p>
-        )
-      )}
+      ) : null}
       {summary ? (
         <p className="ai-summary refusal-summary">✦ {summary}</p>
       ) : (
@@ -683,9 +682,14 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
   return (
     <div className="scanned-files">
       {state.phase === "idle" && (
-        <button type="button" className="btn" onClick={load}>
-          Load the file list
-        </button>
+        <>
+          <div className="doc-skeleton" aria-hidden="true">
+            <span /><span /><span /><span />
+          </div>
+          <button type="button" className="btn" onClick={load}>
+            Load the file list
+          </button>
+        </>
       )}
       {state.phase === "loading" && (
         <span className="hint loading-line">Fetching the file list from the council…</span>
@@ -1239,7 +1243,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         {aiSummary ? (
           <p className="ai-summary lead-summary">✦ {aiSummary}</p>
         ) : enrichLoading ? (
-          <p className="ai-summary lead-summary loading-line">✦ Writing a plain-English summary…</p>
+          <p className="ai-summary lead-summary loading-line">✦ Writing a summary…</p>
         ) : (
           // Enrichment ran (enrich resolved) but produced no usable summary —
           // usually a description too thin/truncated to summarise. Say so

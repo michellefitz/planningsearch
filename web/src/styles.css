@@ -2524,9 +2524,8 @@ a.ov-pop-sub {
 /* ── Decision substance (conditions / refusal reasons) ─────────────── */
 
 .decision-headline {
-  font-size: 0.88rem;
-  font-weight: 620;
-  letter-spacing: 0.01em;
+  font-size: 0.82rem;
+  font-weight: 550;
   margin: 0 0 0.75rem;
 }
 /* Dates keep the headline's size — only weight and colour step down. */
@@ -2781,6 +2780,9 @@ a.pill:hover {
 }
 
 .sheet-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   padding: 0.28rem 0.7rem;
   font-family: inherit;
   font-size: 0.76rem;
@@ -2964,6 +2966,23 @@ a.pill:hover {
 }
 .results-skeleton span:nth-child(4) { animation-delay: 0.6s; }
 .results-skeleton span:nth-child(5) { animation-delay: 0.8s; }
+
+.doc-skeleton {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+.doc-skeleton span {
+  display: block;
+  height: 0.75rem;
+  border-radius: 4px;
+  background: var(--surface-2);
+  opacity: 0.5;
+}
+.doc-skeleton span:nth-child(1) { width: 70%; }
+.doc-skeleton span:nth-child(2) { width: 55%; }
+.doc-skeleton span:nth-child(3) { width: 62%; }
+.doc-skeleton span:nth-child(4) { width: 48%; }
 
 .appeal-outcome {
   font-weight: 620;
