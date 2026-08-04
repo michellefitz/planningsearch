@@ -1243,14 +1243,51 @@ body {
   color: var(--ink-2);
 }
 
-.sort-inline select {
-  font-family: inherit;
-  font-size: 0.78rem;
-  color: var(--ink-2);
-  padding: 0.2rem 0.35rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+/**
+ * Sort: a label we style, with the native select laid invisibly over it.
+ *
+ * The select has to stay at 16px or iOS zooms the page when it takes focus
+ * (see the pointer:coarse rule), and at 16px it was the loudest thing in a row
+ * of 12px text. Hiding it keeps the native picker and the accessible control
+ * while the row keeps one type scale.
+ */
+.sort-inline {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.sort-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
   background: var(--surface);
+  /* Matches .vt-count beside it; the mobile block takes both down together. */
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.sort-inline:focus-within .sort-value {
+  border-color: var(--action);
+  color: var(--ink);
+}
+
+.sort-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
 }
 
 /* ---------- Results ---------- */
@@ -4241,4 +4278,83 @@ a.pill:hover {
   font-size: 0.86rem;
   line-height: 1.55;
   color: var(--ink);
+}
+
+/* ---------- Mobile: one type scale for the control block ---------- */
+
+@media (max-width: 767px) {
+  /* Measured before this block, the two rows under the search box ran at four
+     different font sizes — chips and "Clear all" at 11.5px, the result count at
+     12.5px, the Filters summary and Map/List at 13.1px, and the sort select at
+     16px — with the Filters summary 34px tall against 20px neighbours. Nothing
+     below changes what the controls do; it puts them on one scale and one
+     baseline so the block reads as a single strip.
+
+     Two roles only: quiet text (chips, Clear all, the count, sort) and the
+     control that opens the panel (Filters, Map/List). */
+  .applied-row,
+  .view-toggle {
+    min-height: 1.75rem;
+  }
+
+  .applied-chip,
+  .applied-clear,
+  .vt-count,
+  .sort-value,
+  .filters summary,
+  .vt-seg button {
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+
+  /* Same height for everything on the row, so nothing sits proud of the rest. */
+  .applied-chip,
+  .applied-clear,
+  .sort-value,
+  .vt-seg button {
+    min-height: 1.55rem;
+    padding-top: 0;
+    padding-bottom: 0;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* The Filters disclosure was the tallest thing in the row by 14px, which is
+     what made the row look stepped. */
+  .panel-controls .filters summary {
+    min-height: 1.75rem;
+    padding: 0;
+    font-weight: 550;
+    color: var(--ink);
+  }
+
+  .applied-row {
+    /* Sits directly under the search box, above the controls row. */
+    margin: 0.5rem 0 0;
+    gap: 0.3rem;
+  }
+
+  .applied-clear {
+    padding: 0 0.3rem;
+    font-weight: 500;
+  }
+
+  .view-toggle {
+    gap: 0.45rem;
+  }
+
+  /* The count is the least important thing here and was competing for width;
+     let it shrink before the controls do. */
+  .vt-count {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vt-seg button {
+    padding: 0 0.75rem;
+    font-weight: 600;
+  }
 }

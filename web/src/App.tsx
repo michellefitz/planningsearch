@@ -29,6 +29,14 @@ import { posthog } from "./posthog";
  * ("3456/25"). Vercel's SPA fallback serves index.html for any path, so a link
  * pasted cold resolves on load.
  */
+/** Sort options, and the label the compact control shows for each. */
+const SORT_LABELS: Record<string, string> = {
+  relevance: "Best match",
+  received: "Date received",
+  decision: "Decision date",
+  distance: "Distance",
+};
+
 const appPath = (authorityId: string, reference: string): string =>
   `/application/${encodeURIComponent(authorityId)}/${encodeURIComponent(reference)}`;
 
@@ -690,16 +698,28 @@ export default function App() {
               <span className="vt-count" role="status">
                 {total.toLocaleString()} result{total === 1 ? "" : "s"}
               </span>
+              {/* The native select carries the interaction — it must stay at
+                  16px or iOS zooms the page on focus — but it sits invisibly
+                  over a label we control, so the row keeps one type scale
+                  instead of one control shouting at 16px beside 12px text. */}
               <label className="sort-inline">
+                <span className="sort-value" aria-hidden="true">
+                  {SORT_LABELS[state.sort] ?? "Sort"}
+                  <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2.5 4L5 6.5 7.5 4" />
+                  </svg>
+                </span>
                 <select
+                  className="sort-native"
                   value={state.sort}
                   onChange={(e) => applyState({ ...state, sort: e.target.value })}
                   aria-label="Sort results"
                 >
-                  <option value="relevance">Best match</option>
-                  <option value="received">Date received</option>
-                  <option value="decision">Decision date</option>
-                  <option value="distance">Distance</option>
+                  {Object.entries(SORT_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <div className="vt-seg">
