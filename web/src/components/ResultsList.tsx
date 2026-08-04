@@ -127,7 +127,12 @@ export default function ResultsList({
   onToggleSave,
   coverage,
 }: Props) {
-  if (loading) return <p className="list-note" role="status">Searching…</p>;
+  if (loading)
+    return (
+      <div className="skeleton-block results-skeleton" role="status" aria-label="Loading results">
+        <span /><span /><span /><span /><span />
+      </div>
+    );
   if (results.length === 0)
     return (
       <div className="list-note">
