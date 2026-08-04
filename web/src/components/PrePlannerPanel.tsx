@@ -451,7 +451,12 @@ export default function PrePlannerPanel({
                     onClick={async (e) => {
                       e.stopPropagation();
                       if (!window.confirm(`Delete “${p.label}” and its reports?`)) return;
-                      await preplanApi.deleteProject(p.id).catch(() => {});
+                      try {
+                        await preplanApi.deleteProject(p.id);
+                        posthog.capture("preplanner_project_deleted");
+                      } catch {
+                        // Ignore deletion failures for this compact action.
+                      }
                       refresh();
                     }}
                   >
