@@ -62,12 +62,90 @@ export const HIGHLIGHTS_PROMPT =
   "Notable also covers: permission granted for less than was applied for; a window that must be " +
   "obscured or removed; restrictions on use, occupancy or opening hours beyond the standard " +
   "form; anything that must be submitted to and agreed with the council before work starts where " +
-  "the outcome could change the design; a permission that expires unusually early; and the total " +
-  "of any development contribution the council requires, as a single money point.\n\n" +
+  "the outcome could change the design; and a permission that expires unusually early.\n\n" +
+  "DEVELOPMENT CONTRIBUTIONS: say nothing at all about money the developer must pay. The total " +
+  "is added separately and exactly; a point about it here would duplicate that.\n\n" +
   'Return JSON and nothing else: {"highlights":[{"n":<the condition number>,"point":"<one plain sentence>"}]}\n' +
   "Each point: under 25 words, everyday language, no policy or plan citations, no condition " +
-  "jargon, state the constraint itself. Order by how much it affects what gets built. At most " +
-  '6. If genuinely nothing is notable, return {"highlights":[]}.';
+  "jargon, state the constraint itself.\n" +
+  "ORDER: what physically changes the building first (size, position, materials, openings, " +
+  "boundaries, access), then limits on how it may be used, then anything to be agreed before " +
+  "work starts. At most 5. If genuinely nothing is notable, return " +
+  '{"highlights":[]}.';
+
+/**
+ * The development contribution, totalled in code rather than by the model.
+ *
+ * Councils split it across several conditions — surface water, transport,
+ * community facilities — and asking for one combined figure produced either
+ * three money lines crowding out the design constraints, or nothing at all:
+ * a summed total appears in no single condition, so `isGrounded` correctly
+ * rejected it as invented. Arithmetic is the one thing here that should never
+ * be approximate, so it is done exactly and the model is told to stay quiet
+ * about money.
+ */
+/**
+ * Matched at clause level, not condition level. Some DLR records arrive with
+ * every condition concatenated into a single item, so one "condition" can
+ * carry three separate contribution clauses — surface water, transport,
+ * community — and taking one figure per condition charged €4.97 for a bill of
+ * €497.15. The € must follow the phrase directly, so a passing reference to
+ * the Development Contribution Scheme contributes nothing.
+ */
+const CONTRIBUTION_RE =
+  /(?:sum of|contribution of)\s*€\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)/gi;
+/**
+ * South Dublin appends amendments to the original condition rather than
+ * replacing it ("Condition 18 was amended by PR/0805/26 on 17/07/2026: …"),
+ * so a condition can carry both the superseded figure and the current one.
+ * Real case: SD26A/0084W reads €222,068.16 then €88,325.28 — charging the
+ * first would overstate the bill by €133,742.88.
+ */
+const AMENDED_RE = /\bamended by\b[^:]{0,160}:/gi;
+
+/** Everything payable under one condition, after any amendment. */
+export function payableAmounts(text) {
+  const src = String(text);
+  const marks = [...src.matchAll(AMENDED_RE)];
+  // An amendment restates the whole condition, so only the text after the
+  // last marker still applies.
+  const scope = marks.length
+    ? src.slice(marks.at(-1).index + marks.at(-1)[0].length)
+    : src;
+  const out = [];
+  for (const m of scope.matchAll(CONTRIBUTION_RE)) {
+    const amount = Number(m[1].replace(/,/g, ""));
+    if (Number.isFinite(amount) && amount > 0) out.push(amount);
+  }
+  return out;
+}
+
+export function developmentContribution(items) {
+  let total = 0;
+  let first = null;
+  items.forEach((c, i) => {
+    const amounts = payableAmounts(c.text);
+    if (!amounts.length) return;
+    for (const a of amounts) total += a;
+    if (first === null) first = conditionNumber(c, i);
+  });
+  if (!total || first === null) return null;
+  return { total, condition: first };
+}
+
+function contributionPoint(items) {
+  const c = developmentContribution(items);
+  if (!c) return null;
+  const money = c.total.toLocaleString("en-IE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: c.total % 1 === 0 ? 0 : 2,
+  });
+  return {
+    n: c.condition,
+    point: `${money} in development contributions is payable before work starts.`,
+  };
+}
 
 /** Conditions the council actually imposed — code "C". */
 export function conditionItems(items) {
@@ -150,5 +228,10 @@ export async function conditionHighlights(items, callClaude) {
   const conds = conditionItems(items);
   if (!conds.length) return null;
   const raw = await callClaude(HIGHLIGHTS_PROMPT, conditionsUserMsg(conds), 900, 30000);
-  return parseHighlights(raw, conds);
+  const points = parseHighlights(raw, conds);
+  if (!points) return null;
+  // Money last, and only once: what you must pay matters, but never at the
+  // cost of a slot that could hold a constraint on what you can build.
+  const money = contributionPoint(conds);
+  return money ? [...points.filter((p) => p.n !== money.n), money] : points;
 }
