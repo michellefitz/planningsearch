@@ -13,6 +13,8 @@ import { fileURLToPath } from "node:url";
 import { handleAccountRoute, isAccountRoute } from "./_accounts/routes.mjs";
 import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
 import { conditionHighlights } from "./_conditions/highlights.mjs";
+import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached } from "./_ai/store.mjs";
+import { descriptionKey } from "./_ai/descriptions.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));
@@ -34,6 +36,29 @@ function sitePolygons() {
     POLYGONS = {};
   }
   return POLYGONS;
+}
+
+/**
+ * Precomputed description summaries, keyed by description hash (see
+ * export-json.ts and scripts/summaries/backfill.mjs). Lazy for the same reason
+ * as the polygons: only detail views read them, so the far more numerous
+ * search and map cold starts shouldn't parse ~15 MB they never touch.
+ */
+let SUMMARIES = null;
+function descriptionSummaries() {
+  if (SUMMARIES) return SUMMARIES;
+  try {
+    SUMMARIES = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/summaries.json"), "utf8"));
+  } catch {
+    SUMMARIES = {};
+  }
+  return SUMMARIES;
+}
+
+/** The baked summary for an application's description, if one was generated. */
+function bakedSummary(description) {
+  const key = descriptionKey(description);
+  return key ? descriptionSummaries()[key] ?? null : null;
 }
 
 const haystackOf = (a) =>
@@ -1445,6 +1470,14 @@ async function summariseDescription(description, applicationType, trace) {
     trace?.push({ step: "summarise", error: "no description to summarise" });
     return null;
   }
+  // The whole register is summarised in bulk ahead of time, so the model only
+  // sees wording the last build didn't have — a new application, or a fuller
+  // description the council's portal returned just now.
+  const baked = bakedSummary(description);
+  if (baked) {
+    trace?.push({ step: "summarise", source: "precomputed bundle" });
+    return baked;
+  }
   if (AI_SUMMARY_CACHE.has(description)) return AI_SUMMARY_CACHE.get(description);
   const systemPrompt =
     "You summarise Irish planning applications in one short sentence of plain English. " +
@@ -1467,10 +1500,9 @@ async function summariseDescription(description, applicationType, trace) {
   return text;
 }
 
+/** Still read by /conditions to inline a summary it already has; the durable
+ *  copy lives in ai_cache (api/_ai/store.mjs). */
 const REFUSAL_SUMMARY_CACHE = new Map();
-/** Conditions never change once a decision is made, so one call per
- *  application is all this ever needs — keyed by id, same as the refusal. */
-const HIGHLIGHTS_CACHE = new Map();
 
 async function summariseRefusal(appId, reasons) {
   if (!reasons.length) return null;
@@ -2924,7 +2956,14 @@ export default async function handler(req, res) {
       return send(res, 200, { supported: true, summary: null });
     }
     const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
-    const summary = reasons.length ? await summariseRefusal(app.id, reasons) : null;
+    if (!reasons.length) return send(res, 200, { supported: true, summary: null });
+    const summary = await aiCached(
+      AI_CACHE_KINDS.REFUSAL,
+      app.authority_id,
+      app.planning_reference,
+      () => summariseRefusal(app.id, reasons)
+    );
+    if (summary) REFUSAL_SUMMARY_CACHE.set(app.id, summary);
     return send(res, 200, { supported: true, summary });
   }
 
@@ -2937,18 +2976,21 @@ export default async function handler(req, res) {
     if (!(app.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
       return send(res, 200, { supported: false, highlights: null });
     }
-    if (HIGHLIGHTS_CACHE.has(app.id)) {
-      return send(res, 200, { supported: true, highlights: HIGHLIGHTS_CACHE.get(app.id) });
-    }
-    const conditions = await fetchAgileConditions(
+    // null is "we couldn't read them", [] is "nothing here binds you" — only
+    // the real answer is stored, so a timeout retries on the next view.
+    const highlights = await aiCached(
+      AI_CACHE_KINDS.HIGHLIGHTS,
       app.authority_id,
-      app.source_url,
-      app.planning_reference
+      app.planning_reference,
+      async () => {
+        const conditions = await fetchAgileConditions(
+          app.authority_id,
+          app.source_url,
+          app.planning_reference
+        );
+        return conditionHighlights(conditions?.items ?? [], callClaude);
+      }
     );
-    const highlights = await conditionHighlights(conditions?.items ?? [], callClaude);
-    // null is "we couldn't read them", [] is "nothing here binds you" — cache
-    // only the real answer so a timeout retries on the next view.
-    if (highlights) HIGHLIGHTS_CACHE.set(app.id, highlights);
     return send(res, 200, { supported: true, highlights });
   }
 
@@ -2981,11 +3023,21 @@ export default async function handler(req, res) {
     if (!app) return send(res, 404, { error: "Application not found" });
     const caseUrl = abpCaseUrl(app.appeal_reference);
     if (!caseUrl) return send(res, 200, { supported: false });
+    const debug = p.get("debug") === "1";
+    if (!debug) {
+      // An appeal PDF is the priciest read in the app — never repeat it for a
+      // case the Commission has already decided.
+      const stored = await aiCacheGet(
+        AI_CACHE_KINDS.APPEAL,
+        app.authority_id,
+        app.planning_reference
+      );
+      if (stored !== undefined) return send(res, 200, { supported: true, ...stored });
+    }
     const cached = APPEAL_SUMMARY_CACHE.get(app.id);
     if (cached) return send(res, 200, { supported: true, ...cached });
     if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
 
-    const debug = p.get("debug") === "1";
     const trace = debug ? [] : undefined;
     const details = await fetchAppealCase(caseUrl, trace);
     const context = [
@@ -3006,6 +3058,10 @@ export default async function handler(req, res) {
     if (!summary) return send(res, 200, { supported: true, summary: null, based_on_document: null });
     const result = { summary, based_on_document: pdf ? doc?.title ?? null : null };
     APPEAL_SUMMARY_CACHE.set(app.id, result);
+    // Only once the Commission has decided: a live case still changes.
+    if (app.appeal_decision) {
+      await aiCachePut(AI_CACHE_KINDS.APPEAL, app.authority_id, app.planning_reference, result);
+    }
     return send(res, 200, { supported: true, ...result });
   }
 
@@ -3017,10 +3073,21 @@ export default async function handler(req, res) {
     if (!listUrl || app.authority_id in AGILE_CLIENT_BY_AUTHORITY || !app.decision) {
       return send(res, 200, { supported: false });
     }
+    const debug = p.get("debug") === "1";
+    if (!debug) {
+      // A 4-page scanned order is ~8k input tokens and this fires
+      // automatically on every eplanning refusal — by far the most expensive
+      // thing a single page view can trigger.
+      const stored = await aiCacheGet(
+        AI_CACHE_KINDS.DECISION,
+        app.authority_id,
+        app.planning_reference
+      );
+      if (stored !== undefined) return send(res, 200, { supported: true, ...stored });
+    }
     const cached = DECISION_SUMMARY_CACHE.get(app.id);
     if (cached) return send(res, 200, { supported: true, ...cached });
     if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
-    const debug = p.get("debug") === "1";
     const trace = debug ? [] : undefined;
     const files = await fetchScannedFileList(listUrl, trace);
     const index = files ? findDecisionDocIndex(files, app.decision) : -1;
@@ -3044,6 +3111,7 @@ export default async function handler(req, res) {
     if (!extract) return send(res, 200, { ...empty, source_document });
     const result = { ...extract, source_document };
     DECISION_SUMMARY_CACHE.set(app.id, result);
+    await aiCachePut(AI_CACHE_KINDS.DECISION, app.authority_id, app.planning_reference, result);
     return send(res, 200, { supported: true, ...result });
   }
 
@@ -3130,7 +3198,10 @@ export default async function handler(req, res) {
     // anything already in the warm-instance caches still comes through here.
     return send(res, 200, {
       ...publicApp(app),
-      ai_summary: AI_SUMMARY_CACHE.get(app.description) ?? null,
+      // Baked at build time for the whole register, so this is a lookup rather
+      // than the model call every view used to trigger. The warm-instance map
+      // still covers anything generated since the last build.
+      ai_summary: bakedSummary(app.description) ?? AI_SUMMARY_CACHE.get(app.description) ?? null,
       documents: [],
       related,
     });

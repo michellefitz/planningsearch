@@ -118,6 +118,26 @@ const STATEMENTS = [
     error text,
     generated_at timestamptz not null default now()
   )`,
+  // Mirrors api/_ai/store.mjs, which creates this lazily. Keyed on
+  // authority+reference, never on the bundle's positional `id`.
+  `create table if not exists ai_cache (
+    kind text not null,
+    authority_id text not null,
+    planning_reference text not null,
+    payload jsonb not null,
+    model text not null default 'claude-haiku-4-5',
+    created_at timestamptz not null default now(),
+    primary key (kind, authority_id, planning_reference)
+  )`,
+  // Mirrors scripts/summaries/upload.mjs. Keyed on a hash of the description
+  // so identical wording shares one summary and a changed description
+  // regenerates rather than going stale.
+  `create table if not exists description_summaries (
+    description_hash text primary key,
+    summary text not null,
+    model text not null,
+    created_at timestamptz not null default now()
+  )`,
 ];
 
 for (const stmt of STATEMENTS) {

@@ -37,9 +37,17 @@ fs.mkdirSync(funcDir, { recursive: true });
 // builder ignores it — otherwise each helper .mjs deploys as its own
 // serverless function (Hobby caps a deployment at 12; we hit 13).
 fs.copyFileSync(path.join(root, "api", "_index.mjs"), path.join(funcDir, "index.mjs"));
-fs.cpSync(path.join(root, "api", "_data"), path.join(funcDir, "_data"), { recursive: true });
-fs.cpSync(path.join(root, "api", "_accounts"), path.join(funcDir, "_accounts"), { recursive: true });
-fs.cpSync(path.join(root, "api", "_preplan"), path.join(funcDir, "_preplan"), { recursive: true });
+// summaries.jsonl is the backfill's append-only working file; only the
+// summaries.json the export derives from it belongs in the function.
+fs.cpSync(path.join(root, "api", "_data"), path.join(funcDir, "_data"), {
+  recursive: true,
+  filter: (src) => !src.endsWith(".jsonl"),
+});
+// Every directory _index.mjs imports from. Missing one is not a build error —
+// it is a runtime crash on the first request that touches it.
+for (const dir of ["_accounts", "_preplan", "_conditions", "_ai"]) {
+  fs.cpSync(path.join(root, "api", dir), path.join(funcDir, dir), { recursive: true });
+}
 fs.writeFileSync(
   path.join(funcDir, ".vc-config.json"),
   JSON.stringify(
