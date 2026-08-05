@@ -2912,6 +2912,13 @@ export default async function handler(req, res) {
       app.source_url,
       app.planning_reference
     );
+    // Code "R" is the portal's "Reason", which on a *grant* is the First
+    // Schedule reasons and considerations — asking for a refusal sentence
+    // there spends a model call to describe a refusal that never happened.
+    const decision = conditions?.decision ?? app.decision ?? null;
+    if (decision && !/refus/i.test(decision)) {
+      return send(res, 200, { supported: true, summary: null });
+    }
     const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
     const summary = reasons.length ? await summariseRefusal(app.id, reasons) : null;
     return send(res, 200, { supported: true, summary });

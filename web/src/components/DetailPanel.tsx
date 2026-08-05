@@ -156,6 +156,21 @@ function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/**
+ * The NBCO open-data page for one commencement notice.
+ *
+ * The dataset slug is `bcnccc`, not `bcms` — the earlier link 404'd. The
+ * portal's table view honours CKAN's `filters` parameter (an exact match on a
+ * datastore column) and ignores `q`, so filtering on CN_Number is what
+ * actually lands the reader on their notice rather than on 300k rows.
+ */
+export const BCMS_RESOURCE_ID = "0774e781-7af8-46da-b623-872e74cf541e";
+
+export function bcmsNoticeUrl(notice: string): string {
+  const filters = encodeURIComponent(`CN_Number:${notice}`);
+  return `https://data.nbco.gov.ie/dataset/bcnccc/resource/${BCMS_RESOURCE_ID}?filters=${filters}`;
+}
+
 /** Colour the outcome word so grants and refusals read at a glance. */
 function outcomeClass(text: string): string {
   if (/refus/i.test(text)) return "outcome-refuse";
@@ -186,26 +201,68 @@ function withGlossary(text: string, glossary: Record<string, string>): JSX.Eleme
   );
 }
 
-/** Prescription codes on the council's decision, in display order. */
-const CONDITION_GROUPS: Array<{ code: string; label: string }> = [
-  { code: "R", label: "Reasons for refusal" },
-  { code: "C", label: "Conditions of this decision" },
-  { code: "D", label: "Further information the council asked for" },
-  { code: "I", label: "Clarifications & informatives" },
-  { code: "N", label: "Notes" },
-];
+/**
+ * A decision that refuses, in whole or in part. Split decisions ("grant for
+ * retention and refuse permission for…") count: they carry real refusal
+ * grounds, so they must read as a refusal wherever reasons are shown.
+ */
+export function isRefusalDecision(decision: string | null | undefined): boolean {
+  return /refus/i.test(decision ?? "");
+}
+
+/**
+ * Prescription codes on the council's decision, in display order.
+ *
+ * `R` is the portal's "Reason" code and it means opposite things either side
+ * of the outcome: on a refusal it carries the grounds for refusing, but on a
+ * grant it is the First Schedule "Reasons and Considerations" — the council
+ * setting out why permission *was* given. Labelling it "Reasons for refusal"
+ * on a grant told readers an application had been refused when it hadn't.
+ */
+function conditionGroups(decision: string | null | undefined) {
+  return [
+    {
+      code: "R",
+      label: isRefusalDecision(decision) ? "Reasons for refusal" : "Reasons & considerations",
+      blurb: isRefusalDecision(decision)
+        ? "The grounds the council gave for refusing."
+        : "The First Schedule of the decision order — why the council considered the development acceptable.",
+    },
+    {
+      code: "C",
+      label: "Conditions of this decision",
+      blurb: "Binding — the permission only stands if these are met.",
+    },
+    { code: "D", label: "Further information the council asked for", blurb: null },
+    { code: "I", label: "Clarifications & informatives", blurb: null },
+    {
+      code: "N",
+      label: "Notes",
+      blurb:
+        "Advisory only, not conditions. They point out other consents and laws that still apply — building regulations, Uisce Éireann, a neighbour's agreement — none of which this permission grants.",
+    },
+  ];
+}
 
 // Councils with a structured conditions API — their decision substance comes
 // from the conditions endpoint. Everywhere else (eplanning/iDocs councils)
 // the reasons live only in the scanned decision order.
 const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fingal", "dlr"]);
 
-/** The full conditions / refusal reasons, grouped and collapsible. */
-function ConditionGroups({ conditions }: { conditions: DecisionConditions }) {
-  const groups = CONDITION_GROUPS.map((g) => ({
-    ...g,
-    items: conditions.items.filter((i) => i.code === g.code),
-  })).filter((g) => g.items.length > 0);
+/** The full conditions / reasons, grouped and collapsible. */
+function ConditionGroups({
+  conditions,
+  decision,
+}: {
+  conditions: DecisionConditions;
+  decision: string | null;
+}) {
+  const groups = conditionGroups(decision)
+    .map((g) => ({
+      ...g,
+      items: conditions.items.filter((i) => i.code === g.code),
+    }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <>
@@ -214,6 +271,10 @@ function ConditionGroups({ conditions }: { conditions: DecisionConditions }) {
           <h4>
             {g.label} <span className="count">{g.items.length}</span>
           </h4>
+          {/* These headings are planning jargon, and "Notes" in particular
+              reads as though the council imposed something. Say what the
+              group actually is before the reader opens any of it. */}
+          {g.blurb && <p className="condition-blurb">{g.blurb}</p>}
           {g.items.map((item, i) => {
             const title = item.title || `${item.code_label} ${item.order}`;
             // Repeated titles (An Bord Pleanála conditions all arrive as
@@ -576,7 +637,11 @@ function DecisionSection({
   // decision order — offer the on-demand PDF summary instead of conditions.
   const scannedOrderOnly =
     Boolean(d.decision && d.scanned_files_url) && !AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
-  const summary = conditions?.refusal_summary ?? refusalSummary;
+  // The red "Refused because…" line belongs to a refusal — by the council or
+  // by the Commission on appeal. On a grant the same reasons are the First
+  // Schedule, and a refusal-shaped sentence about them is simply wrong.
+  const refused = isRefusalDecision(decision) || isRefusalDecision(d.appeal_decision);
+  const summary = refused ? conditions?.refusal_summary ?? refusalSummary : null;
 
   return (
     <section aria-labelledby="decision-h" aria-busy={conditionsLoading || undefined}>
@@ -608,7 +673,7 @@ function DecisionSection({
             <span className="hint">
               {" · notice "}
               <a
-                href={`https://data.nbco.gov.ie/dataset/bcms/resource/0774e781-7af8-46da-b623-872e74cf541e?q=${encodeURIComponent(d.commencement_notice)}`}
+                href={bcmsNoticeUrl(d.commencement_notice)}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -624,6 +689,7 @@ function DecisionSection({
       {summary ? (
         <p className="ai-summary refusal-summary">✦ {summary}</p>
       ) : (
+        refused &&
         refusalLoading && (
           <p className="ai-summary refusal-summary loading-line">✦ Summarising the reasons…</p>
         )
@@ -635,7 +701,9 @@ function DecisionSection({
           <span />
         </div>
       )}
-      {conditions && conditions.items.length > 0 && <ConditionGroups conditions={conditions} />}
+      {conditions && conditions.items.length > 0 && (
+        <ConditionGroups conditions={conditions} decision={decision} />
+      )}
       {/* Three distinct outcomes, never collapsed into a blank space: the
           council recorded none, or we couldn't reach the council at all. */}
       {!conditionsLoading && conditions && conditions.items.length === 0 && (
@@ -1055,8 +1123,14 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             if (!res.conditions?.items.length) return;
             // The plain-English refusal line is generated on its own endpoint
             // so the conditions render immediately — fetch it once we know
-            // there are refusal reasons to summarise.
-            if (!res.conditions.refusal_summary && res.conditions.items.some((i) => i.code === "R")) {
+            // there are refusal reasons to summarise. Code "R" alone isn't
+            // that: on a grant it is the First Schedule reasons for granting,
+            // so the decision has to say "refuse" before we ask.
+            if (
+              !res.conditions.refusal_summary &&
+              isRefusalDecision(res.conditions.decision ?? d.decision) &&
+              res.conditions.items.some((i) => i.code === "R")
+            ) {
               setRefusalLoading(true);
               api
                 .refusalSummary(d.id)
@@ -1080,7 +1154,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     return () => {
       cancelled = true;
     };
-  }, [d.id, d.ai_summary, d.applicant_name, d.agent_name, hasConditionsSource]);
+  }, [d.id, d.ai_summary, d.applicant_name, d.agent_name, d.decision, hasConditionsSource]);
 
   const aiSummary = d.ai_summary ?? enrich?.ai_summary ?? null;
   const applicant = d.applicant_name ?? enrich?.applicant_name ?? null;

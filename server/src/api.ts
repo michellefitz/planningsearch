@@ -669,9 +669,16 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
   app.get("/api/applications/:id/refusal-summary", async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const row = db
-      .prepare("SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?")
+      .prepare(
+        "SELECT authority_id, source_url, planning_reference, decision FROM applications WHERE id = ?"
+      )
       .get(id) as
-      | { authority_id: string; source_url: string | null; planning_reference: string }
+      | {
+          authority_id: string;
+          source_url: string | null;
+          planning_reference: string;
+          decision: string | null;
+        }
       | undefined;
     if (!row) return reply.code(404).send({ error: "Application not found" });
     if (!(row.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
@@ -682,6 +689,11 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       row.source_url,
       row.planning_reference
     );
+    // Code "R" is the portal's "Reason", which on a *grant* is the First
+    // Schedule reasons and considerations — asking for a refusal sentence
+    // there spends a model call to describe a refusal that never happened.
+    const decision = conditions?.decision ?? row.decision ?? null;
+    if (decision && !/refus/i.test(decision)) return { supported: true, summary: null };
     const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
     let summary: string | null = null;
     if (reasons.length) {

@@ -2593,6 +2593,14 @@ a.ov-pop-sub {
   color: var(--ink-3);
   margin-left: 0.25rem;
 }
+/* One line of plain English under the jargon heading — sentence case and
+   quieter than the items, so it reads as an aside rather than a condition. */
+.condition-blurb {
+  margin: -0.1rem 0 0.45rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
 .condition {
   border: 1px solid var(--line);
   border-radius: 8px;
