@@ -19,13 +19,25 @@
  *   33%  construction hours
  *   21%  spillage / wheel wash
  *
- * 59% of all conditions matched one of those stock themes — but 26% of those
- * *also* carried a specific, checkable requirement. That is the finding that
- * shapes this: the council's grass rule lives inside a surface-water
+ * Clustering what those themes missed surfaced four more that recur across
+ * councils and are also told to the model: dust suppression during
+ * construction, "this permission relates only to the statutory public
+ * notices", finishes "as shown on the submitted drawings", and the generic
+ * harmonise-with-the-existing wording. Between them the skip list accounts for
+ * 66% of conditions; the 388 that remain are judged on their substance.
+ *
+ * 59% of all conditions matched one of the first eight themes — but 26% of
+ * those *also* carried a specific, checkable requirement. That is the finding
+ * that shapes this: the council's grass rule lives inside a surface-water
  * condition, so dropping stock-looking conditions wholesale would throw away
  * roughly one in four of the very things worth reading. Nothing is filtered
  * out before the model sees it; the stock themes are told to it as guidance
  * for what to stay quiet about, not used as a delete list.
+ *
+ * Deliberately NOT on the skip list, though they recur: obscure-glazing
+ * requirements, "Amendments" conditions that change the design outright, and
+ * limits on attic floorspace or roof-level plant. Those are common precisely
+ * because they are the constraints people keep running into.
  */
 
 export const HIGHLIGHTS_PROMPT =
@@ -34,9 +46,12 @@ export const HIGHLIGHTS_PROMPT =
   "permission differs from what was applied for.\n\n" +
   "Almost every permission repeats the same stock conditions. Say nothing about a condition that " +
   "adds nothing beyond the standard form, namely: build in accordance with the lodged plans; " +
-  "general surface-water, SuDS or soakaway design; connection to or compliance with Uisce " +
-  "Éireann; the standard bar on sub-dividing a dwelling; construction hours; keeping mud and " +
-  "spillage off the road; site notices, estate naming, bonds, taking in charge, archaeological " +
+  "finishes to be as shown on the submitted drawings, or to harmonise or match the existing " +
+  "building, where no particular material or colour is named; general surface-water, SuDS or " +
+  "soakaway design; connection to or compliance with Uisce Éireann; the standard bar on " +
+  "sub-dividing a dwelling; construction hours; keeping mud and spillage off the road; dust " +
+  "suppression during construction; the note that the permission relates only to what was in the " +
+  "statutory public notices; site notices, estate naming, bonds, taking in charge, archaeological " +
   "monitoring, generic waste-management or construction-traffic plans; and boilerplate about " +
   "services being laid underground.\n\n" +
   "CRUCIAL: a stock-looking condition often hides a specific requirement. If a condition of any " +
