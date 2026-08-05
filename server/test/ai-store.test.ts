@@ -143,6 +143,39 @@ describe("topUpDescriptionSummaries", () => {
   });
 });
 
+describe("the upload script's batch insert", () => {
+  it("numbers placeholders across rows, so row 2 doesn't overwrite row 1", async () => {
+    const { insertStatement } = await import("../../scripts/summaries/upload.mjs");
+    const { query, params } = insertStatement([
+      { h: "aaa", s: "first" },
+      { h: "bbb", s: "second" },
+    ]);
+    expect(query).toContain("($1, $2, $3),($4, $5, $6)");
+    expect(params).toEqual([
+      "aaa", "first", "claude-haiku-4-5-20251001",
+      "bbb", "second", "claude-haiku-4-5-20251001",
+    ]);
+  });
+
+  it("leaves an existing summary alone, so a rerun is a no-op", async () => {
+    const { insertStatement } = await import("../../scripts/summaries/upload.mjs");
+    expect(insertStatement([{ h: "a", s: "b" }]).query).toContain("do nothing");
+  });
+
+  it("survives the torn last line an interrupted run leaves behind", async () => {
+    const { readSummaries } = await import("../../scripts/summaries/upload.mjs");
+    const rows = readSummaries(
+      '{"h":"a","s":"one"}\n{"h":"b","s":"two"}\n{"h":"c","s":"th'
+    );
+    expect(rows.map((r: { h: string }) => r.h)).toEqual(["a", "b"]);
+  });
+
+  it("de-duplicates a hash a resumed run appended twice", async () => {
+    const { readSummaries } = await import("../../scripts/summaries/upload.mjs");
+    expect(readSummaries('{"h":"a","s":"one"}\n{"h":"a","s":"one"}')).toHaveLength(1);
+  });
+});
+
 describe("the Vercel function bundle", () => {
   // A missing directory here is not a build error — it is a runtime crash on
   // the first request that touches it, in production only.
