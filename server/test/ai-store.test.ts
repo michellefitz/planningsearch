@@ -118,6 +118,31 @@ describe("descriptionUserMsg", () => {
   });
 });
 
+describe("topUpDescriptionSummaries", () => {
+  it("does nothing, and says why, without the credentials it needs", async () => {
+    const { topUpDescriptionSummaries } = await import("../../api/_ai/topup.mjs");
+    delete process.env.ANTHROPIC_API_KEY;
+    expect(await topUpDescriptionSummaries([{ description: "a shed" }])).toEqual({
+      skipped: "ANTHROPIC_API_KEY not set",
+    });
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    expect(await topUpDescriptionSummaries([{ description: "a shed" }])).toEqual({
+      skipped: "DATABASE_URL not set",
+    });
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("runs inside the cron's budget, which the agile harvest also draws on", async () => {
+    const src = fs.readFileSync(path.join(ROOT, "api/_ai/topup.mjs"), "utf8");
+    const budget = Number(src.match(/TIME_BUDGET_MS = ([\d_]+)/)?.[1].replace(/_/g, ""));
+    const harvest = fs.readFileSync(path.join(ROOT, "api/_accounts/harvest.mjs"), "utf8");
+    const harvestBudget = Number(harvest.match(/TIME_BUDGET_MS = ([\d_]+)/)?.[1].replace(/_/g, ""));
+    // maxDuration is 300 s (scripts/build-vercel.mjs) and both run in the same
+    // request, ahead of the deploy hook.
+    expect(budget + harvestBudget).toBeLessThan(300_000);
+  });
+});
+
 describe("the Vercel function bundle", () => {
   // A missing directory here is not a build error — it is a runtime crash on
   // the first request that touches it, in production only.
