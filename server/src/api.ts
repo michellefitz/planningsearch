@@ -27,12 +27,14 @@ import {
   type DiagnosticStep,
 } from "./documents.js";
 import {
+  callClaude,
   extractDecisionDocument,
   summariseAppeal,
   summariseDescription,
   summariseRefusal,
   type DecisionExtract,
 } from "./summarize.js";
+import { loadHighlightsModule, type ConditionHighlight } from "./conditions.js";
 import { fetchZoning } from "./zoning.js";
 import { fetchOverlay, isOverlayLayer } from "./overlays.js";
 import {
@@ -140,6 +142,9 @@ function publicApplication(row: Record<string, unknown>) {
 const MAP_FEATURE_LIMIT = 2000;
 
 const REFUSAL_SUMMARY_CACHE = new Map<number, string>();
+/** Conditions never change once a decision is made, so one call per
+ *  application is all this ever needs. */
+const HIGHLIGHTS_CACHE = new Map<number, ConditionHighlight[]>();
 const APPEAL_SUMMARY_CACHE = new Map<number, { summary: string; based_on_document: string | null }>();
 const DECISION_SUMMARY_CACHE = new Map<number, DecisionExtract & { source_document: string | null }>();
 
@@ -669,9 +674,16 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
   app.get("/api/applications/:id/refusal-summary", async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const row = db
-      .prepare("SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?")
+      .prepare(
+        "SELECT authority_id, source_url, planning_reference, decision FROM applications WHERE id = ?"
+      )
       .get(id) as
-      | { authority_id: string; source_url: string | null; planning_reference: string }
+      | {
+          authority_id: string;
+          source_url: string | null;
+          planning_reference: string;
+          decision: string | null;
+        }
       | undefined;
     if (!row) return reply.code(404).send({ error: "Application not found" });
     if (!(row.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
@@ -682,6 +694,11 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       row.source_url,
       row.planning_reference
     );
+    // Code "R" is the portal's "Reason", which on a *grant* is the First
+    // Schedule reasons and considerations — asking for a refusal sentence
+    // there spends a model call to describe a refusal that never happened.
+    const decision = conditions?.decision ?? row.decision ?? null;
+    if (decision && !/refus/i.test(decision)) return { supported: true, summary: null };
     const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
     let summary: string | null = null;
     if (reasons.length) {
@@ -689,6 +706,34 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       if (summary) REFUSAL_SUMMARY_CACHE.set(id, summary);
     }
     return { supported: true, summary };
+  });
+
+  // What the conditions actually change about the approved scheme. Its own
+  // endpoint so the conditions themselves paint without waiting on the model.
+  app.get("/api/applications/:id/condition-highlights", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare("SELECT authority_id, source_url, planning_reference FROM applications WHERE id = ?")
+      .get(id) as
+      | { authority_id: string; source_url: string | null; planning_reference: string }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    if (!(row.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
+      return { supported: false, highlights: null };
+    }
+    const hit = HIGHLIGHTS_CACHE.get(id);
+    if (hit) return { supported: true, highlights: hit };
+    const conditions = await fetchAgileConditions(
+      row.authority_id,
+      row.source_url,
+      row.planning_reference
+    );
+    const { conditionHighlights } = await loadHighlightsModule();
+    const highlights = await conditionHighlights(conditions?.items ?? [], callClaude);
+    // null is "we couldn't read them", [] is "nothing here binds you" — cache
+    // only the real answer so a timeout retries on the next view.
+    if (highlights) HIGHLIGHTS_CACHE.set(id, highlights);
+    return { supported: true, highlights };
   });
 
   app.get("/api/applications/:id", async (req, reply) => {

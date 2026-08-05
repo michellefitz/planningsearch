@@ -21,6 +21,8 @@ import { fetchKildareRecent, eplanningItemToRecord } from "./ingest/eplanning-li
 import { ACP_AUTHORITY, fetchAcpDirectRecords } from "./ingest/acp.js";
 import { buildCommencementIndex, lookupCommencement } from "./ingest/bcms.js";
 import type { ApplicationRecord } from "./db.js";
+// Shared with the API and the backfill so one hashing rule governs all three.
+import { descriptionKey } from "../../api/_ai/descriptions.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,6 +39,11 @@ const OUT =
  */
 const POLYGONS_OUT =
   process.env.PLANVIEW_POLYGONS_OUT ?? path.join(path.dirname(OUT), "polygons.json");
+/** Description summaries, keyed by description hash. A sidecar rather than a
+ *  field on every row: the main bundle is eagerly parsed at module load, and
+ *  only detail views need these. */
+const SUMMARIES_OUT =
+  process.env.PLANVIEW_SUMMARIES_OUT ?? path.join(path.dirname(OUT), "summaries.json");
 
 /** Minimal Neon HTTP SQL client (mirrors api/_accounts/db.mjs) — a plain fetch
  *  so the build needs no database driver dependency. */
@@ -463,6 +470,50 @@ async function main() {
   console.log(
     `Wrote ${polygonParts.length} site boundaries to ${POLYGONS_OUT} (${polyMb} MB)`
   );
+
+  await writeSummarySidecar(apps);
+}
+
+/**
+ * Bake the precomputed description summaries (Neon description_summaries,
+ * filled by scripts/summaries/backfill.mjs) into a sidecar.
+ *
+ * Only the hashes this build actually uses are written — the table
+ * accumulates summaries for descriptions that have since been replaced by the
+ * council's fuller text, and shipping those would grow the function for
+ * nothing. Always written, even empty, so a missing file means a broken build
+ * rather than "no summaries yet".
+ */
+async function writeSummarySidecar(
+  apps: Array<{ description?: string | null }>
+): Promise<void> {
+  const needed = new Set<string>();
+  for (const a of apps) {
+    const key = descriptionKey(a.description);
+    if (key) needed.add(key);
+  }
+  const out: Record<string, string> = {};
+  if (process.env.DATABASE_URL) {
+    try {
+      console.log("Fetching description summaries (Neon description_summaries) …");
+      const rows = await neonSql(`select description_hash, summary from description_summaries`);
+      for (const r of rows) {
+        const h = r.description_hash as string;
+        if (needed.has(h)) out[h] = r.summary as string;
+      }
+      console.log(
+        `Description summaries: ${rows.length} stored, ${Object.keys(out).length} used by this build ` +
+          `(${((Object.keys(out).length / Math.max(needed.size, 1)) * 100).toFixed(1)}% coverage).`
+      );
+    } catch (err) {
+      console.error("Summary fetch failed — bundle ships without precomputed summaries:", err);
+    }
+  } else {
+    console.log("DATABASE_URL not set — skipping description summaries.");
+  }
+  fs.writeFileSync(SUMMARIES_OUT, JSON.stringify(out));
+  const mb = (fs.statSync(SUMMARIES_OUT).size / 1024 / 1024).toFixed(1);
+  console.log(`Wrote ${Object.keys(out).length} description summaries to ${SUMMARIES_OUT} (${mb} MB)`);
 }
 
 main().catch((err) => {

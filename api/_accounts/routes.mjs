@@ -11,6 +11,7 @@ import { fetchLiveNationalSnapshot } from "./live.mjs";
 import { fetchKildareLiveSnapshot } from "./kildare.mjs";
 import { buildDigestEmail } from "./digest.mjs";
 import { runAgileHarvest } from "./harvest.mjs";
+import { topUpDescriptionSummaries } from "../_ai/topup.mjs";
 import {
   ensureWatchSchema, findWatchHits, MAX_RADIUS_M, MAX_WATCHES_PER_USER,
   MIN_RADIUS_M, watchHitSummary, watchWindowStart,
@@ -353,8 +354,18 @@ document.getElementById("btn").onclick = async function() {
       console.error("agile harvest failed", err);
       harvest = { error: String(err?.message ?? err) };
     }
+    // Summarise the descriptions that arrived since the last build, so the
+    // rebuild below bakes them in. Without this every new application would
+    // fall back to the per-view model call the precompute exists to remove,
+    // and the gap would widen every night.
+    const summaries = await topUpDescriptionSummaries(ctx.applications ?? []);
     const r = await fetch(hook, { method: "POST" });
-    return sendPrivate(res, r.ok ? 200 : 502, { triggered: r.ok, status: r.status, harvest });
+    return sendPrivate(res, r.ok ? 200 : 502, {
+      triggered: r.ok,
+      status: r.status,
+      harvest,
+      summaries,
+    });
   }
 
   const user = await currentUser(req);

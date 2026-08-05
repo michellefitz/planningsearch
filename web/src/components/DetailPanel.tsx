@@ -1,5 +1,13 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { api, fmtDate, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
+import {
+  api,
+  fmtDate,
+  type AppDetail,
+  type ConditionHighlight,
+  type DecisionConditions,
+  type Meta,
+  type ZoningInfo,
+} from "../api";
 import PropertyMedia, { GMAPS_KEY, MapLinks } from "./PropertyMedia";
 import { XIcon } from "./icons";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
@@ -156,6 +164,21 @@ function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/**
+ * The NBCO open-data page for one commencement notice.
+ *
+ * The dataset slug is `bcnccc`, not `bcms` — the earlier link 404'd. The
+ * portal's table view honours CKAN's `filters` parameter (an exact match on a
+ * datastore column) and ignores `q`, so filtering on CN_Number is what
+ * actually lands the reader on their notice rather than on 300k rows.
+ */
+export const BCMS_RESOURCE_ID = "0774e781-7af8-46da-b623-872e74cf541e";
+
+export function bcmsNoticeUrl(notice: string): string {
+  const filters = encodeURIComponent(`CN_Number:${notice}`);
+  return `https://data.nbco.gov.ie/dataset/bcnccc/resource/${BCMS_RESOURCE_ID}?filters=${filters}`;
+}
+
 /** Colour the outcome word so grants and refusals read at a glance. */
 function outcomeClass(text: string): string {
   if (/refus/i.test(text)) return "outcome-refuse";
@@ -186,26 +209,135 @@ function withGlossary(text: string, glossary: Record<string, string>): JSX.Eleme
   );
 }
 
-/** Prescription codes on the council's decision, in display order. */
-const CONDITION_GROUPS: Array<{ code: string; label: string }> = [
-  { code: "R", label: "Reasons for refusal" },
-  { code: "C", label: "Conditions of this decision" },
-  { code: "D", label: "Further information the council asked for" },
-  { code: "I", label: "Clarifications & informatives" },
-  { code: "N", label: "Notes" },
-];
+/**
+ * A decision that refuses, in whole or in part. Split decisions ("grant for
+ * retention and refuse permission for…") count: they carry real refusal
+ * grounds, so they must read as a refusal wherever reasons are shown.
+ */
+export function isRefusalDecision(decision: string | null | undefined): boolean {
+  return /refus/i.test(decision ?? "");
+}
+
+/**
+ * Prescription codes on the council's decision, in display order.
+ *
+ * `R` is the portal's "Reason" code and it means opposite things either side
+ * of the outcome: on a refusal it carries the grounds for refusing, but on a
+ * grant it is the First Schedule "Reasons and Considerations" — the council
+ * setting out why permission *was* given. Labelling it "Reasons for refusal"
+ * on a grant told readers an application had been refused when it hadn't.
+ */
+function conditionGroups(decision: string | null | undefined) {
+  return [
+    {
+      code: "R",
+      label: isRefusalDecision(decision) ? "Reasons for refusal" : "Reasons & considerations",
+      blurb: isRefusalDecision(decision)
+        ? "The grounds the council gave for refusing."
+        : "The First Schedule of the decision order — why the council considered the development acceptable.",
+    },
+    {
+      code: "C",
+      label: "Conditions of this decision",
+      blurb: "Binding — the permission only stands if these are met.",
+    },
+    { code: "D", label: "Further information the council asked for", blurb: null },
+    { code: "I", label: "Clarifications & informatives", blurb: null },
+    {
+      code: "N",
+      label: "Notes",
+      blurb:
+        "Advisory only, not conditions. They point out other consents and laws that still apply — building regulations, Uisce Éireann, a neighbour's agreement — none of which this permission grants.",
+    },
+  ];
+}
 
 // Councils with a structured conditions API — their decision substance comes
 // from the conditions endpoint. Everywhere else (eplanning/iDocs councils)
 // the reasons live only in the scanned decision order.
 const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fingal", "dlr"]);
 
-/** The full conditions / refusal reasons, grouped and collapsible. */
-function ConditionGroups({ conditions }: { conditions: DecisionConditions }) {
-  const groups = CONDITION_GROUPS.map((g) => ({
-    ...g,
-    items: conditions.items.filter((i) => i.code === g.code),
-  })).filter((g) => g.items.length > 0);
+const conditionAnchor = (n: number) => `condition-${n}`;
+
+/**
+ * The point of the whole feature: a permission can be granted and still not
+ * allow what was drawn. These are the conditions that bind — a narrower
+ * entrance, a window that has to be obscured, a dormer dropped below the
+ * ridge — lifted out of a list that is otherwise near-identical on every
+ * decision. Each one links to the condition it came from, because the wording
+ * is what the applicant is actually held to.
+ */
+function ConditionHighlights({
+  highlights,
+  loading,
+  total,
+}: {
+  highlights: ConditionHighlight[] | null;
+  loading: boolean;
+  total: number;
+}) {
+  if (loading)
+    return (
+      <p className="ai-summary highlights-loading loading-line">
+        ✦ Reading the conditions…
+      </p>
+    );
+  // null is "we couldn't read them" — saying "nothing notable" there would be
+  // a claim we haven't earned, and this is exactly where a false all-clear
+  // costs someone money.
+  if (!highlights || !highlights.length) return null;
+
+  const open = (n: number) => {
+    const el = document.getElementById(conditionAnchor(n));
+    if (!(el instanceof HTMLDetailsElement)) return;
+    el.open = true;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const rest = total - highlights.length;
+  return (
+    <div className="cond-highlights">
+      <h4>
+        What these conditions change <span className="ai-mark">✦</span>
+      </h4>
+      <ul>
+        {highlights.map((h) => (
+          <li key={h.n}>
+            <button type="button" className="cond-jump" onClick={() => open(h.n)}>
+              <span className="condition-num">{h.n}</span>
+              <span>{h.point}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {rest > 0 && (
+        <p className="cond-highlights-rest">
+          The other {rest} condition{rest === 1 ? " is" : "s are"} the council's standard wording.
+        </p>
+      )}
+      {/* Read from the decision by a model. The conditions below are the
+          binding text — this is a way in, not a substitute for them. */}
+      <p className="cond-highlights-note">
+        Picked out automatically. Always read the full condition before relying on it.
+      </p>
+    </div>
+  );
+}
+
+/** The full conditions / reasons, grouped and collapsible. */
+function ConditionGroups({
+  conditions,
+  decision,
+}: {
+  conditions: DecisionConditions;
+  decision: string | null;
+}) {
+  const groups = conditionGroups(decision)
+    .map((g) => ({
+      ...g,
+      items: conditions.items.filter((i) => i.code === g.code),
+    }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <>
@@ -214,15 +346,26 @@ function ConditionGroups({ conditions }: { conditions: DecisionConditions }) {
           <h4>
             {g.label} <span className="count">{g.items.length}</span>
           </h4>
+          {/* These headings are planning jargon, and "Notes" in particular
+              reads as though the council imposed something. Say what the
+              group actually is before the reader opens any of it. */}
+          {g.blurb && <p className="condition-blurb">{g.blurb}</p>}
           {g.items.map((item, i) => {
             const title = item.title || `${item.code_label} ${item.order}`;
             // Repeated titles (An Bord Pleanála conditions all arrive as
             // "ABP Condition") get their number appended to stay scannable.
             const dup = g.items.filter((x) => x.title === item.title).length > 1;
+            const num = item.order || i + 1;
             return (
-              <details key={`${g.code}-${item.order}-${i}`} className="condition">
+              <details
+                key={`${g.code}-${item.order}-${i}`}
+                className="condition"
+                // A highlight above links down to the condition it came from,
+                // so every condition needs a stable anchor.
+                id={g.code === "C" ? conditionAnchor(num) : undefined}
+              >
                 <summary>
-                  <span className="condition-num">{item.order || i + 1}</span>
+                  <span className="condition-num">{num}</span>
                   {dup && item.order ? `${title} ${item.order}` : title}
                 </summary>
                 {item.text && <p className="condition-text">{item.text}</p>}
@@ -560,6 +703,8 @@ function DecisionSection({
   conditionsFailed,
   refusalSummary,
   refusalLoading,
+  highlights,
+  highlightsLoading,
 }: {
   detail: AppDetail;
   conditions: DecisionConditions | null;
@@ -567,6 +712,8 @@ function DecisionSection({
   conditionsFailed: boolean;
   refusalSummary: string | null;
   refusalLoading: boolean;
+  highlights: ConditionHighlight[] | null;
+  highlightsLoading: boolean;
 }) {
   const decision = conditions?.decision ?? d.decision;
   const decisionDate = conditions?.decision_date ?? d.decision_date;
@@ -576,7 +723,11 @@ function DecisionSection({
   // decision order — offer the on-demand PDF summary instead of conditions.
   const scannedOrderOnly =
     Boolean(d.decision && d.scanned_files_url) && !AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
-  const summary = conditions?.refusal_summary ?? refusalSummary;
+  // The red "Refused because…" line belongs to a refusal — by the council or
+  // by the Commission on appeal. On a grant the same reasons are the First
+  // Schedule, and a refusal-shaped sentence about them is simply wrong.
+  const refused = isRefusalDecision(decision) || isRefusalDecision(d.appeal_decision);
+  const summary = refused ? conditions?.refusal_summary ?? refusalSummary : null;
 
   return (
     <section aria-labelledby="decision-h" aria-busy={conditionsLoading || undefined}>
@@ -608,7 +759,7 @@ function DecisionSection({
             <span className="hint">
               {" · notice "}
               <a
-                href={`https://data.nbco.gov.ie/dataset/bcms/resource/0774e781-7af8-46da-b623-872e74cf541e?q=${encodeURIComponent(d.commencement_notice)}`}
+                href={bcmsNoticeUrl(d.commencement_notice)}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -624,6 +775,7 @@ function DecisionSection({
       {summary ? (
         <p className="ai-summary refusal-summary">✦ {summary}</p>
       ) : (
+        refused &&
         refusalLoading && (
           <p className="ai-summary refusal-summary loading-line">✦ Summarising the reasons…</p>
         )
@@ -635,7 +787,16 @@ function DecisionSection({
           <span />
         </div>
       )}
-      {conditions && conditions.items.length > 0 && <ConditionGroups conditions={conditions} />}
+      {conditions && conditions.items.length > 0 && (
+        <>
+          <ConditionHighlights
+            highlights={highlights}
+            loading={highlightsLoading}
+            total={conditions.items.filter((i) => i.code === "C").length}
+          />
+          <ConditionGroups conditions={conditions} decision={decision} />
+        </>
+      )}
       {/* Three distinct outcomes, never collapsed into a blank space: the
           council recorded none, or we couldn't reach the council at all. */}
       {!conditionsLoading && conditions && conditions.items.length === 0 && (
@@ -926,6 +1087,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const [conditionsFailed, setConditionsFailed] = useState(false);
   const [refusalSummary, setRefusalSummary] = useState<string | null>(null);
   const [refusalLoading, setRefusalLoading] = useState(false);
+  const [highlights, setHighlights] = useState<ConditionHighlight[] | null>(null);
+  const [highlightsLoading, setHighlightsLoading] = useState(false);
   const [enrich, setEnrich] = useState<{
     ai_summary: string | null;
     applicant_name: string | null;
@@ -957,6 +1120,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     setConditionsFailed(false);
     setRefusalSummary(null);
     setRefusalLoading(false);
+    setHighlights(null);
+    setHighlightsLoading(false);
     setEnrich(null);
     setDescExpanded(false);
     let cancelled = false;
@@ -1055,8 +1220,14 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             if (!res.conditions?.items.length) return;
             // The plain-English refusal line is generated on its own endpoint
             // so the conditions render immediately — fetch it once we know
-            // there are refusal reasons to summarise.
-            if (!res.conditions.refusal_summary && res.conditions.items.some((i) => i.code === "R")) {
+            // there are refusal reasons to summarise. Code "R" alone isn't
+            // that: on a grant it is the First Schedule reasons for granting,
+            // so the decision has to say "refuse" before we ask.
+            if (
+              !res.conditions.refusal_summary &&
+              isRefusalDecision(res.conditions.decision ?? d.decision) &&
+              res.conditions.items.some((i) => i.code === "R")
+            ) {
               setRefusalLoading(true);
               api
                 .refusalSummary(d.id)
@@ -1066,6 +1237,21 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
                 .catch(() => {})
                 .finally(() => {
                   if (!cancelled) setRefusalLoading(false);
+                });
+            }
+            // Conditions bind whatever the outcome, so this runs on grants
+            // and refusals alike — but only where the council actually
+            // imposed some.
+            if (res.conditions.items.some((i) => i.code === "C")) {
+              setHighlightsLoading(true);
+              api
+                .conditionHighlights(d.id)
+                .then((r) => {
+                  if (!cancelled) setHighlights(r.highlights ?? null);
+                })
+                .catch(() => {})
+                .finally(() => {
+                  if (!cancelled) setHighlightsLoading(false);
                 });
             }
           });
@@ -1080,7 +1266,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     return () => {
       cancelled = true;
     };
-  }, [d.id, d.ai_summary, d.applicant_name, d.agent_name, hasConditionsSource]);
+  }, [d.id, d.ai_summary, d.applicant_name, d.agent_name, d.decision, hasConditionsSource]);
 
   const aiSummary = d.ai_summary ?? enrich?.ai_summary ?? null;
   const applicant = d.applicant_name ?? enrich?.applicant_name ?? null;
@@ -1295,6 +1481,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         conditionsFailed={conditionsFailed}
         refusalSummary={refusalSummary}
         refusalLoading={refusalLoading}
+        highlights={highlights}
+        highlightsLoading={highlightsLoading}
       />
 
       <section aria-labelledby="timeline-h">
