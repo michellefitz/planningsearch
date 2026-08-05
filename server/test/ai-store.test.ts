@@ -118,6 +118,28 @@ describe("descriptionUserMsg", () => {
   });
 });
 
+describe("versionedKind", () => {
+  it("changes when the prompt changes, so a fix reaches cached applications", async () => {
+    const { versionedKind, AI_CACHE_KINDS } = await import("../../api/_ai/store.mjs");
+    const a = versionedKind(AI_CACHE_KINDS.HIGHLIGHTS, "prompt one");
+    const b = versionedKind(AI_CACHE_KINDS.HIGHLIGHTS, "prompt two");
+    expect(a).not.toBe(b);
+    expect(versionedKind(AI_CACHE_KINDS.HIGHLIGHTS, "prompt one")).toBe(a);
+  });
+
+  it("keeps the kind readable, so a row can be traced back", async () => {
+    const { versionedKind } = await import("../../api/_ai/store.mjs");
+    expect(versionedKind("condition_highlights", "x")).toMatch(/^condition_highlights@[0-9a-f]{8}$/);
+  });
+
+  it("is wired to the live prompt in the serverless entry", () => {
+    // Without this the durable cache would pin every application to whatever
+    // prompt happened to be deployed when it was first viewed.
+    const entry = fs.readFileSync(path.join(ROOT, "api/_index.mjs"), "utf8");
+    expect(entry).toMatch(/versionedKind\(\s*[\s\S]{0,200}?AI_CACHE_KINDS\.HIGHLIGHTS,\s*HIGHLIGHTS_PROMPT/);
+  });
+});
+
 describe("topUpDescriptionSummaries", () => {
   it("does nothing, and says why, without the credentials it needs", async () => {
     const { topUpDescriptionSummaries } = await import("../../api/_ai/topup.mjs");

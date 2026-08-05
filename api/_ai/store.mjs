@@ -16,7 +16,23 @@
  * service, no new credentials. Every failure is swallowed: a cache that is
  * unreachable must cost a model call, never a broken page.
  */
+import { createHash } from "node:crypto";
 import { sql } from "../_accounts/db.mjs";
+
+/**
+ * Tie a cached answer to the prompt that produced it.
+ *
+ * The cache is durable and a decision never changes, so without this a prompt
+ * fix would never reach anything already cached — the improvement would only
+ * ever be visible on applications nobody had looked at yet. Hashing the prompt
+ * means an edit invalidates its own entries automatically, with nothing to
+ * remember. Superseded rows are left behind; they are a few hundred bytes each
+ * and unreachable.
+ */
+export function versionedKind(kind, promptText) {
+  const v = createHash("sha256").update(String(promptText)).digest("hex").slice(0, 8);
+  return `${kind}@${v}`;
+}
 
 /** Kinds stored here. Each maps to one prompt's output for one application. */
 export const AI_CACHE_KINDS = Object.freeze({

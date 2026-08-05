@@ -12,8 +12,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleAccountRoute, isAccountRoute } from "./_accounts/routes.mjs";
 import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
-import { conditionHighlights } from "./_conditions/highlights.mjs";
-import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached } from "./_ai/store.mjs";
+import { conditionHighlights, HIGHLIGHTS_PROMPT } from "./_conditions/highlights.mjs";
+import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached, versionedKind } from "./_ai/store.mjs";
 import { descriptionKey } from "./_ai/descriptions.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -2979,7 +2979,9 @@ export default async function handler(req, res) {
     // null is "we couldn't read them", [] is "nothing here binds you" — only
     // the real answer is stored, so a timeout retries on the next view.
     const highlights = await aiCached(
-      AI_CACHE_KINDS.HIGHLIGHTS,
+      // Tied to the prompt: a change to it must not keep serving the old
+      // answer for every application already looked at.
+      versionedKind(AI_CACHE_KINDS.HIGHLIGHTS, HIGHLIGHTS_PROMPT),
       app.authority_id,
       app.planning_reference,
       async () => {
