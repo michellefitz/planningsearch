@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleAccountRoute, isAccountRoute } from "./_accounts/routes.mjs";
 import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
+import { conditionHighlights } from "./_conditions/highlights.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));
@@ -1467,6 +1468,9 @@ async function summariseDescription(description, applicationType, trace) {
 }
 
 const REFUSAL_SUMMARY_CACHE = new Map();
+/** Conditions never change once a decision is made, so one call per
+ *  application is all this ever needs — keyed by id, same as the refusal. */
+const HIGHLIGHTS_CACHE = new Map();
 
 async function summariseRefusal(appId, reasons) {
   if (!reasons.length) return null;
@@ -2922,6 +2926,30 @@ export default async function handler(req, res) {
     const reasons = conditions?.items.filter((i) => i.code === "R") ?? [];
     const summary = reasons.length ? await summariseRefusal(app.id, reasons) : null;
     return send(res, 200, { supported: true, summary });
+  }
+
+  // What the conditions actually change about the approved scheme. Its own
+  // endpoint so the conditions themselves paint without waiting on the model.
+  const chm = route.match(/^\/api\/applications\/(\d+)\/condition-highlights$/);
+  if (chm) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(chm[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    if (!(app.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
+      return send(res, 200, { supported: false, highlights: null });
+    }
+    if (HIGHLIGHTS_CACHE.has(app.id)) {
+      return send(res, 200, { supported: true, highlights: HIGHLIGHTS_CACHE.get(app.id) });
+    }
+    const conditions = await fetchAgileConditions(
+      app.authority_id,
+      app.source_url,
+      app.planning_reference
+    );
+    const highlights = await conditionHighlights(conditions?.items ?? [], callClaude);
+    // null is "we couldn't read them", [] is "nothing here binds you" — cache
+    // only the real answer so a timeout retries on the next view.
+    if (highlights) HIGHLIGHTS_CACHE.set(app.id, highlights);
+    return send(res, 200, { supported: true, highlights });
   }
 
   const am = route.match(/^\/api\/applications\/(\d+)\/appeal$/);

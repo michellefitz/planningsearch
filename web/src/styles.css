@@ -2646,6 +2646,75 @@ a.ov-pop-sub {
   justify-content: center;
   transform: translateY(-0.05rem);
 }
+/* The operative constraints, above the full list. Tinted rather than boxed in
+   red — a condition is not a warning, it is the shape of what was allowed. */
+.cond-highlights {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.8rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.cond-highlights h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  margin: 0 0 0.5rem;
+}
+.cond-highlights .ai-mark {
+  color: #7c3aed;
+}
+.cond-highlights ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.cond-jump {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.3rem 0.35rem;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.cond-jump:hover,
+.cond-jump:focus-visible {
+  background: var(--surface);
+}
+.cond-jump .condition-num {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+}
+.cond-highlights-rest,
+.cond-highlights-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+.cond-highlights-note {
+  margin-top: 0.25rem;
+}
+.ai-summary.highlights-loading {
+  margin: 0 0 0.85rem;
+}
+
 .condition-text {
   margin: 0;
   padding: 0.6rem 0.75rem 0.7rem;

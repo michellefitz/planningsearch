@@ -122,6 +122,12 @@ export interface ConditionItem {
   order: number;
 }
 
+/** One thing the conditions actually change, tied to the condition it came from. */
+export interface ConditionHighlight {
+  n: number;
+  point: string;
+}
+
 export interface DecisionConditions {
   decision: string | null;
   decision_date: string | null;
@@ -327,6 +333,10 @@ export const api = {
   refusalSummary: (id: number) =>
     getJson<{ supported: boolean; summary: string | null }>(
       `/api/applications/${id}/refusal-summary`
+    ),
+  conditionHighlights: (id: number) =>
+    getJson<{ supported: boolean; highlights: ConditionHighlight[] | null }>(
+      `/api/applications/${id}/condition-highlights`
     ),
   appeal: (id: number) =>
     getJson<{

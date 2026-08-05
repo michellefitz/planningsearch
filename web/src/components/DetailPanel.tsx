@@ -1,5 +1,13 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { api, fmtDate, type AppDetail, type DecisionConditions, type Meta, type ZoningInfo } from "../api";
+import {
+  api,
+  fmtDate,
+  type AppDetail,
+  type ConditionHighlight,
+  type DecisionConditions,
+  type Meta,
+  type ZoningInfo,
+} from "../api";
 import PropertyMedia, { GMAPS_KEY, MapLinks } from "./PropertyMedia";
 import { XIcon } from "./icons";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
@@ -249,6 +257,73 @@ function conditionGroups(decision: string | null | undefined) {
 // the reasons live only in the scanned decision order.
 const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fingal", "dlr"]);
 
+const conditionAnchor = (n: number) => `condition-${n}`;
+
+/**
+ * The point of the whole feature: a permission can be granted and still not
+ * allow what was drawn. These are the conditions that bind — a narrower
+ * entrance, a window that has to be obscured, a dormer dropped below the
+ * ridge — lifted out of a list that is otherwise near-identical on every
+ * decision. Each one links to the condition it came from, because the wording
+ * is what the applicant is actually held to.
+ */
+function ConditionHighlights({
+  highlights,
+  loading,
+  total,
+}: {
+  highlights: ConditionHighlight[] | null;
+  loading: boolean;
+  total: number;
+}) {
+  if (loading)
+    return (
+      <p className="ai-summary highlights-loading loading-line">
+        ✦ Reading the conditions…
+      </p>
+    );
+  // null is "we couldn't read them" — saying "nothing notable" there would be
+  // a claim we haven't earned, and this is exactly where a false all-clear
+  // costs someone money.
+  if (!highlights || !highlights.length) return null;
+
+  const open = (n: number) => {
+    const el = document.getElementById(conditionAnchor(n));
+    if (!(el instanceof HTMLDetailsElement)) return;
+    el.open = true;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const rest = total - highlights.length;
+  return (
+    <div className="cond-highlights">
+      <h4>
+        What these conditions change <span className="ai-mark">✦</span>
+      </h4>
+      <ul>
+        {highlights.map((h) => (
+          <li key={h.n}>
+            <button type="button" className="cond-jump" onClick={() => open(h.n)}>
+              <span className="condition-num">{h.n}</span>
+              <span>{h.point}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {rest > 0 && (
+        <p className="cond-highlights-rest">
+          The other {rest} condition{rest === 1 ? " is" : "s are"} the council's standard wording.
+        </p>
+      )}
+      {/* Read from the decision by a model. The conditions below are the
+          binding text — this is a way in, not a substitute for them. */}
+      <p className="cond-highlights-note">
+        Picked out automatically. Always read the full condition before relying on it.
+      </p>
+    </div>
+  );
+}
+
 /** The full conditions / reasons, grouped and collapsible. */
 function ConditionGroups({
   conditions,
@@ -280,10 +355,17 @@ function ConditionGroups({
             // Repeated titles (An Bord Pleanála conditions all arrive as
             // "ABP Condition") get their number appended to stay scannable.
             const dup = g.items.filter((x) => x.title === item.title).length > 1;
+            const num = item.order || i + 1;
             return (
-              <details key={`${g.code}-${item.order}-${i}`} className="condition">
+              <details
+                key={`${g.code}-${item.order}-${i}`}
+                className="condition"
+                // A highlight above links down to the condition it came from,
+                // so every condition needs a stable anchor.
+                id={g.code === "C" ? conditionAnchor(num) : undefined}
+              >
                 <summary>
-                  <span className="condition-num">{item.order || i + 1}</span>
+                  <span className="condition-num">{num}</span>
                   {dup && item.order ? `${title} ${item.order}` : title}
                 </summary>
                 {item.text && <p className="condition-text">{item.text}</p>}
@@ -621,6 +703,8 @@ function DecisionSection({
   conditionsFailed,
   refusalSummary,
   refusalLoading,
+  highlights,
+  highlightsLoading,
 }: {
   detail: AppDetail;
   conditions: DecisionConditions | null;
@@ -628,6 +712,8 @@ function DecisionSection({
   conditionsFailed: boolean;
   refusalSummary: string | null;
   refusalLoading: boolean;
+  highlights: ConditionHighlight[] | null;
+  highlightsLoading: boolean;
 }) {
   const decision = conditions?.decision ?? d.decision;
   const decisionDate = conditions?.decision_date ?? d.decision_date;
@@ -702,7 +788,14 @@ function DecisionSection({
         </div>
       )}
       {conditions && conditions.items.length > 0 && (
-        <ConditionGroups conditions={conditions} decision={decision} />
+        <>
+          <ConditionHighlights
+            highlights={highlights}
+            loading={highlightsLoading}
+            total={conditions.items.filter((i) => i.code === "C").length}
+          />
+          <ConditionGroups conditions={conditions} decision={decision} />
+        </>
       )}
       {/* Three distinct outcomes, never collapsed into a blank space: the
           council recorded none, or we couldn't reach the council at all. */}
@@ -994,6 +1087,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const [conditionsFailed, setConditionsFailed] = useState(false);
   const [refusalSummary, setRefusalSummary] = useState<string | null>(null);
   const [refusalLoading, setRefusalLoading] = useState(false);
+  const [highlights, setHighlights] = useState<ConditionHighlight[] | null>(null);
+  const [highlightsLoading, setHighlightsLoading] = useState(false);
   const [enrich, setEnrich] = useState<{
     ai_summary: string | null;
     applicant_name: string | null;
@@ -1025,6 +1120,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     setConditionsFailed(false);
     setRefusalSummary(null);
     setRefusalLoading(false);
+    setHighlights(null);
+    setHighlightsLoading(false);
     setEnrich(null);
     setDescExpanded(false);
     let cancelled = false;
@@ -1140,6 +1237,21 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
                 .catch(() => {})
                 .finally(() => {
                   if (!cancelled) setRefusalLoading(false);
+                });
+            }
+            // Conditions bind whatever the outcome, so this runs on grants
+            // and refusals alike — but only where the council actually
+            // imposed some.
+            if (res.conditions.items.some((i) => i.code === "C")) {
+              setHighlightsLoading(true);
+              api
+                .conditionHighlights(d.id)
+                .then((r) => {
+                  if (!cancelled) setHighlights(r.highlights ?? null);
+                })
+                .catch(() => {})
+                .finally(() => {
+                  if (!cancelled) setHighlightsLoading(false);
                 });
             }
           });
@@ -1369,6 +1481,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         conditionsFailed={conditionsFailed}
         refusalSummary={refusalSummary}
         refusalLoading={refusalLoading}
+        highlights={highlights}
+        highlightsLoading={highlightsLoading}
       />
 
       <section aria-labelledby="timeline-h">
