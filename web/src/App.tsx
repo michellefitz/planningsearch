@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   EMPTY_SEARCH,
@@ -13,15 +13,16 @@ import {
 import SearchBar from "./components/SearchBar";
 import FiltersBar from "./components/FiltersBar";
 import ResultsList from "./components/ResultsList";
-import DetailPanel from "./components/DetailPanel";
 import MapView, { STATUS_STYLE } from "./components/MapView";
-import ChatPanel from "./components/ChatPanel";
-import AccountPanel from "./components/AccountPanel";
-import PrePlannerPanel from "./components/PrePlannerPanel";
 import { accountApi, saveKey, type AreaWatch, type Me, type SavedApp } from "./accountApi";
 import type { AgentAppRef } from "./agentApi";
 import { coverageSummary } from "./coverage";
 import { posthog } from "./posthog";
+
+const DetailPanel = lazy(() => import("./components/DetailPanel"));
+const ChatPanel = lazy(() => import("./components/ChatPanel"));
+const AccountPanel = lazy(() => import("./components/AccountPanel"));
+const PrePlannerPanel = lazy(() => import("./components/PrePlannerPanel"));
 
 /**
  * An open application is a real, shareable address: /application/{council}/{ref}.
@@ -759,7 +760,9 @@ export default function App() {
           </div>
 
           <div hidden={mode !== "ask"} className="chat-wrap">
-            <ChatPanel onSelectApp={select} onHoverApp={setHoveredId} onAppsReferenced={showAgentApps} />
+            <Suspense>
+              <ChatPanel onSelectApp={select} onHoverApp={setHoveredId} onAppsReferenced={showAgentApps} />
+            </Suspense>
           </div>
 
         </div>
@@ -954,16 +957,18 @@ export default function App() {
             <button type="button" className="back-to-map no-print" onClick={() => setMode("search")}>
               ← Back to map
             </button>
-            <PrePlannerPanel
-              onOpenApp={async (authorityId, reference) => {
-                try {
-                  const { id } = await api.resolve(authorityId, reference);
-                  await select(id);
-                } catch {
-                  setError("That application is no longer in the current dataset.");
-                }
-              }}
-            />
+            <Suspense>
+              <PrePlannerPanel
+                onOpenApp={async (authorityId, reference) => {
+                  try {
+                    const { id } = await api.resolve(authorityId, reference);
+                    await select(id);
+                  } catch {
+                    setError("That application is no longer in the current dataset.");
+                  }
+                }}
+              />
+            </Suspense>
           </div>
         </main>
       )}
@@ -974,6 +979,7 @@ export default function App() {
             <button type="button" className="back-to-map" onClick={() => setMode("search")}>
               ← Back to map
             </button>
+            <Suspense>
             <AccountPanel
               me={me}
               notice={authNotice}
@@ -1002,6 +1008,7 @@ export default function App() {
                 setFlyTo({ lat: w.lat, lng: w.lng, zoom: 15 - Math.log2(w.radius_m / 250) });
               }}
             />
+            </Suspense>
           </div>
         </main>
       )}
@@ -1021,15 +1028,17 @@ export default function App() {
             onClick={closeSheet}
             aria-hidden="true"
           />
-          <DetailPanel
-            detail={detail}
-            meta={meta}
-            closing={sheetClosing}
-            onClose={closeSheet}
-            onSelectRelated={select}
-            saved={savedByKey.has(saveKey(detail.authority_id, detail.planning_reference))}
-            onToggleSave={() => toggleSave(detail.authority_id, detail.planning_reference)}
-          />
+          <Suspense>
+            <DetailPanel
+              detail={detail}
+              meta={meta}
+              closing={sheetClosing}
+              onClose={closeSheet}
+              onSelectRelated={select}
+              saved={savedByKey.has(saveKey(detail.authority_id, detail.planning_reference))}
+              onToggleSave={() => toggleSave(detail.authority_id, detail.planning_reference)}
+            />
+          </Suspense>
         </>
       )}
     </div>
