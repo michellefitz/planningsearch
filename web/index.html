@@ -11,9 +11,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
-      rel="stylesheet"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
+    <link rel="preload" as="fetch" href="/api/meta" crossorigin />
   </head>
   <body>
     <div id="root">
@@ -21,7 +30,16 @@
         <header class="app-header">
           <h1>PlanView <span class="beta">beta</span></h1>
         </header>
-        <div style="flex:1;background:#f0f0f0"></div>
+        <div style="display:flex;flex:1;overflow:hidden">
+          <div style="width:clamp(280px,28%,380px);padding:0.8rem;display:flex;flex-direction:column;gap:0.5rem">
+            <div style="height:2.2rem;border-radius:8px;background:#e5e7eb"></div>
+            <div style="height:1.4rem;border-radius:6px;background:#f3f4f6;width:60%"></div>
+            <div style="height:4rem;border-radius:8px;background:#f3f4f6"></div>
+            <div style="height:4rem;border-radius:8px;background:#f3f4f6"></div>
+            <div style="height:4rem;border-radius:8px;background:#f3f4f6"></div>
+          </div>
+          <div style="flex:1;background:#f0f0f0"></div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
