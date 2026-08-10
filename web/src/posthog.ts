@@ -9,13 +9,17 @@ if (apiKey && apiHost) {
     capture_exceptions: true,
   });
 } else if (import.meta.env.DEV) {
-  if (!apiKey) {
-    throw new Error(
-      "VITE_PUBLIC_POSTHOG_KEY variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_PUBLIC_POSTHOG_KEY is configured"
-    );
-  }
-  throw new Error(
-    "VITE_PUBLIC_POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_PUBLIC_POSTHOG_KEY is configured"
+  // Analytics is optional for local development: warn loudly, but never throw.
+  // This runs at module load, so throwing took the whole app down with a blank
+  // page — anyone cloning the repo without a PostHog project couldn't run it.
+  const missing = [
+    !apiKey && "VITE_PUBLIC_POSTHOG_KEY",
+    !apiHost && "VITE_PUBLIC_POSTHOG_HOST",
+  ].filter(Boolean);
+  console.warn(
+    `PostHog is disabled: ${missing.join(" and ")} not set. Analytics events ` +
+      `will not be recorded. Copy web/.env.example to web/.env and fill it in ` +
+      `to enable them locally; production sets these in the Vercel project.`
   );
 }
 
