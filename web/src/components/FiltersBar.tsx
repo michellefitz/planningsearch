@@ -1,5 +1,6 @@
 import { DEFAULT_STATUSES, HIDDEN_BY_DEFAULT_STATUSES, fmtDate, MIN_UNITS_OPTIONS, type Meta, type SearchState } from "../api";
 import { STATUS_STYLE } from "./MapView";
+import DateRangePicker from "./DateRangePicker";
 import MultiSelect from "./MultiSelect";
 
 interface Props {
@@ -146,22 +147,12 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
       </fieldset>
 
       <fieldset>
-        <legend>Received between</legend>
-        <div className="date-row">
-          <input
-            type="date"
-            aria-label="Received from"
-            value={state.receivedFrom}
-            onChange={(e) => onChange({ ...state, receivedFrom: e.target.value })}
-          />
-          <span aria-hidden="true">–</span>
-          <input
-            type="date"
-            aria-label="Received to"
-            value={state.receivedTo}
-            onChange={(e) => onChange({ ...state, receivedTo: e.target.value })}
-          />
-        </div>
+        <legend>Received</legend>
+        <DateRangePicker
+          from={state.receivedFrom}
+          to={state.receivedTo}
+          onChange={(receivedFrom, receivedTo) => onChange({ ...state, receivedFrom, receivedTo })}
+        />
       </fieldset>
 
       <details className="filters-advanced">
