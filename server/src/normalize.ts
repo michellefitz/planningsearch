@@ -353,7 +353,14 @@ const UNIT_NOUN =
 // with a capital N, and without the flag the abbreviation went unrecognised —
 // the count then ran into "No. houses", which is not a unit noun, and the
 // whole scheme scored null.
-const UNIT_COUNT = /(\d{1,4})\s*(?:no\.?\s*|nr\.?\s*|x\s*)?/gi;
+// Comma-grouped thousands must be matched as one token, and first, or the
+// leading digits are consumed separately and the count silently loses them:
+// "1,510 residential units" matched "1" (rejected — "," is not a unit noun),
+// then "510" (accepted), reporting a 1,510-home scheme as 510.
+const UNIT_COUNT = /(\d{1,3}(?:,\d{3})+|\d{1,4})\s*(?:no\.?\s*|nr\.?\s*|x\s*)?/gi;
+/** Sanity ceiling. Above any real Irish scheme — the largest SHDs run to a few
+ *  thousand homes — while still rejecting a stray figure that isn't a count. */
+const MAX_UNITS = 5000;
 
 /**
  * Best-effort residential unit count from the development description, used
@@ -372,8 +379,8 @@ export function extractResidentialUnits(description: string | null | undefined):
   let m: RegExpExecArray | null;
   UNIT_COUNT.lastIndex = 0;
   while ((m = UNIT_COUNT.exec(text))) {
-    const n = Number(m[1]);
-    if (!n || n > 2000) continue;
+    const n = Number(m[1].replace(/,/g, ""));
+    if (!n || n > MAX_UNITS) continue;
     // The number has to be its own token. Digits with a letter stuck straight
     // after them are an address or unit designator — "169C into a single unit"
     // is a pizza restaurant, not 169 homes — and digits with a letter before

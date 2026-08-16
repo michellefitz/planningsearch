@@ -597,7 +597,12 @@ body {
     border-radius: 0;
     padding-left: 0;
     padding-right: 0;
+    /* No tinted card on mobile. Full-bleed against the panel edge it read as
+       a stray grey block rather than a grouped panel; the hairline above the
+       results is enough separation on a narrow screen. */
+    background: none;
   }
+
 
   .view-toggle {
     margin: 0;
@@ -833,12 +838,12 @@ body {
   padding-bottom: 0.3rem;
 }
 
-/* Separate the filter groups with hairlines rather than whitespace — reads as
-   a tidy panel instead of a tall stack. */
+/* Space, not hairlines, between the filter groups. Each control is already a
+   bounded box, so a rule above every one of them stacked up as ruling the
+   panel didn't need — the label plus the gap reads as the group boundary. The
+   one divider kept is above "Advanced", where it marks a real section break. */
 .filters[open] fieldset + fieldset {
-  border-top: 1px solid var(--line);
-  margin-top: 0.45rem;
-  padding-top: 0.5rem;
+  margin-top: 0.7rem;
 }
 
 .filters summary {
@@ -858,17 +863,23 @@ body {
   display: none;
 }
 
-.filters summary::after {
+/* Direct child only. As a descendant selector this also caught the nested
+   "Advanced" summary and out-specified its own closed-state rule, so that
+   arrow pointed up whenever the outer panel was open, whatever Advanced
+   itself was doing. */
+.filters > summary::after {
   content: "";
   width: 0.55rem;
   height: 0.55rem;
   border-right: 1.5px solid var(--ink-3);
   border-bottom: 1.5px solid var(--ink-3);
+  /* Nudged off the label: the chevron sat tight against the count. */
+  margin-left: 0.15rem;
   transform: rotate(45deg) translateY(-2px);
   transition: transform 120ms ease;
 }
 
-.filters[open] summary::after {
+.filters[open] > summary::after {
   transform: rotate(225deg) translateY(-1px);
 }
 
@@ -959,7 +970,9 @@ body {
   letter-spacing: 0.07em;
   color: var(--ink-3);
   padding: 0;
-  margin-bottom: 0.2rem;
+  /* A touch more air under the label now that no hairline separates the
+     groups — the gap is what pairs a label with its control. */
+  margin-bottom: 0.3rem;
 }
 
 .chip-row {
@@ -1426,6 +1439,7 @@ body {
   height: 0.45rem;
   border-right: 1.5px solid var(--ink-3);
   border-bottom: 1.5px solid var(--ink-3);
+  margin-left: 0.15rem;
   transform: rotate(45deg) translateY(-1px);
   transition: transform 120ms ease;
 }
@@ -1755,6 +1769,13 @@ body {
     place-items: center;
     line-height: 1;
   }
+  /* Drop "Near me" on mobile: the map's own locate control does the same job
+     and sits under the zoom buttons, where the thumb already is while looking
+     at the map. Must follow the .btn-icon rule above — equal specificity, so
+     source order decides. */
+  .search-bar .near-me-btn {
+    display: none;
+  }
   /* Still a comfortable tap target — the row is the target, not just the text. */
   .filters summary {
     padding: 0.45rem 0;
@@ -1770,6 +1791,11 @@ body {
   }
   .ms-options {
     max-height: 50vh;
+  }
+  /* Checkbox rows are the smallest targets in the panel — give the whole row
+     some height rather than asking for a hit on the box itself. */
+  .toggle-row {
+    padding: 0.3rem 0;
   }
 
   /* Map zoom / locate controls — 40px targets instead of the default 29px. */
@@ -2453,27 +2479,9 @@ a.ov-pop-sub {
   background: #0a56bc;
 }
 
-/* Area-watch creation: launcher button, draft card and "viewing" chip. */
-.watch-area-btn {
-  position: absolute;
-  z-index: 6;
-  right: 0.75rem;
-  bottom: 1rem;
-  background: #fff;
-  color: var(--ink);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  padding: 0.45rem 0.9rem;
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  box-shadow: 0 2px 10px rgba(26, 29, 33, 0.16);
-  cursor: pointer;
-}
-.watch-area-btn:hover {
-  border-color: var(--action);
-  color: var(--action);
-}
+/* Area-watch creation: draft card and "viewing" chip. The floating map
+   launcher was removed — it overlapped the legend and attribution and cost
+   space on small screens; watches start from the account panel for now. */
 
 /* Watch-creation is a focused mode: the map is the whole screen and the
    circle is its only subject. Everything that competes — the search panel,

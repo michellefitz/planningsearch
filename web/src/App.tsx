@@ -822,16 +822,11 @@ export default function App() {
               Search this area
             </button>
           )}
-          {!watchDraft && (
-            <button
-              type="button"
-              className="watch-area-btn"
-              onClick={startWatchDraft}
-              title="Get a daily email about new applications and commencements around a point"
-            >
-              + Watch an area
-            </button>
-          )}
+          {/* "+ Watch an area" used to sit here, but a permanent button over
+              the map overlapped the legend and attribution and cost space on
+              small screens. Watches are still created from the account panel
+              ("Watch an area on the map"), which enters the same draft mode;
+              where the entry point belongs on the map is still open. */}
           {watchDraft && (
             <>
               <div className="watch-banner" role="status">

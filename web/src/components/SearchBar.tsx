@@ -102,9 +102,12 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
             <path d="M15.5 15.5 21 21" />
           </svg>
         </button>
+        {/* Hidden on mobile: the map's own locate control does the same job,
+            sits under the zoom buttons where a thumb already is, and is the
+            one people reach for while looking at the map. */}
         <button
           type="button"
-          className="btn btn-icon"
+          className="btn btn-icon near-me-btn"
           onClick={onNearMe}
           title="Search near my location"
           aria-label="Search near my location"
