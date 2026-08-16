@@ -13,6 +13,7 @@ import { XIcon } from "./icons";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "./MapView";
 import SaveStar from "./SaveStar";
+import { itemLabel } from "../../../api/_conditions/labels.mjs";
 import { getFloodData } from "../floodData";
 import { coverageNoteFor } from "../coverage";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
@@ -233,7 +234,10 @@ function conditionGroups(decision: string | null | undefined) {
       code: "R",
       label: isRefusalDecision(decision) ? "Reasons for refusal" : "Reasons & considerations",
       blurb: isRefusalDecision(decision)
-        ? "The grounds the council gave for refusing."
+        // Not always the council's own grounds: on an appealed case the portal
+        // files An Coimisiún Pleanála's reasons here too (Dublin City stamps
+        // them "ACP Reason"), so naming the council was simply wrong.
+        ? "The grounds given for refusal."
         : "The First Schedule of the decision order — why the council considered the development acceptable.",
     },
     {
@@ -351,11 +355,12 @@ function ConditionGroups({
               group actually is before the reader opens any of it. */}
           {g.blurb && <p className="condition-blurb">{g.blurb}</p>}
           {g.items.map((item, i) => {
-            const title = item.title || `${item.code_label} ${item.order}`;
-            // Repeated titles (An Bord Pleanála conditions all arrive as
-            // "ABP Condition") get their number appended to stay scannable.
-            const dup = g.items.filter((x) => x.title === item.title).length > 1;
             const num = item.order || i + 1;
+            // Portals often give a prescription no title of its own — every
+            // reason on an appealed Dublin City case arrives as "ACP Reason",
+            // so the list read "ACP Reason 1…4" and had to be opened to learn
+            // anything. Derive a label from the wording in that case.
+            const title = itemLabel(item, num);
             return (
               <details
                 key={`${g.code}-${item.order}-${i}`}
@@ -366,7 +371,7 @@ function ConditionGroups({
               >
                 <summary>
                   <span className="condition-num">{num}</span>
-                  {dup && item.order ? `${title} ${item.order}` : title}
+                  {title}
                 </summary>
                 {item.text && <p className="condition-text">{item.text}</p>}
               </details>

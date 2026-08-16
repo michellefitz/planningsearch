@@ -292,6 +292,19 @@ describe("extractResidentialUnits", () => {
     ).toBe(9);
   });
 
+  it("reads comma-grouped thousands whole, not just the last three digits", () => {
+    // Reported: a 1,510-home scheme displayed as 510. "1" was matched and
+    // rejected (a comma is not a unit noun), then "510" matched and accepted.
+    expect(extractResidentialUnits("Construction of 1,510 residential units")).toBe(1510);
+    expect(extractResidentialUnits("Demolition and construction of 1,510 no. apartments")).toBe(1510);
+    expect(extractResidentialUnits("Construction of 1,200 dwellings")).toBe(1200);
+    expect(extractResidentialUnits("Construction of 2,750 no. residential units")).toBe(2750);
+    // Unseparated four-digit counts already worked and must keep working.
+    expect(extractResidentialUnits("Construction of 1510 residential units")).toBe(1510);
+    // A comma that is not a thousands group still splits into separate tokens.
+    expect(extractResidentialUnits("Phase 1, 500 no. dwellings")).toBe(500);
+  });
+
   it("returns null when no unit count is stated", () => {
     expect(extractResidentialUnits("Single storey extension to rear")).toBeNull();
     expect(extractResidentialUnits(null)).toBeNull();
