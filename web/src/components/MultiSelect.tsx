@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface MultiSelectOption {
   id: string;
@@ -13,25 +13,20 @@ interface Props {
   onChange: (next: string[]) => void;
   /** Accessible name for the trigger, e.g. "Filter by council". */
   ariaLabel: string;
-  /** Show a type-to-filter box once the list gets long. */
-  filterThreshold?: number;
 }
 
 /**
  * Compact dropdown multi-select — a trigger that summarises the selection and a
- * popover of checkboxes. Used where a chip row would not scale: the council list
- * starts at five authorities but grows toward all 31 local authorities.
+ * popover of checkboxes. Used where a chip row would not scale.
+ *
+ * Deliberately identical for every filter. A type-to-filter box used to appear
+ * once a list passed ten options, which meant Status alone grew a search field
+ * its eight-to-twelve entries never needed, and the three dropdowns no longer
+ * looked like the same control. If a list ever gets genuinely long (the council
+ * list would, at all 31 local authorities) it can come back for all of them.
  */
-export default function MultiSelect({
-  allLabel,
-  options,
-  selected,
-  onChange,
-  ariaLabel,
-  filterThreshold = 10,
-}: Props) {
+export default function MultiSelect({ allLabel, options, selected, onChange, ariaLabel }: Props) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click or Escape.
@@ -50,11 +45,6 @@ export default function MultiSelect({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
-
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
-  }, [options, query]);
 
   const summary =
     selected.length === 0
@@ -81,18 +71,8 @@ export default function MultiSelect({
       </button>
       {open && (
         <div className="ms-panel">
-          {options.length > filterThreshold && (
-            <input
-              type="text"
-              className="ms-filter"
-              placeholder="Type to filter…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              autoFocus
-            />
-          )}
           <div className="ms-options">
-            {visible.map((o) => (
+            {options.map((o) => (
               <label key={o.id} className="ms-option">
                 <input
                   type="checkbox"
@@ -102,13 +82,13 @@ export default function MultiSelect({
                 {o.label}
               </label>
             ))}
-            {visible.length === 0 && <p className="ms-empty">No matches</p>}
           </div>
-          {selected.length > 0 && (
-            <button type="button" className="ms-clear" onClick={() => onChange([])}>
-              Clear selection
-            </button>
-          )}
+          {/* "Clear selection" sat here; with a handful of options it is quicker
+              to untick than to find a bulk action, and every chosen option is
+              already one tap from being removed. Done just closes the list. */}
+          <button type="button" className="ms-done" onClick={() => setOpen(false)}>
+            Done
+          </button>
         </div>
       )}
     </div>
