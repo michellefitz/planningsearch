@@ -2191,13 +2191,19 @@ body {
   padding: 1rem 0;
 }
 
-.detail-sheet h3 {
+/* One label style for every heading in the sheet. "Conditions of this
+   decision" is an h4 nested inside the Decision section, but it was set darker
+   and larger than the h3 above it, so the sub-heading outranked its own
+   section. Both now share this; nesting is carried by position, not weight. */
+.detail-sheet h3,
+.detail-sheet .condition-group h4,
+.detail-sheet .cond-highlights h4 {
   margin: 0 0 0.6rem;
-  font-size: 0.67rem;
+  font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
+  letter-spacing: 0.07em;
+  color: var(--ink-2);
 }
 
 .detail-header {
@@ -3123,13 +3129,10 @@ a.ov-pop-sub {
 .condition-group {
   margin: 0 0 0.9rem;
 }
-.condition-group h4 {
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-2);
-  margin: 0 0 0.35rem;
+/* Type comes from the shared heading rule above; only the tighter gap to the
+   blurb underneath is local. */
+.detail-sheet .condition-group h4 {
+  margin-bottom: 0.35rem;
 }
 .condition-group h4 .count {
   font-weight: 500;
@@ -3198,16 +3201,13 @@ a.ov-pop-sub {
   border-radius: 10px;
   background: var(--surface-2);
 }
-.cond-highlights h4 {
+/* Type comes from the shared heading rule; the flex row is what puts the AI
+   star on the leading edge of the heading rather than inline with the words. */
+.detail-sheet .cond-highlights h4 {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-2);
-  margin: 0 0 0.5rem;
+  margin-bottom: 0.5rem;
 }
 .cond-highlights .ai-mark {
   color: #7c3aed;
@@ -3297,12 +3297,14 @@ a.ov-pop-sub {
   margin: 0 0 0.85rem;
 }
 
-/* Outcome words read at a glance in the decision headline. */
-.outcome-grant {
-  color: #166534;
-}
+/* The outcome word used to be green on a grant and red on a refusal. Beside
+   the grey dates, the black commencement line and the blue notice link, that
+   made four colours in a four-line block, and none of them told the reader
+   anything the words didn't. The outcome is already colour-coded in the status
+   pill at the top of the sheet; here it just reads. */
+.outcome-grant,
 .outcome-refuse {
-  color: #9f1239;
+  color: var(--ink);
 }
 
 /* BCMS commencement: did the permission actually get built on? */
@@ -3312,13 +3314,21 @@ a.ov-pop-sub {
   font-weight: 400;
   color: var(--ink);
 }
+/* Underlined rather than blue: it is a link, but a BCMS notice number set in
+   the accent colour was the loudest thing in the decision block. */
 .commencement-line a {
-  color: var(--action);
-  text-decoration: none;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
 }
 .commencement-line a:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration-color: currentColor;
+}
+/* The development contribution total. Shares the commencement line's type: a
+   plain fact about the decision, stated once, not a highlighted condition. */
+.contribution-line {
+  margin-bottom: 0.85rem;
 }
 /* ---------- Secondary pills (type / appeal / commencement) ---------- */
 /* Axes the single status badge can't carry, shown next to it in the list and
