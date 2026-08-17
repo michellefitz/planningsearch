@@ -1,12 +1,16 @@
+import { useEffect, useState } from "react";
 import { DEFAULT_STATUSES, HIDDEN_BY_DEFAULT_STATUSES, fmtDate, MIN_UNITS_OPTIONS, type Meta, type SearchState } from "../api";
 import { STATUS_STYLE } from "./MapView";
 import DateRangePicker from "./DateRangePicker";
 import MultiSelect from "./MultiSelect";
+import { XIcon } from "./icons";
 
 interface Props {
   meta: Meta | null;
   state: SearchState;
   onChange: (next: SearchState) => void;
+  /** Matching applications, named on the sheet's submit button. */
+  total: number;
 }
 
 interface Applied {
@@ -60,57 +64,97 @@ const STATUS_OPTIONS = ALL_STATUS_KEYS
   .filter((k) => k !== "unknown")
   .map((k) => ({ id: k, label: STATUS_STYLE[k]?.label ?? k }));
 
-export default function FiltersBar({ meta, state, onChange }: Props) {
+/** Everything the filter panel controls, back to defaults. */
+const CLEARED = {
+  authorities: [] as string[],
+  statuses: [...DEFAULT_STATUSES],
+  types: [] as string[],
+  domesticOnly: false,
+  oneOffOnly: false,
+  appealedOnly: false,
+  commencedOnly: false,
+  receivedFrom: "",
+  receivedTo: "",
+  minUnits: 0,
+  useMapArea: false,
+};
+
+export default function FiltersBar({ meta, state, onChange, total }: Props) {
   const applied = appliedFilters(meta, state, onChange);
   const activeCount = applied.length;
+  const [open, setOpen] = useState(false);
 
   const statusSelection = statusesCustomised(state) ? state.statuses : [];
   const handleStatusChange = (selected: string[]) =>
     onChange({ ...state, statuses: selected.length === 0 ? [...DEFAULT_STATUSES] : selected });
 
+  // On mobile the panel is a full-screen sheet, so the page behind it must not
+  // scroll under the finger.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   return (
-    <>
-    {applied.length > 0 && (
-      <div className="applied-row" role="group" aria-label="Active filters">
-        {applied.map((f) => (
-          <button key={f.key} type="button" className="applied-chip" onClick={f.remove} aria-label={`Remove filter: ${f.label}`}>
-            {f.label}
-            <span className="applied-x" aria-hidden="true">
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <path d="M1 1l6 6M7 1L1 7" />
-              </svg>
-            </span>
+    <div className={`filters-wrap${open ? " filters-open" : ""}`}>
+      <button
+        type="button"
+        className={`filters-btn${activeCount > 0 ? " filters-btn-on" : ""}`}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+          <path d="M2 4.5h12M4.5 8h7M6.5 11.5h3" />
+        </svg>
+        Filters
+        {activeCount > 0 && <span className="filters-count">{activeCount}</span>}
+      </button>
+
+      {/* Applied chips sit BELOW the button: above it, adding or clearing one
+          re-flowed the row and moved the button out from under the thumb. */}
+      {applied.length > 0 && (
+        <div className="applied-row" role="group" aria-label="Active filters">
+          {applied.map((f) => (
+            <button key={f.key} type="button" className="applied-chip" onClick={f.remove} aria-label={`Remove filter: ${f.label}`}>
+              {f.label}
+              <span className="applied-x" aria-hidden="true">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                  <path d="M1 1l6 6M7 1L1 7" />
+                </svg>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {open && <div className="filters-scrim" onClick={() => setOpen(false)} aria-hidden="true" />}
+
+      <div className="filters-panel" role="dialog" aria-modal="true" aria-label="Filters" hidden={!open}>
+        <div className="sheet-head">
+          <button type="button" className="sheet-close" onClick={() => setOpen(false)} aria-label="Close filters">
+            <XIcon size={13} />
           </button>
-        ))}
-        {applied.length > 1 && (
+          <h2>Filters</h2>
           <button
             type="button"
-            className="applied-clear"
-            onClick={() =>
-              onChange({
-                ...state,
-                authorities: [],
-                statuses: [...DEFAULT_STATUSES],
-                types: [],
-                domesticOnly: false,
-                oneOffOnly: false,
-                appealedOnly: false,
-                commencedOnly: false,
-                receivedFrom: "",
-                receivedTo: "",
-                minUnits: 0,
-                useMapArea: false,
-              })
-            }
+            className="sheet-reset"
+            onClick={() => onChange({ ...state, ...CLEARED })}
+            disabled={activeCount === 0}
           >
-            Clear all
+            Reset
           </button>
-        )}
-      </div>
-    )}
-    <details className="filters" open={false}>
-      <summary>Filters{activeCount > 0 && ` (${activeCount})`}</summary>
+        </div>
 
+        <div className="sheet-body">
       <fieldset>
         <legend>Council</legend>
         <MultiSelect
@@ -219,8 +263,18 @@ export default function FiltersBar({ meta, state, onChange }: Props) {
           </label>
         </fieldset>
       </details>
-    </details>
-    </>
+        </div>
+
+        {/* Results update as each control changes; this just gets the sheet out
+            of the way. Naming the count makes that visible, so the button reads
+            as "done" rather than "apply". */}
+        <div className="sheet-foot">
+          <button type="button" className="btn btn-primary sheet-submit" onClick={() => setOpen(false)}>
+            Show {total.toLocaleString()} result{total === 1 ? "" : "s"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

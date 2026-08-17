@@ -69,6 +69,20 @@ export default function App() {
   // Mobile only: the layout shows one of map / list at a time (a toggle),
   // rather than squishing both. Ignored at ≥768px, where they sit side by side.
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
+  // On mobile the search/filter chrome floats over the map, so the map's own
+  // controls have to clear it. Its height changes as controls wrap and applied
+  // chips come and go, so it is measured rather than guessed at.
+  const sidePanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sidePanelRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const publish = () =>
+      el.parentElement?.style.setProperty("--overlay-h", `${el.offsetHeight}px`);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // Desktop only: tuck the whole panel away for a full-width map.
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
@@ -667,7 +681,7 @@ export default function App() {
         className={`layout ${mode === "search" && (mobileView === "map" || watchDraft) ? "m-map" : "m-panel"}${panelCollapsed ? " panel-collapsed" : ""}${watchDraft ? " watch-mode" : ""}`}
         hidden={mode === "account" || mode === "preplan"}
       >
-        <div className="side-panel">
+        <div className="side-panel" ref={sidePanelRef}>
           {modeTabs("mode-tabs-panel")}
 
           <div hidden={mode !== "search"} className="search-wrap">
@@ -693,7 +707,7 @@ export default function App() {
                 keeps them as they were — the wrapper is display:contents there,
                 and the toggle is hidden anyway. */}
             <div className="panel-controls">
-            <FiltersBar meta={meta} state={state} onChange={applyState} />
+            <FiltersBar meta={meta} state={state} onChange={applyState} total={total} />
             {/* Mobile map/list toggle — hidden at ≥768px, where both show. */}
             <div className="view-toggle" role="group" aria-label="View">
               <span className="vt-count" role="status">
