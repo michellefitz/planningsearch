@@ -718,6 +718,15 @@ body {
     margin-bottom: env(safe-area-inset-bottom);
   }
 
+  /* "Search this area" is gone on phones: it reconciled the list with the map,
+     but the list is behind the List button, so it asked for a tap to fix
+     something you could not see — and it landed on top of the List button.
+     Tapping List now does the reconciling. Desktop keeps it, where both panes
+     are visible and the button's effect is too. */
+  .search-area-btn {
+    display: none;
+  }
+
   /* One button, bottom centre — the only jump you make from the map. */
   .layout.m-map .map-list-btn {
     position: absolute;
@@ -998,9 +1007,12 @@ body {
   display: none;
 }
 
+/* Sheet chrome is a phone affordance; on desktop the panel drops inline under
+   the button and has no handle, title bar or submit. */
 .sheet-head,
 .sheet-foot,
-.filters-scrim {
+.filters-scrim,
+.filters-panel .sheet-grabber {
   display: none;
 }
 
@@ -1324,6 +1336,29 @@ body {
 
 .dr-panel .chip.chip-on {
   border-color: var(--action);
+}
+
+/* The resolved dates ride along quietly — the label is what you scan, the
+   range is what you check. */
+.dr-chip-range {
+  margin-left: 0.3rem;
+  font-size: 0.92em;
+  font-weight: 400;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.dr-panel .chip-on .dr-chip-range {
+  color: var(--action);
+  opacity: 0.75;
+}
+
+/* The trigger now carries "Last month (15 Jul – 17 Aug)", which can outrun a
+   narrow panel; truncate rather than push the caret off the end. */
+.dr-trigger > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dr-nav {
@@ -1889,20 +1924,38 @@ body {
     animation: fade-in 140ms var(--ease);
   }
 
+  /* Same shape as the property sheet: a bottom sheet that stops short of the
+     top, with rounded shoulders and a lifted edge, rather than a rectangle
+     that fills the screen. */
   .filters-panel {
     position: fixed;
     z-index: 61;
     left: 0;
     right: 0;
     bottom: 0;
-    top: 0;
+    top: auto;
+    height: 92dvh;
     margin: 0;
     padding: 0;
-    border-radius: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 32px rgba(26, 29, 33, 0.22);
     background: var(--surface);
     display: flex;
     flex-direction: column;
-    animation: sheet-up 200ms var(--ease);
+    overscroll-behavior: contain;
+    animation: sheet-up 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  /* The grab handle is part of the sheet's chrome, not the scrolling body.
+     Needs display too — the desktop rule above hides it, and setting only
+     position here left it hidden. */
+  .filters-panel .sheet-grabber {
+    display: flex;
+    position: static;
+    flex: none;
+    margin: 0;
+    border-radius: 16px 16px 0 0;
+    height: 1.6rem;
   }
 
   @keyframes sheet-up {

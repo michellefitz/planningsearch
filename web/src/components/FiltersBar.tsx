@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DEFAULT_STATUSES, HIDDEN_BY_DEFAULT_STATUSES, fmtDate, MIN_UNITS_OPTIONS, type Meta, type SearchState } from "../api";
 import { STATUS_STYLE } from "./MapView";
 import DateRangePicker from "./DateRangePicker";
@@ -83,12 +83,13 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
   const applied = appliedFilters(meta, state, onChange);
   const activeCount = applied.length;
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const statusSelection = statusesCustomised(state) ? state.statuses : [];
   const handleStatusChange = (selected: string[]) =>
     onChange({ ...state, statuses: selected.length === 0 ? [...DEFAULT_STATUSES] : selected });
 
-  // On mobile the panel is a full-screen sheet, so the page behind it must not
+  // On mobile the panel is a bottom sheet, so the page behind it must not
   // scroll under the finger.
   useEffect(() => {
     if (!open) return;
@@ -101,6 +102,64 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  /**
+   * Drag the sheet down to dismiss, from the grab handle.
+   *
+   * Bound to the handle rather than the whole sheet: the body scrolls, and a
+   * drag that starts anywhere would fight it. Simpler than the property
+   * sheet's equivalent because this one has a single height — there is no peek
+   * state to snap back to, so it is either dismissed or it isn't.
+   */
+  useEffect(() => {
+    const panel = panelRef.current;
+    const grabber = panel?.querySelector<HTMLElement>(".sheet-grabber");
+    if (!open || !panel || !grabber) return;
+    let startY = 0;
+    let dy = 0;
+    let dragging = false;
+
+    const start = (e: TouchEvent) => {
+      startY = e.touches[0].clientY;
+      dy = 0;
+      dragging = true;
+      panel.style.transition = "none";
+    };
+    const move = (e: TouchEvent) => {
+      if (!dragging) return;
+      dy = Math.max(0, e.touches[0].clientY - startY);
+      e.preventDefault();
+      panel.style.transform = `translateY(${dy}px)`;
+    };
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      panel.style.transition = "transform 220ms cubic-bezier(0.32, 0.72, 0, 1)";
+      if (dy > 110) {
+        panel.style.transform = "translateY(100%)";
+        window.setTimeout(() => {
+          setOpen(false);
+          panel.style.transform = "";
+          panel.style.transition = "";
+        }, 200);
+      } else {
+        panel.style.transform = "";
+      }
+    };
+
+    grabber.addEventListener("touchstart", start, { passive: true });
+    grabber.addEventListener("touchmove", move, { passive: false });
+    grabber.addEventListener("touchend", end);
+    grabber.addEventListener("touchcancel", end);
+    return () => {
+      grabber.removeEventListener("touchstart", start);
+      grabber.removeEventListener("touchmove", move);
+      grabber.removeEventListener("touchend", end);
+      grabber.removeEventListener("touchcancel", end);
+      panel.style.transform = "";
+      panel.style.transition = "";
     };
   }, [open]);
 
@@ -138,7 +197,20 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
 
       {open && <div className="filters-scrim" onClick={() => setOpen(false)} aria-hidden="true" />}
 
-      <div className="filters-panel" role="dialog" aria-modal="true" aria-label="Filters" hidden={!open}>
+      <div
+        className="filters-panel"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Filters"
+        hidden={!open}
+      >
+        {/* Same grab handle as the property sheet — on a phone this is a bottom
+            sheet, and the handle is what says "drag me down". Hidden on
+            desktop, where the panel drops inline. */}
+        <div className="sheet-grabber" aria-hidden="true">
+          <span className="grabber-bar" />
+        </div>
         <div className="sheet-head">
           <button type="button" className="sheet-close" onClick={() => setOpen(false)} aria-label="Close filters">
             <XIcon size={13} />
@@ -150,7 +222,7 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
             onClick={() => onChange({ ...state, ...CLEARED })}
             disabled={activeCount === 0}
           >
-            Reset
+            Clear
           </button>
         </div>
 

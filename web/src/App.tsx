@@ -844,7 +844,16 @@ export default function App() {
             <button
               type="button"
               className="map-list-btn"
-              onClick={() => setMobileView("list")}
+              onClick={() => {
+                // Panning refreshes the pins but not the list, so the list can
+                // be showing a different place than the map. "Search this area"
+                // used to reconcile them; on a phone it asked for a tap to fix
+                // something you couldn't see. Reconcile on the way to the list
+                // instead — and only when the map has actually moved, so an
+                // untouched view isn't silently narrowed to the viewport.
+                if (canSearchArea) searchThisArea();
+                setMobileView("list");
+              }}
             >
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
                 <path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" />

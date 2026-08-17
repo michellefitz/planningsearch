@@ -53,9 +53,24 @@ const PRESETS: Preset[] = [
   { label: "This year", from: () => new Date(new Date().getFullYear(), 0, 1) },
 ];
 
+/**
+ * The dates a preset actually resolves to, e.g. "15 Jul – 17 Aug".
+ *
+ * These ranges are rolling, not calendar: "Last month" is today minus one
+ * month up to today, not the whole of last month. Nothing on the chip said so,
+ * and the two readings pick out different applications, so the resolved dates
+ * are shown rather than left to be inferred from the label.
+ */
+function presetRange(p: Preset): string {
+  const start = fmt(p.from());
+  const end = fmt(new Date());
+  const sameYear = start.slice(0, 4) === end.slice(0, 4);
+  return `${shortDate(start, !sameYear)} – ${shortDate(end, false)}`;
+}
+
 function triggerLabel(from: string, to: string): string {
   const preset = PRESETS.find((p) => from === fmt(p.from()) && !to);
-  if (preset) return preset.label;
+  if (preset) return `${preset.label} (${presetRange(preset)})`;
   if (from && to) {
     const sameYear = from.slice(0, 4) === to.slice(0, 4);
     return `${shortDate(from, !sameYear)} – ${shortDate(to)}`;
@@ -159,6 +174,10 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
                 onClick={() => applyPreset(p)}
               >
                 {p.label}
+                {/* Shown on every chip, not just the chosen one: the question
+                    ("is last month the 1st–31st, or the 15th to the 15th?") is
+                    one you have before you pick, not after. */}
+                <span className="dr-chip-range">({presetRange(p)})</span>
               </button>
             ))}
           </div>
