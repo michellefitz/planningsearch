@@ -582,25 +582,21 @@ body {
     margin-top: 0.5rem;
     gap: 0.15rem 0.75rem;
   }
-  .panel-controls .filters {
-    flex: 1 1 auto;
-    min-width: 0;
-    margin: 0;
-    border-bottom: 0;
-    padding-bottom: 0;
+  /* The button keeps its natural width; applied chips wrap onto their own
+     full-width row directly beneath it, so adding one never shifts the
+     button — which is what made it hard to hit twice in a row. */
+  .panel-controls .filters-wrap {
+    display: contents;
   }
-  .panel-controls .filters[open] {
+  .panel-controls .filters-btn {
+    order: 1;
+  }
+  .panel-controls .applied-row {
     flex-basis: 100%;
-    border-bottom: 1px solid var(--line);
-    padding-bottom: 0.3rem;
-    margin: 0;
-    border-radius: 0;
-    padding-left: 0;
-    padding-right: 0;
-    /* No tinted card on mobile. Full-bleed against the panel edge it read as
-       a stray grey block rather than a grouped panel; the hairline above the
-       results is enough separation on a narrow screen. */
-    background: none;
+    order: 2;
+  }
+  .panel-controls .view-toggle {
+    order: 3;
   }
 
 
@@ -640,10 +636,50 @@ body {
     color: #fff;
   }
 
-  /* Map view: the controls stay compact up top, the map fills the rest. */
+  /* Map view: search and filters float over the map rather than stacking
+     above it, so the map gets the whole screen (Booking.com's pattern). The
+     panel is transparent and click-through; only its controls take taps. */
+  .layout.m-map {
+    position: relative;
+  }
   .layout.m-map .side-panel {
+    position: absolute;
+    /* Above the map's own overlays (5–7). The filter sheet is fixed *inside*
+       this element, so it is confined to this stacking context — at 5 the
+       Layers and Key buttons painted straight through the sheet. */
+    z-index: 12;
+    top: 0;
+    left: 0;
+    right: 0;
     flex: 0 0 auto;
     overflow: visible;
+    background: none;
+    border: 0;
+    padding: 0.5rem 0.7rem 0;
+    pointer-events: none;
+  }
+  .layout.m-map .side-panel > *,
+  .layout.m-map .search-wrap > * {
+    pointer-events: auto;
+  }
+  .layout.m-map .search-wrap {
+    pointer-events: none;
+  }
+  /* Floating controls need their own ground to sit on over map tiles. */
+  .layout.m-map .search-bar .search-input {
+    box-shadow: 0 2px 10px rgba(26, 29, 33, 0.16);
+  }
+  .layout.m-map .filters-btn,
+  .layout.m-map .vt-seg,
+  .layout.m-map .sort-inline {
+    box-shadow: 0 2px 8px rgba(26, 29, 33, 0.14);
+  }
+  .layout.m-map .vt-count {
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
   .layout.m-map .results-scroll {
     display: none;
@@ -651,6 +687,14 @@ body {
   .layout.m-map .map-wrap {
     flex: 1;
     min-height: 0;
+  }
+  /* Keep the map's own controls clear of the floating search chrome. Its
+     height is published as --overlay-h by App, since it grows when the
+     controls wrap or applied chips appear. */
+  .layout.m-map .map-overlays,
+  .layout.m-map .maplibregl-ctrl-top-right,
+  .layout.m-map .maplibregl-ctrl-top-left {
+    margin-top: calc(var(--overlay-h, 7rem) + 0.4rem);
   }
 
   /* List view: the results fill the screen, the map is hidden. The search
@@ -832,69 +876,82 @@ body {
 
 /* ---------- Filters ---------- */
 
-.filters {
-  margin: 0.6rem 0 0.2rem;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 0.3rem;
+.filters-wrap {
+  position: relative;
+  margin: 0.5rem 0 0.2rem;
+}
+
+/* A real button, not a word to hit. Sized as a control in its own right so it
+   matches the segmented map/list toggle beside it. */
+.filters-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.42rem 0.75rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 550;
+  line-height: 1;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.filters-btn:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+
+.filters-btn-on {
+  color: var(--action);
+  border-color: var(--action);
+  background: var(--action-tint);
+}
+
+.filters-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--action);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Space, not hairlines, between the filter groups. Each control is already a
    bounded box, so a rule above every one of them stacked up as ruling the
-   panel didn't need — the label plus the gap reads as the group boundary. The
-   one divider kept is above "Advanced", where it marks a real section break. */
-.filters[open] fieldset + fieldset {
+   panel didn't need — the label plus the gap reads as the group boundary. */
+.sheet-body fieldset + fieldset {
   margin-top: 0.7rem;
 }
 
-.filters summary {
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--ink-2);
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0;
-  user-select: none;
-}
-
-.filters summary::-webkit-details-marker {
-  display: none;
-}
-
-/* Direct child only. As a descendant selector this also caught the nested
-   "Advanced" summary and out-specified its own closed-state rule, so that
-   arrow pointed up whenever the outer panel was open, whatever Advanced
-   itself was doing. */
-.filters > summary::after {
-  content: "";
-  width: 0.55rem;
-  height: 0.55rem;
-  border-right: 1.5px solid var(--ink-3);
-  border-bottom: 1.5px solid var(--ink-3);
-  /* Nudged off the label: the chevron sat tight against the count. */
-  margin-left: 0.15rem;
-  transform: rotate(45deg) translateY(-2px);
-  transition: transform 120ms ease;
-}
-
-.filters[open] > summary::after {
-  transform: rotate(225deg) translateY(-1px);
-}
-
-.filters[open] {
+/* Desktop: the panel drops inline under the button, as before. The sheet
+   chrome (title bar, submit) is mobile-only and hidden here. */
+.filters-panel {
+  margin-top: 0.5rem;
   background: var(--surface-2);
   border-radius: var(--r-md);
   padding: 0.5rem 0.8rem 0.6rem;
-  margin: 0.6rem -0.8rem 0.2rem;
 }
 
-.filters summary:hover {
-  color: var(--ink);
+.filters-panel[hidden] {
+  display: none;
 }
 
-/* Active-filter chips sit above the filter panel, always visible. */
+.sheet-head,
+.sheet-foot,
+.filters-scrim {
+  display: none;
+}
+
+/* Active-filter chips sit below the filter button. */
 .applied-row {
   display: flex;
   flex-wrap: wrap;
@@ -942,28 +999,16 @@ body {
   opacity: 1;
 }
 
-.applied-clear {
-  border: 0;
-  background: none;
-  padding: 0.18rem 0.3rem;
-  font-family: inherit;
-  font-size: 0.72rem;
-  color: var(--ink-3);
-  cursor: pointer;
-  transition: color var(--t-fast) var(--ease);
-}
+/* "Clear all" was removed from the chip row — it competed with the individual
+   chip removals and moved the row's width around. Reset lives in the sheet. */
 
-.applied-clear:hover {
-  color: var(--action);
-}
-
-.filters fieldset {
+.filters-panel fieldset {
   border: 0;
   padding: 0.45rem 0 0;
   margin: 0;
 }
 
-.filters legend {
+.filters-panel legend {
   font-size: 0.64rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -1776,10 +1821,6 @@ body {
   .search-bar .near-me-btn {
     display: none;
   }
-  /* Still a comfortable tap target — the row is the target, not just the text. */
-  .filters summary {
-    padding: 0.45rem 0;
-  }
   /* Dropdown rows need thumb-sized targets too. */
   .ms-trigger {
     padding: 0.5rem 0.8rem;
@@ -1796,6 +1837,120 @@ body {
      some height rather than asking for a hit on the box itself. */
   .toggle-row {
     padding: 0.3rem 0;
+  }
+
+  /* ----- Filters as a full-screen sheet -----
+     Inline expansion had no visible way out: the only close was the button it
+     pushed off-screen. A sheet has a title bar, an X, and a submit. */
+  .filters-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(16, 20, 24, 0.4);
+    animation: fade-in 140ms var(--ease);
+  }
+
+  .filters-panel {
+    position: fixed;
+    z-index: 61;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: 0;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    animation: sheet-up 200ms var(--ease);
+  }
+
+  @keyframes sheet-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .sheet-head {
+    display: grid;
+    grid-template-columns: 2.5rem 1fr auto;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .sheet-head h2 {
+    margin: 0;
+    text-align: center;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .sheet-close {
+    display: grid;
+    place-items: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .sheet-close:active {
+    background: var(--surface-2);
+  }
+  .sheet-reset {
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 550;
+    color: var(--action);
+    padding: 0.5rem 0.35rem;
+    cursor: pointer;
+  }
+  .sheet-reset:disabled {
+    color: var(--ink-3);
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .sheet-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.6rem 0.9rem 1rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sheet-foot {
+    display: block;
+    padding: 0.6rem 0.9rem calc(0.6rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .sheet-submit {
+    width: 100%;
+    justify-content: center;
+    padding: 0.8rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: var(--r-md);
+  }
+
+  /* The button keeps its own row; chips wrap underneath it. */
+  .filters-wrap {
+    margin: 0;
+  }
+  .filters-btn {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.84rem;
   }
 
   /* Map zoom / locate controls — 40px targets instead of the default 29px. */
@@ -4577,46 +4732,42 @@ a.pill:hover {
     min-height: 1.75rem;
   }
 
+  /* One scale for the strip. Measured before this: the controls ran at three
+     heights (18 / 28 / 30 / 33px) and three sizes (12.5 / 13.4 / 14px), which
+     is what made the row look assembled rather than designed. */
   .applied-chip,
-  .applied-clear,
   .vt-count,
   .sort-value,
-  .filters summary,
-  .vt-seg button {
+  .vt-seg button,
+  .filters-btn {
     font-size: 0.78rem;
     line-height: 1.2;
   }
 
-  /* Same height for everything on the row, so nothing sits proud of the rest. */
-  .applied-chip,
-  .applied-clear,
+  /* Every interactive control on the row is the same height and shape. */
+  .filters-btn,
+  .sort-inline,
   .sort-value,
-  .vt-seg button {
-    min-height: 1.55rem;
+  .vt-seg,
+  .vt-seg button,
+  .applied-chip {
+    min-height: 2.05rem;
     padding-top: 0;
     padding-bottom: 0;
     display: inline-flex;
     align-items: center;
   }
 
-  /* The Filters disclosure was the tallest thing in the row by 14px, which is
-     what made the row look stepped. */
-  .panel-controls .filters summary {
-    min-height: 1.75rem;
-    padding: 0;
-    font-weight: 550;
-    color: var(--ink);
+  .vt-count {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.05rem;
   }
 
   .applied-row {
     /* The container owns the spacing above; this would double it. */
-    margin: 0;
+    margin: 0.35rem 0 0;
     gap: 0.3rem;
-  }
-
-  .applied-clear {
-    padding: 0 0.3rem;
-    font-weight: 500;
   }
 
   .view-toggle {
