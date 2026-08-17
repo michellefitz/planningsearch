@@ -593,12 +593,6 @@ body {
   .panel-controls .view-toggle {
     order: 3;
   }
-  /* The count on the Filters button already says how many are applied, and
-     tapping it shows which. Spelling them out in chips was several rows of
-     map covered to repeat a number. */
-  .applied-row {
-    display: none;
-  }
 
 
   .view-toggle {
@@ -694,15 +688,16 @@ body {
     flex: 1;
     min-height: 0;
   }
-  /* Layers stays top-left, clear of the floating search chrome. Its height is
-     published as --overlay-h by App, since it changes as controls wrap. */
+  /* Nothing but search and Filters at the top now: Layers moves to the
+     bottom-left, where the Key used to sit. */
   .layout.m-map .map-overlays {
-    margin-top: calc(var(--overlay-h, 7rem) + 0.4rem);
+    top: auto;
+    bottom: calc(2.3rem + env(safe-area-inset-bottom));
   }
 
   /* Zoom and locate move to the bottom-right, out of the top strip entirely
-     and within thumb reach. The bottom offset clears the list button and the
-     phone's rounded corner / home indicator, which was clipping "Key". */
+     and within thumb reach. The bottom offset clears the Key beneath them and
+     the phone's rounded corner / home indicator. */
   .layout.m-map .maplibregl-ctrl-top-right {
     top: auto;
     bottom: calc(5rem + env(safe-area-inset-bottom));
@@ -711,9 +706,11 @@ body {
   .layout.m-map .maplibregl-ctrl-top-left {
     display: none;
   }
-  /* Clear of the attribution strip along the bottom edge, which the centred
-     list button ran straight into. */
+  /* Key is the least-consulted control, so it takes the least-reachable slot:
+     tucked under the zoom column rather than holding the bottom-left corner. */
   .layout.m-map .legend {
+    left: auto;
+    right: 0.6rem;
     bottom: calc(2.3rem + env(safe-area-inset-bottom));
   }
   .layout.m-map .maplibregl-ctrl-bottom-right,
@@ -1214,17 +1211,6 @@ body {
   }
 }
 
-.ms-filter {
-  width: 100%;
-  margin-bottom: 0.25rem;
-  padding: 0.32rem 0.55rem;
-  font-family: inherit;
-  font-size: 0.78rem;
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
 .ms-options {
   max-height: 15rem;
   overflow-y: auto;
@@ -1250,20 +1236,14 @@ body {
   flex: none;
 }
 
-.ms-empty {
-  margin: 0;
-  padding: 0.45rem;
-  font-size: 0.78rem;
-  color: var(--ink-3);
-}
-
-.ms-clear {
+.ms-done {
   width: 100%;
   margin-top: 0.25rem;
-  padding: 0.32rem;
+  padding: 0.42rem;
   font-family: inherit;
-  font-size: 0.75rem;
-  color: var(--ink-2);
+  font-size: 0.78rem;
+  font-weight: 550;
+  color: var(--action);
   background: none;
   border: 0;
   border-top: 1px solid var(--line);
@@ -1271,8 +1251,8 @@ body {
   cursor: pointer;
 }
 
-.ms-clear:hover {
-  color: var(--action);
+.ms-done:hover {
+  background: var(--surface-2);
 }
 
 /* ---------- Received-date range picker ---------- */
@@ -1294,7 +1274,9 @@ body {
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
+  /* Matches the council/status/type triggers — this was the one rounded
+     rectangle among three pills, which made the group look mismatched. */
+  border-radius: 999px;
   cursor: pointer;
 }
 
@@ -4827,10 +4809,13 @@ a.pill:hover {
     min-height: 2.05rem;
   }
 
+  /* Chips are hidden on phones: the count on the Filters button already says
+     how many are applied, and tapping it shows which — spelling them out cost
+     two rows of map to repeat a number. Must sit after the base .applied-row
+     rule, which is later in the file and would otherwise win on source order.
+     Desktop keeps the chips. */
   .applied-row {
-    /* The container owns the spacing above; this would double it. */
-    margin: 0.35rem 0 0;
-    gap: 0.3rem;
+    display: none;
   }
 
   .view-toggle {
