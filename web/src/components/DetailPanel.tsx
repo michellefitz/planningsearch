@@ -16,6 +16,7 @@ import SaveStar from "./SaveStar";
 import { itemLabel } from "../../../api/_conditions/labels.mjs";
 import { getFloodData } from "../floodData";
 import { coverageNoteFor } from "../coverage";
+import { SHEET_PEEK_FRACTION } from "../sheetMetrics";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { point as turfPoint } from "@turf/helpers";
 
@@ -1323,7 +1324,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   expandedRef.current = expanded;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const peekOffset = () => Math.round(window.innerHeight * 0.44);
+  const peekOffset = () => Math.round(window.innerHeight * SHEET_PEEK_FRACTION);
 
   // Entry + snap: animate to the peek/full position when it opens or `expanded`
   // changes (drags set the transform imperatively in the listener below).
