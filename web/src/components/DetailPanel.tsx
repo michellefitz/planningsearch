@@ -1352,9 +1352,16 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
       const peek = peekOffset();
       const innerH = window.innerHeight;
       let target: "full" | "peek" | "dismiss";
-      if (vy > 0.5) target = expandedRef.current ? "peek" : "dismiss";
+      // Distance and a hard flick both mean "close", and both are checked
+      // before the gentle-flick rule below. That rule sent every downward
+      // flick from full to the peek height first, so closing from full always
+      // took two gestures however far the sheet had been dragged.
+      if (y > peek + innerH * 0.12) target = "dismiss";
+      else if (vy > 1.2) target = "dismiss";
+      // A soft flick from full still stops at the peek — the halfway height is
+      // useful, it just shouldn't be compulsory on the way out.
+      else if (vy > 0.5) target = expandedRef.current ? "peek" : "dismiss";
       else if (vy < -0.5) target = "full";
-      else if (y > peek + innerH * 0.12) target = "dismiss";
       else if (y < peek * 0.5) target = "full";
       else target = "peek";
 

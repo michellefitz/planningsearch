@@ -836,31 +836,6 @@ export default function App() {
               Search this area
             </button>
           )}
-          {/* Switching to the list is the one thing you reach for while looking
-              at the map, so it gets a single button at the bottom centre rather
-              than a segmented control competing for space in the top strip.
-              Mobile only — desktop shows both panes at once. */}
-          {!watchDraft && (
-            <button
-              type="button"
-              className="map-list-btn"
-              onClick={() => {
-                // Panning refreshes the pins but not the list, so the list can
-                // be showing a different place than the map. "Search this area"
-                // used to reconcile them; on a phone it asked for a tap to fix
-                // something you couldn't see. Reconcile on the way to the list
-                // instead — and only when the map has actually moved, so an
-                // untouched view isn't silently narrowed to the viewport.
-                if (canSearchArea) searchThisArea();
-                setMobileView("list");
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
-                <path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" />
-              </svg>
-              List
-            </button>
-          )}
           {/* "+ Watch an area" used to sit here, but a permanent button over
               the map overlapped the legend and attribution and cost space on
               small screens. Watches are still created from the account panel
@@ -983,6 +958,47 @@ export default function App() {
             </div>
           </div>
         </div>
+
+        {/* One button, one place. It lives on the layout rather than inside
+            either pane so it does not move when the view flips — a control
+            that jumps between corners is one you have to look for each time.
+            Mobile only; desktop shows both panes at once. */}
+        {mode === "search" && !watchDraft && (
+          <button
+            type="button"
+            className="view-switch-btn"
+            onClick={() => {
+              if (mobileView === "map") {
+                // Panning refreshes the pins but not the list, so the list can
+                // be showing a different place than the map. Reconcile on the
+                // way to it — and only when the map has actually moved, so an
+                // untouched view isn't silently narrowed to the viewport.
+                if (canSearchArea) searchThisArea();
+                setMobileView("list");
+              } else {
+                setMobileView("map");
+              }
+            }}
+          >
+            {mobileView === "map" ? (
+              <>
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+                  <path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" />
+                </svg>
+                List
+              </>
+            ) : (
+              <>
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M1.5 3.8 5.75 2v10.2L1.5 14V3.8Z" />
+                  <path d="M5.75 2 10.25 3.8v10.2L5.75 12.2V2Z" />
+                  <path d="M10.25 3.8 14.5 2v10.2L10.25 14V3.8Z" />
+                </svg>
+                Map
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {mode === "preplan" && (

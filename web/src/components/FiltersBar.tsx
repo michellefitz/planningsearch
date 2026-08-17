@@ -3,7 +3,6 @@ import { DEFAULT_STATUSES, HIDDEN_BY_DEFAULT_STATUSES, fmtDate, MIN_UNITS_OPTION
 import { STATUS_STYLE } from "./MapView";
 import DateRangePicker from "./DateRangePicker";
 import MultiSelect from "./MultiSelect";
-import { XIcon } from "./icons";
 
 interface Props {
   meta: Meta | null;
@@ -211,11 +210,12 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
         <div className="sheet-grabber" aria-hidden="true">
           <span className="grabber-bar" />
         </div>
+        {/* Clear left, confirm right. It was the other way round — an X on the
+            left that applied, and Clear where a thumb expects "done" — so the
+            habit of reaching for the top-right wiped the filters instead of
+            keeping them. There is no way to open this and *not* apply, so the
+            right-hand control is a tick, not a cancel. */}
         <div className="sheet-head">
-          <button type="button" className="sheet-close" onClick={() => setOpen(false)} aria-label="Close filters">
-            <XIcon size={13} />
-          </button>
-          <h2>Filters</h2>
           <button
             type="button"
             className="sheet-reset"
@@ -223,6 +223,17 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
             disabled={activeCount === 0}
           >
             Clear
+          </button>
+          <h2>Filters</h2>
+          <button
+            type="button"
+            className="sheet-confirm"
+            onClick={() => setOpen(false)}
+            aria-label="Done — apply filters"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 8.5 6.2 11.7 13 4.9" />
+            </svg>
           </button>
         </div>
 
