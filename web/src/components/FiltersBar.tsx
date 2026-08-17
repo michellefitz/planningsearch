@@ -199,10 +199,10 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
         />
       </fieldset>
 
-      <details className="filters-advanced">
-        <summary>Advanced</summary>
-
-        <fieldset>
+      {/* No "Advanced" fold: a full-screen sheet has room to show everything,
+          and hiding half the filters behind a second disclosure was the same
+          problem the panel itself had. */}
+      <fieldset>
           <legend>Development size</legend>
           <div className="chip-row">
             {MIN_UNITS_OPTIONS.map((o) => (
@@ -262,7 +262,6 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
             Limit to current map area
           </label>
         </fieldset>
-      </details>
         </div>
 
         {/* Results update as each control changes; this just gets the sheet out

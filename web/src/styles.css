@@ -450,6 +450,8 @@ body {
      result. Everything in this block is about giving that back to the map. */
   .app-header {
     padding: 0.35rem 0.9rem;
+    /* Anchor for the absolutely-centred Search/Ask tabs. */
+    position: relative;
   }
   .app-header h1 {
     font-size: 0.98rem;
@@ -582,21 +584,20 @@ body {
     margin-top: 0.5rem;
     gap: 0.15rem 0.75rem;
   }
-  /* The button keeps its natural width; applied chips wrap onto their own
-     full-width row directly beneath it, so adding one never shifts the
-     button — which is what made it hard to hit twice in a row. */
   .panel-controls .filters-wrap {
     display: contents;
   }
   .panel-controls .filters-btn {
     order: 1;
   }
-  .panel-controls .applied-row {
-    flex-basis: 100%;
-    order: 2;
-  }
   .panel-controls .view-toggle {
     order: 3;
+  }
+  /* The count on the Filters button already says how many are applied, and
+     tapping it shows which. Spelling them out in chips was several rows of
+     map covered to repeat a number. */
+  .applied-row {
+    display: none;
   }
 
 
@@ -674,12 +675,17 @@ body {
   .layout.m-map .sort-inline {
     box-shadow: 0 2px 8px rgba(26, 29, 33, 0.14);
   }
-  .layout.m-map .vt-count {
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+  /* Map view keeps one control in the strip: Filters. The result count, the
+     sort and the Map/List pair all belonged to reading a list, and over the
+     map they were three more things between the reader and the pins. Sorting
+     and the count come back in list view, where they mean something. */
+  .layout.m-map .view-toggle {
+    display: none;
+  }
+  /* Covered by the Filters button at this width, and it repeats what the
+     cluster counts already show. */
+  .layout.m-map .map-truncated {
+    display: none;
   }
   .layout.m-map .results-scroll {
     display: none;
@@ -688,13 +694,57 @@ body {
     flex: 1;
     min-height: 0;
   }
-  /* Keep the map's own controls clear of the floating search chrome. Its
-     height is published as --overlay-h by App, since it grows when the
-     controls wrap or applied chips appear. */
-  .layout.m-map .map-overlays,
-  .layout.m-map .maplibregl-ctrl-top-right,
-  .layout.m-map .maplibregl-ctrl-top-left {
+  /* Layers stays top-left, clear of the floating search chrome. Its height is
+     published as --overlay-h by App, since it changes as controls wrap. */
+  .layout.m-map .map-overlays {
     margin-top: calc(var(--overlay-h, 7rem) + 0.4rem);
+  }
+
+  /* Zoom and locate move to the bottom-right, out of the top strip entirely
+     and within thumb reach. The bottom offset clears the list button and the
+     phone's rounded corner / home indicator, which was clipping "Key". */
+  .layout.m-map .maplibregl-ctrl-top-right {
+    top: auto;
+    bottom: calc(5rem + env(safe-area-inset-bottom));
+    right: 0;
+  }
+  .layout.m-map .maplibregl-ctrl-top-left {
+    display: none;
+  }
+  /* Clear of the attribution strip along the bottom edge, which the centred
+     list button ran straight into. */
+  .layout.m-map .legend {
+    bottom: calc(2.3rem + env(safe-area-inset-bottom));
+  }
+  .layout.m-map .maplibregl-ctrl-bottom-right,
+  .layout.m-map .maplibregl-ctrl-bottom-left {
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* One button, bottom centre — the only jump you make from the map. */
+  .layout.m-map .map-list-btn {
+    position: absolute;
+    display: inline-flex;
+    z-index: 6;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(2.3rem + env(safe-area-inset-bottom));
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.15rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1;
+    color: #fff;
+    background: var(--ink);
+    border: 0;
+    border-radius: 999px;
+    box-shadow: 0 3px 14px rgba(26, 29, 33, 0.3);
+    cursor: pointer;
+  }
+  .layout.m-map .map-list-btn:active {
+    transform: translateX(-50%) scale(0.97);
   }
 
   /* List view: the results fill the screen, the map is hidden. The search
@@ -872,6 +922,12 @@ body {
 .suggestions button:focus,
 .suggestions button.sugg-active {
   background: var(--surface-2);
+}
+
+/* Map-only, phone-only: desktop shows both panes, so there is nothing to
+   switch to. Shown by the m-map rule in the mobile block. */
+.map-list-btn {
+  display: none;
 }
 
 /* ---------- Filters ---------- */
@@ -1929,17 +1985,19 @@ body {
     -webkit-overflow-scrolling: touch;
   }
 
+  /* The extra bottom padding is the phone's home indicator and rounded
+     corner: at 0.6rem the submit button's lower edge was being clipped. */
   .sheet-foot {
     display: block;
-    padding: 0.6rem 0.9rem calc(0.6rem + env(safe-area-inset-bottom));
+    padding: 0.6rem 0.9rem calc(1.5rem + env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);
     background: var(--surface);
   }
   .sheet-submit {
     width: 100%;
     justify-content: center;
-    padding: 0.8rem 1rem;
-    font-size: 0.95rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
     font-weight: 600;
     border-radius: var(--r-md);
   }
@@ -3497,10 +3555,15 @@ a.pill:hover {
      the panel row it used to occupy cost ~40px of map. Kept next to the rule
      it overrides — the other mobile blocks are earlier in the file and would
      lose to it. */
+  /* Truly centred, not "centred between the logo and the avatar" — those two
+     are different widths, so flex order alone left it visibly off-axis. */
   .mode-tabs-top {
     display: inline-flex;
     margin: 0;
     flex: 0 0 auto;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
   }
   .mode-tabs-panel {
     display: none;
