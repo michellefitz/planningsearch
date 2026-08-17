@@ -836,6 +836,22 @@ export default function App() {
               Search this area
             </button>
           )}
+          {/* Switching to the list is the one thing you reach for while looking
+              at the map, so it gets a single button at the bottom centre rather
+              than a segmented control competing for space in the top strip.
+              Mobile only — desktop shows both panes at once. */}
+          {!watchDraft && (
+            <button
+              type="button"
+              className="map-list-btn"
+              onClick={() => setMobileView("list")}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+                <path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" />
+              </svg>
+              List
+            </button>
+          )}
           {/* "+ Watch an area" used to sit here, but a permanent button over
               the map overlapped the legend and attribution and cost space on
               small screens. Watches are still created from the account panel
