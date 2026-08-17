@@ -14,6 +14,7 @@ import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "../statusStyle";
 import SaveStar from "./SaveStar";
 import { itemLabel } from "../../../api/_conditions/labels.mjs";
+import { developmentContribution } from "../../../api/_conditions/contribution.mjs";
 import { getFloodData } from "../floodData";
 import { coverageNoteFor } from "../coverage";
 import { SHEET_PEEK_FRACTION } from "../sheetMetrics";
@@ -292,6 +293,10 @@ function ConditionHighlights({
   // costs someone money.
   if (!highlights || !highlights.length) return null;
 
+  // The API sorts these too, but highlights are cached per decision, so rows
+  // read before the sort landed would still arrive in the model's order.
+  const ordered = [...highlights].sort((a, b) => a.n - b.n);
+
   const open = (n: number) => {
     const el = document.getElementById(conditionAnchor(n));
     if (!(el instanceof HTMLDetailsElement)) return;
@@ -303,10 +308,10 @@ function ConditionHighlights({
   return (
     <div className="cond-highlights">
       <h4>
-        What these conditions change <span className="ai-mark">✦</span>
+        <span className="ai-mark">✦</span> Notable conditions
       </h4>
       <ul>
-        {highlights.map((h) => (
+        {ordered.map((h) => (
           <li key={h.n}>
             <button type="button" className="cond-jump" onClick={() => open(h.n)}>
               <span className="condition-num">{h.n}</span>
@@ -703,6 +708,22 @@ function ShareLink({ detail: d }: { detail: AppDetail }) {
   );
 }
 
+function ContributionLine({ conditions }: { conditions: DecisionConditions | null }) {
+  const c = conditions ? developmentContribution(conditions.items) : null;
+  if (!c) return null;
+  const money = c.total.toLocaleString("en-IE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: c.total % 1 === 0 ? 0 : 2,
+  });
+  return (
+    <p className="commencement-line contribution-line">
+      {money} in development contributions payable
+      <span className="hint"> · condition {c.condition}</span>
+    </p>
+  );
+}
+
 function DecisionSection({
   detail: d,
   conditions,
@@ -779,6 +800,12 @@ function DecisionSection({
           )}
         </p>
       ) : null}
+      {/* Not a "notable condition" — it is on roughly two permissions in five
+          and changes nothing about what can be built — but it is the one
+          number in the decision people ask for, so it is stated as a fact.
+          Totalled in code, since councils split it across several conditions
+          and no single one carries the sum. */}
+      <ContributionLine conditions={conditions} />
       {summary ? (
         <p className="ai-summary refusal-summary">✦ {summary}</p>
       ) : (
@@ -1516,17 +1543,9 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         </div>
       </header>
 
-      <DecisionSection
-        detail={d}
-        conditions={conditions}
-        conditionsLoading={conditionsLoading}
-        conditionsFailed={conditionsFailed}
-        refusalSummary={refusalSummary}
-        refusalLoading={refusalLoading}
-        highlights={highlights}
-        highlightsLoading={highlightsLoading}
-      />
-
+      {/* Timeline first: it is the chronology the decision is the end of,
+          so reading the outcome and then scrolling back to how it got there
+          ran the story backwards. */}
       <section aria-labelledby="timeline-h">
         <h3 id="timeline-h">Timeline</h3>
         <ol className="timeline">
@@ -1555,6 +1574,17 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             it was hedging, on every undecided application — the third such box
             on the page. One statement of provenance at the end covers it. */}
       </section>
+
+      <DecisionSection
+        detail={d}
+        conditions={conditions}
+        conditionsLoading={conditionsLoading}
+        conditionsFailed={conditionsFailed}
+        refusalSummary={refusalSummary}
+        refusalLoading={refusalLoading}
+        highlights={highlights}
+        highlightsLoading={highlightsLoading}
+      />
 
       <section aria-labelledby="desc-h">
         <h3 id="desc-h">Proposal as submitted</h3>
