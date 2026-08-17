@@ -4,6 +4,7 @@ import { STATUS_STYLE } from "../statusStyle";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { api, type PointFeatureCollection } from "../api";
 import { getFloodData } from "../floodData";
+import { sheetFocusOffset } from "../sheetMetrics";
 
 /** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport.
     Flood zones rebuilt from OPW CFRAM shapefiles and served as a static file. */
@@ -79,7 +80,9 @@ interface Props {
   onBoundsChange: (bbox: [number, number, number, number]) => void;
   /** Fired only on a user-driven pan/zoom (not programmatic flyTo). */
   onUserMove?: () => void;
-  flyTo?: { lat: number; lng: number; zoom?: number } | null;
+  /** `avoidSheet` centres the point in the map area the detail sheet does
+   *  not cover, rather than in the middle of the canvas. */
+  flyTo?: { lat: number; lng: number; zoom?: number; avoidSheet?: boolean } | null;
 }
 
 export default function MapView({
@@ -653,7 +656,14 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (map && flyTo) {
-      map.flyTo({ center: [flyTo.lng, flyTo.lat], zoom: flyTo.zoom ?? Math.max(map.getZoom(), 15) });
+      // Offset, not padding: `offset` applies to this one movement, whereas
+      // `padding` would stay on the camera and quietly skew every later
+      // easeTo — cluster expansion included.
+      map.flyTo({
+        center: [flyTo.lng, flyTo.lat],
+        zoom: flyTo.zoom ?? Math.max(map.getZoom(), 15),
+        offset: flyTo.avoidSheet ? sheetFocusOffset(map.getContainer()) : [0, 0],
+      });
     }
   }, [flyTo]);
 

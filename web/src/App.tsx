@@ -67,7 +67,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AppDetail | null>(null);
-  const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number } | null>(null);
+  const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number; avoidSheet?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"search" | "ask" | "account" | "preplan">("search");
   // Mobile only: the layout shows one of map / list at a time (a toggle),
@@ -385,7 +385,11 @@ export default function App() {
       const url = appPath(d.authority_id, d.planning_reference);
       if (applyingUrl.current) history.replaceState(null, "", url);
       else if (window.location.pathname !== url) history.pushState(null, "", url);
-      if (d.lat != null && d.lng != null) setFlyTo({ lat: d.lat, lng: d.lng });
+      // The sheet is about to cover the bottom (phone) or right (desktop) of
+      // the map, so aim for the middle of what stays visible — centring on
+      // the canvas put the pin you just tapped underneath the sheet.
+      if (d.lat != null && d.lng != null)
+        setFlyTo({ lat: d.lat, lng: d.lng, avoidSheet: true });
       const save = savedByKey.get(saveKey(d.authority_id, d.planning_reference));
       if (save?.has_update) {
         accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
