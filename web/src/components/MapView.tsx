@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
+import { STATUS_STYLE } from "../statusStyle";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { api, type PointFeatureCollection } from "../api";
 import { getFloodData } from "../floodData";
@@ -36,25 +37,9 @@ const ZONE_GROUPS: Record<string, { color: string; label: string }> = {
 const escapeHtml = (v: unknown): string =>
   String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
-/**
- * Status colours pair with a letter glyph on each pin so state is never
- * conveyed by colour alone (PRD F2.2 / F8.3).
- */
-export const STATUS_STYLE: Record<string, { color: string; letter: string; label: string }> = {
-  pending: { color: "#2563eb", letter: "P", label: "Pending decision" },
-  further_info: { color: "#9333ea", letter: "F", label: "Further information" },
-  granted: { color: "#16a34a", letter: "G", label: "Granted" },
-  refused: { color: "#dc2626", letter: "R", label: "Refused" },
-  withdrawn: { color: "#6b7280", letter: "W", label: "Withdrawn" },
-  invalid: { color: "#a16207", letter: "I", label: "Invalid" },
-  incomplete: { color: "#b45309", letter: "!", label: "Incomplete" },
-  appealed: { color: "#ea580c", letter: "A", label: "Under appeal" },
-  split: { color: "#db2777", letter: "S", label: "Split decision" },
-  exempt: { color: "#16a34a", letter: "D", label: "Declared exempt" },
-  not_exempt: { color: "#dc2626", letter: "D", label: "Declared not exempt" },
-  decided: { color: "#0d9488", letter: "D", label: "Decided" },
-  unknown: { color: "#64748b", letter: "?", label: "Unknown" },
-};
+/** Re-exported so existing map-side imports keep working; the definition
+ *  lives outside this module so importing it doesn't pull in maplibre-gl. */
+export { STATUS_STYLE };
 
 const IRELAND_EAST_BOUNDS: [number, number, number, number] = [-7.2, 52.9, -5.9, 53.7];
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_STATUSES, HIDDEN_BY_DEFAULT_STATUSES, fmtDate, MIN_UNITS_OPTIONS, type Meta, type SearchState } from "../api";
-import { STATUS_STYLE } from "./MapView";
+import { STATUS_STYLE } from "../statusStyle";
 import DateRangePicker from "./DateRangePicker";
 import MultiSelect from "./MultiSelect";
 

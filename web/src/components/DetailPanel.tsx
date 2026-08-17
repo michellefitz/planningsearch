@@ -11,7 +11,7 @@ import {
 import PropertyMedia, { GMAPS_KEY, MapLinks } from "./PropertyMedia";
 import { XIcon } from "./icons";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
-import { STATUS_STYLE } from "./MapView";
+import { STATUS_STYLE } from "../statusStyle";
 import SaveStar from "./SaveStar";
 import { itemLabel } from "../../../api/_conditions/labels.mjs";
 import { getFloodData } from "../floodData";
@@ -501,9 +501,10 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
               </ul>
             </div>
           )}
+          {/* Which document this came from is the useful half and stays; the
+              "verify before relying on it" half is said once, in the footer. */}
           <p className="list-note">
-            AI-extracted from "{state.source ?? "the decision order"}" — verify against the
-            official decision order before relying on it.
+            AI-extracted from "{state.source ?? "the decision order"}".
           </p>
         </>
       )}
@@ -583,7 +584,7 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
       {summary.phase === "loaded" && (
         <blockquote className="ai-summary">
           {summary.summary}
-          <footer className="hint">AI summary — verify against the case file.</footer>
+          <footer className="hint">AI summary of the case file.</footer>
         </blockquote>
       )}
 
@@ -835,11 +836,39 @@ type FilesState =
 
 function ScannedFiles({ detail: d }: { detail: AppDetail }) {
   const [state, setState] = useState<FilesState>({ phase: "idle" });
+  const rootRef = useRef<HTMLDivElement>(null);
+  const loadRef = useRef<() => void>(() => {});
   useEffect(() => setState({ phase: "idle" }), [d.id]);
+
+  /**
+   * Fetch the list once this section is scrolled to.
+   *
+   * Listing files costs nothing but an HTTP round-trip to the council's own
+   * portal — no model call — so making the reader press a button for it bought
+   * nothing. It is still not fetched on open: it is the last section on a long
+   * sheet, and firing it for every application anyone glances at would put
+   * traffic on council servers for pages nobody scrolled to.
+   */
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          loadRef.current();
+        }
+      },
+      { rootMargin: "300px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [d.id]);
+
   if (!d.scanned_files_url && !d.files_supported) return null;
 
   const load = async () => {
-    setState({ phase: "loading" });
+    setState((s) => (s.phase === "idle" ? { phase: "loading" } : s));
     try {
       const res = await api.files(d.id);
       if (res.files?.length)
@@ -855,20 +884,20 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
     }
   };
 
+  loadRef.current = load;
+
   return (
-    <div className="scanned-files">
-      {state.phase === "idle" && (
+    <div className="scanned-files" ref={rootRef}>
+      {/* Idle and loading look the same now: the list starts fetching as this
+          scrolls into view, so the skeleton is a progress indicator rather
+          than something waiting to be pressed. */}
+      {(state.phase === "idle" || state.phase === "loading") && (
         <div className="doc-placeholder">
           <div className="doc-skeleton" aria-hidden="true">
             <span /><span /><span /><span />
           </div>
-          <button type="button" className="btn" onClick={load}>
-            Load the file list
-          </button>
+          <span className="hint loading-line">Fetching the file list from the council…</span>
         </div>
-      )}
-      {state.phase === "loading" && (
-        <span className="hint loading-line">Fetching the file list from the council…</span>
       )}
       {state.phase === "failed" && (
         <p className="list-note">
@@ -1520,12 +1549,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             . Observations are made to {d.authority_name}, usually with a fee.
           </p>
         )}
-        {!d.decision_date && d.decision_due_date && (
-          <p className="caveat">
-            Statutory dates shown are from the register as of the last sync. For anything
-            time-critical (e.g. observation deadlines), confirm on the official portal.
-          </p>
-        )}
+        {/* The "confirm time-critical dates on the portal" caveat used to sit
+            here. It said what the footer already says, directly under the dates
+            it was hedging, on every undecided application — the third such box
+            on the page. One statement of provenance at the end covers it. */}
       </section>
 
       <section aria-labelledby="desc-h">
@@ -1677,28 +1704,35 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           ) : (
             <p className="section-note">None found recorded at this address.</p>
           )}
-          {/* Absence here is weaker evidence than it looks, and saying so is the
-              difference between a viewer and a trap. */}
-          <p className="caveat">
-            Matched on the address as each application recorded it, so a differently-worded
-            address won't be linked.{" "}
-            {/* Naming the actual year beats "outside the register window": for
-                Dublin City that is 2019, so most of a house's history can sit
-                outside it, and a reader has no way to know that. */}
-            {coverageNoteFor(meta, d.authority_id) ??
-              "Earlier applications outside the register window held here won't appear either."}{" "}
-            Check the council's portal for a property's full history.
-          </p>
+          {/* The caveat that stood here — address matching and the register
+              window — moved to the footer. Absence here is still weaker
+              evidence than it looks, which is why it is stated rather than
+              dropped; it just doesn't need its own grey box mid-page. */}
         </section>
       )}
 
+      {/* One caveat for the page. The same three points used to appear as
+          separate grey boxes beside the timeline, the related applications and
+          here — each restating that this is a viewer and to check the portal.
+          Repetition stopped them being read; the specifics (which year the
+          register starts, that matching is by address string) are what a reader
+          actually needs, so those are kept and the rest is said once. */}
       <footer className="detail-footer">
         <p className="caveat">
           {/* source_updated_at is when the register itself was last loaded;
               last_synced is only when we built. Prefer the honest one. */}
           Register data as of {meta?.source_updated_at ?? d.last_synced?.slice(0, 10) ?? "unknown"}.
           This is a viewer over public register data — the {d.authority_name} register (and An
-          Coimisiún Pleanála for appeals) is the authoritative source.
+          Coimisiún Pleanála for appeals) is the authoritative source, and the one to confirm
+          anything time-critical against, such as an observation deadline. Summaries marked ✦ are
+          AI-generated from the documents named beside them. Applications at this address are
+          matched on the address as each one recorded it, so a differently-worded address won't be
+          linked.{" "}
+          {/* Naming the actual year beats "outside the register window": for
+              Dublin City that is 2019, so most of a house's history can sit
+              outside it, and a reader has no way to know that. */}
+          {coverageNoteFor(meta, d.authority_id) ??
+            "Earlier applications outside the register window held here won't appear either."}
         </p>
         {/* Printed pages leave the screen behind, so they have to carry their
             own provenance: when, from where, and how current. */}

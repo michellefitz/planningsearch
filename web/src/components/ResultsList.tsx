@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { fmtDate, type AppSummary } from "../api";
 import type { SavedApp } from "../accountApi";
 import { saveKey } from "../accountApi";
-import { STATUS_STYLE } from "./MapView";
+import { STATUS_STYLE } from "../statusStyle";
 import SaveStar from "./SaveStar";
 
 interface Props {

@@ -333,7 +333,49 @@ body {
   background: #e8eaed;
 }
 
-.map-container {
+/* Stands in for the map while its code loads. The same ground colour as the
+   map pane, so it reads as the map arriving rather than a different screen. */
+.map-skeleton {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  gap: 0.6rem;
+  align-content: center;
+  background: #e8eaed;
+}
+
+.map-skeleton-pulse {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--action);
+  animation: map-spin 800ms linear infinite;
+}
+
+.map-skeleton-label {
+  font-size: 0.8rem;
+  color: var(--ink-3);
+}
+
+@keyframes map-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-skeleton-pulse {
+    animation: none;
+  }
+}
+
+/* Two classes deliberately: maplibre's own stylesheet sets
+   `.maplibregl-map { position: relative }`, and now that the map is a lazy
+   chunk that sheet is injected *after* this one. At equal specificity it won,
+   the container collapsed to maplibre's default 300px, and the map stopped
+   filling its pane. */
+.map-wrap .map-container,
+.account-map-wrap .map-container {
   position: absolute;
   inset: 0;
 }
@@ -1935,12 +1977,16 @@ body {
     padding: 0.5rem 0.8rem;
     font-size: 0.85rem;
   }
+  /* Tighter rows, and a taller window onto them. The council list is five
+     authorities today and will be all 31, so the scroll inside this dropdown
+     is the thing that has to stay manageable — 0.55rem rows showed barely six
+     at a time. Still a 40px-tall target, which is the part that matters. */
   .ms-option {
-    padding: 0.55rem 0.5rem;
+    padding: 0.42rem 0.5rem;
     font-size: 0.85rem;
   }
   .ms-options {
-    max-height: 50vh;
+    max-height: 58vh;
   }
   /* Checkbox rows are the smallest targets in the panel — give the whole row
      some height rather than asking for a hit on the box itself. */
@@ -2053,11 +2099,20 @@ body {
     cursor: default;
   }
 
+  /* Less air between the groups so more of the panel is filters rather than
+     gap — the sheet had to be scrolled to reach Development size and Other. */
+  .sheet-body fieldset + fieldset {
+    margin-top: 0.5rem;
+  }
+  .sheet-body legend {
+    margin-bottom: 0.2rem;
+  }
+
   .sheet-body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 0.6rem 0.9rem 1rem;
+    padding: 0.5rem 0.9rem 0.75rem;
     -webkit-overflow-scrolling: touch;
   }
 

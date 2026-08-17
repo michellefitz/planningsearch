@@ -2,7 +2,8 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { accountApi, type AreaWatch, type Me, type SavedApp, type SavedList } from "../accountApi";
 import type { PointFeatureCollection } from "../api";
 import { StatusBadge } from "./ResultsList";
-import MapView from "./MapView";
+import { lazy, Suspense } from "react";
+const MapView = lazy(() => import("./MapView"));
 import { PencilIcon, XIcon } from "./icons";
 import { fmtDate } from "../api";
 import { posthog } from "../posthog";
@@ -490,6 +491,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                 </div>
               ) : (
                 <div className="account-map-wrap">
+                  <Suspense fallback={<div className="map-skeleton" role="status" aria-label="Loading the map" />}>
                   <MapView
                     data={mapGeoJson}
                     polygons={null}
@@ -498,6 +500,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                     onSelect={handleMapSelect}
                     onBoundsChange={() => {}}
                   />
+                  </Suspense>
                 </div>
               )}
               {unmappedCount > 0 && (
