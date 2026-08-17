@@ -13,12 +13,16 @@ import {
 import SearchBar from "./components/SearchBar";
 import FiltersBar from "./components/FiltersBar";
 import ResultsList from "./components/ResultsList";
-import MapView, { STATUS_STYLE } from "./components/MapView";
+import { STATUS_STYLE } from "./statusStyle";
 import { accountApi, saveKey, type AreaWatch, type Me, type SavedApp } from "./accountApi";
 import type { AgentAppRef } from "./agentApi";
 import { coverageSummary } from "./coverage";
 import { posthog } from "./posthog";
 
+// maplibre-gl is 217 kB gzipped — 60% of the initial JS — for a map that
+// cannot draw anything until the pins arrive anyway. Loading it alongside
+// the shell let the search bar and filters paint first.
+const MapView = lazy(() => import("./components/MapView"));
 const DetailPanel = lazy(() => import("./components/DetailPanel"));
 const ChatPanel = lazy(() => import("./components/ChatPanel"));
 const AccountPanel = lazy(() => import("./components/AccountPanel"));
@@ -153,19 +157,23 @@ export default function App() {
       try {
         const params = searchParams(s, bboxRef.current, nearRef.current);
         const mp = mapParams(s, bboxRef.current, nearRef.current);
-        const [listRes, geo, polys] = await Promise.all([
-          api.search(params),
-          api.mapGeoJson(mp),
-          // Site boundaries render on pin hover/selection only; a failure
-          // just means no outline, never a failed search.
-          api.mapPolygons(mp).catch(() => null),
-        ]);
+        const [listRes, geo] = await Promise.all([api.search(params), api.mapGeoJson(mp)]);
         if (seq !== searchSeq.current) return; // stale response
         setResults(listRes.results);
         setTotal(listRes.total);
         setFuzzy(listRes.fuzzy);
         setMapData(geo);
-        setSitePolygons(polys);
+        // Site boundaries render on pin hover/selection only, so they are not
+        // worth blocking first paint for — at ~120 kB gzipped they were the
+        // largest thing on the critical path, fetched before anyone had
+        // touched a pin. Loaded after the list and pins are up; a failure just
+        // means no outline, never a failed search.
+        void api
+          .mapPolygons(mp)
+          .then((polys) => {
+            if (seq === searchSeq.current) setSitePolygons(polys);
+          })
+          .catch(() => {});
         if (shouldFly && listRes.results.length > 0) {
           const r = listRes.results[0];
           if (r.lat != null && r.lng != null)
@@ -302,14 +310,17 @@ export default function App() {
       const seq = ++pinSeq.current;
       try {
         const mp = mapParams(s, bboxRef.current, nearRef.current);
-        const [geo, polys] = await Promise.all([
-          api.mapGeoJson(mp),
-          api.mapPolygons(mp).catch(() => null),
-        ]);
-        if (seq === pinSeq.current) {
-          setMapData(geo);
-          if (polys) setSitePolygons(polys);
-        }
+        const geo = await api.mapGeoJson(mp);
+        if (seq === pinSeq.current) setMapData(geo);
+        // Outlines follow the pins rather than arriving with them — same
+        // reasoning as the initial search: nothing sees them until a pin is
+        // hovered or tapped, and they are the heavier half of the pair.
+        void api
+          .mapPolygons(mp)
+          .then((polys) => {
+            if (seq === pinSeq.current && polys) setSitePolygons(polys);
+          })
+          .catch(() => {});
       } catch {
         // A failed pin refresh leaves the previous pins up; the list is
         // unaffected and the next move retries.
@@ -804,6 +815,18 @@ export default function App() {
               <path d="M6.5 1.5 3 5l3.5 3.5" />
             </svg>
           </button>
+          {/* Something has to occupy the map's space while its code arrives,
+              or the screen reads as broken rather than busy — the tiles used
+              to appear out of a flat grey rectangle with no sign anything was
+              happening. */}
+          <Suspense
+            fallback={
+              <div className="map-skeleton" role="status" aria-label="Loading the map">
+                <span className="map-skeleton-pulse" aria-hidden="true" />
+                <span className="map-skeleton-label">Loading the map…</span>
+              </div>
+            }
+          >
           <MapView
             data={mapData}
             polygons={sitePolygons}
@@ -831,6 +854,7 @@ export default function App() {
             }}
             flyTo={flyTo}
           />
+          </Suspense>
           {canSearchArea && !watchDraft && (
             <button type="button" className="search-area-btn" onClick={searchThisArea}>
               Search this area
