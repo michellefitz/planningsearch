@@ -129,10 +129,16 @@ export interface ConditionHighlight {
 }
 
 export interface DecisionConditions {
+  /** Only ever a real outcome — the API strips the progress notes councils
+   *  also file here ("Request Additional Information", "N/A"). */
   decision: string | null;
   decision_date: string | null;
   items: ConditionItem[];
   refusal_summary?: string | null;
+  /** What the portal's decision field was recording, when it wasn't a decision. */
+  decision_stage?: "further_info" | "procedural" | "placeholder" | null;
+  /** The council has asked the applicant for more and is waiting on the answer. */
+  further_info?: boolean;
 }
 
 export interface ZoningInfo {
@@ -313,6 +319,9 @@ export const api = {
   enrich: (id: number) =>
     getJson<{
       ai_summary: string | null;
+      /** Only meaningful when ai_summary is null: "insufficient" is a fact
+       *  about the description, "unavailable" is a fact about us. */
+      summary_status?: "ok" | "insufficient" | "unavailable";
       applicant_name: string | null;
       agent_name: string | null;
       description?: string | null;
@@ -333,6 +342,10 @@ export const api = {
   refusalSummary: (id: number) =>
     getJson<{ supported: boolean; summary: string | null }>(
       `/api/applications/${id}/refusal-summary`
+    ),
+  furtherInfoSummary: (id: number) =>
+    getJson<{ supported: boolean; summary: string | null }>(
+      `/api/applications/${id}/further-info-summary`
     ),
   conditionHighlights: (id: number) =>
     getJson<{ supported: boolean; highlights: ConditionHighlight[] | null }>(

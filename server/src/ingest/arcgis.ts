@@ -21,6 +21,7 @@ import {
   isOneOffHouse,
   normalizeStatus,
   ONE_OFF_HOUSE_FLAG_RE,
+  realDecision,
 } from "../normalize.js";
 import { extractEircode } from "./ppr.js";
 import {
@@ -223,7 +224,11 @@ export function featureToRecord(
     decision_due_date: isoDate(attrs, FIELD_MAP.decisionDueDate),
     // The national feed carries no submissions deadline.
     submissions_by_date: null,
-    decision: decisionRaw,
+    // The register's decision column doubles as a progress log, so it can hold
+    // "N/A" or "Request Additional Information" on an application nobody has
+    // decided. decision_raw keeps whatever it said; decision carries only an
+    // actual outcome, so nothing downstream has to second-guess it.
+    decision: realDecision(decisionRaw),
     decision_raw: decisionRaw,
     decision_date: isoDate(attrs, FIELD_MAP.decisionDate),
     appeal_status: str(attrs, FIELD_MAP.appealStatus),

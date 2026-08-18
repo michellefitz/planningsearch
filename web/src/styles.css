@@ -3438,6 +3438,12 @@ a.ov-pop-sub {
 .contribution-line {
   margin-bottom: 0.85rem;
 }
+
+/* The summary of a further-information request sits directly above the request
+   itself, so it needs the gap .ai-summary doesn't carry by default. */
+[aria-labelledby="further-info-h"] .ai-summary {
+  margin-bottom: 0.9rem;
+}
 /* ---------- Secondary pills (type / appeal / commencement) ---------- */
 /* Axes the single status badge can't carry, shown next to it in the list and
    the detail sheet. Same light-tinted treatment as .status-badge; the accent

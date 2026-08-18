@@ -34,7 +34,12 @@ import {
   summariseRefusal,
   type DecisionExtract,
 } from "./summarize.js";
-import { loadHighlightsModule, type ConditionHighlight } from "./conditions.js";
+import {
+  loadDecisionModule,
+  loadFurtherInfoModule,
+  loadHighlightsModule,
+  type ConditionHighlight,
+} from "./conditions.js";
 import { fetchZoning } from "./zoning.js";
 import { fetchOverlay, isOverlayLayer } from "./overlays.js";
 import {
@@ -660,12 +665,61 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     }
     // The plain-English refusal line is its own (cached) endpoint so the
     // conditions themselves never wait on a model call.
+    //
+    // The portal's decision field doubles as a progress log, so an application
+    // still being assessed comes back as "Seek Clarification of Additional
+    // Information" with the request itself in the items. Resolved here rather
+    // than in the browser: decision carries only a real outcome, and
+    // further_info says the file is waiting on the applicant.
+    const { decisionStage, realDecision, isFurtherInfoRequest } = await loadDecisionModule();
     return {
       supported: true,
       conditions: conditions
-        ? { ...conditions, refusal_summary: REFUSAL_SUMMARY_CACHE.get(id) ?? null }
+        ? {
+            ...conditions,
+            decision: realDecision(conditions.decision),
+            decision_stage: decisionStage(conditions.decision),
+            further_info: isFurtherInfoRequest(conditions.decision),
+            refusal_summary: REFUSAL_SUMMARY_CACHE.get(id) ?? null,
+          }
         : null,
     };
+  });
+
+  // What the council has asked for before it will decide. Its own endpoint, so
+  // the request itself renders without waiting on the model.
+  app.get("/api/applications/:id/further-info-summary", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare(
+        "SELECT authority_id, source_url, planning_reference, decision FROM applications WHERE id = ?"
+      )
+      .get(id) as
+      | {
+          authority_id: string;
+          source_url: string | null;
+          planning_reference: string;
+          decision: string | null;
+        }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    if (!(row.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
+      return { supported: false, summary: null };
+    }
+    const conditions = await fetchAgileConditions(
+      row.authority_id,
+      row.source_url,
+      row.planning_reference
+    );
+    // Only while the request is the live state of the file. Once a decision
+    // issues, the D/I items are history and the decision is the answer.
+    const { isFurtherInfoRequest } = await loadDecisionModule();
+    const decision = conditions?.decision ?? row.decision ?? null;
+    if (!isFurtherInfoRequest(decision)) return { supported: true, summary: null };
+    const { furtherInfoItems, furtherInfoSummary } = await loadFurtherInfoModule();
+    const asked = furtherInfoItems(conditions?.items ?? []);
+    if (!asked.length) return { supported: true, summary: null };
+    return { supported: true, summary: await furtherInfoSummary(asked, callClaude) };
   });
 
   // Plain-English summary of the refusal reasons — dense planning prose in
@@ -971,6 +1025,14 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     }
     return {
       ai_summary: aiSummary ?? null,
+      // The dev server has no per-call trace, so it reports the one thing it
+      // can tell for certain: a description this thin genuinely has nothing to
+      // summarise. Anything else is our failure, not the council's.
+      summary_status: aiSummary
+        ? "ok"
+        : (description ?? "").trim().length < 40
+          ? "insufficient"
+          : "unavailable",
       applicant_name: applicant,
       agent_name: agent,
       description,

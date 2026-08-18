@@ -751,6 +751,63 @@ function ContributionLine({ conditions }: { conditions: DecisionConditions | nul
   );
 }
 
+/**
+ * What the council has asked for before it will decide.
+ *
+ * This used to render as a Decision: the portals file the request in the same
+ * field as the outcome, so an application still under assessment showed
+ * "Seek Clarification Of Additional Information" under a Decision heading,
+ * with a button offering to summarise a decision that does not exist. The
+ * request is genuinely the most useful thing on the file at this point — it is
+ * what the applicant has to fix — so it gets said properly instead.
+ */
+function FurtherInfoSection({
+  detail: d,
+  conditions,
+  conditionsLoading,
+  askedSummary,
+  askedLoading,
+}: {
+  detail: AppDetail;
+  conditions: DecisionConditions | null;
+  conditionsLoading: boolean;
+  askedSummary: string | null;
+  askedLoading: boolean;
+}) {
+  const requested = conditions?.decision_date ?? d.further_info_requested_date ?? null;
+  return (
+    <section aria-labelledby="further-info-h" aria-busy={conditionsLoading || undefined}>
+      <h3 id="further-info-h">Further information requested</h3>
+      <p className="decision-line">
+        {d.authority_short_name} has asked the applicant for more before deciding
+        {requested && <span className="hint"> · {fmtDate(requested)}</span>}
+      </p>
+      {askedSummary ? (
+        <p className="ai-summary">
+          <span className="ai-mark">✦</span> {askedSummary}
+        </p>
+      ) : (
+        askedLoading && (
+          <p className="ai-summary loading-line">
+            <span className="ai-mark">✦</span> Reading what was asked for…
+          </p>
+        )
+      )}
+      {conditionsLoading && (
+        <div className="skeleton-block" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
+      {conditions && conditions.items.length > 0 && (
+        <ConditionGroups conditions={conditions} decision={null} />
+      )}
+      <AppealBlock detail={d} />
+    </section>
+  );
+}
+
 function DecisionSection({
   detail: d,
   conditions,
@@ -758,6 +815,8 @@ function DecisionSection({
   conditionsFailed,
   refusalSummary,
   refusalLoading,
+  askedSummary,
+  askedLoading,
   highlights,
   highlightsLoading,
 }: {
@@ -767,12 +826,26 @@ function DecisionSection({
   conditionsFailed: boolean;
   refusalSummary: string | null;
   refusalLoading: boolean;
+  askedSummary: string | null;
+  askedLoading: boolean;
   highlights: ConditionHighlight[] | null;
   highlightsLoading: boolean;
 }) {
   const decision = conditions?.decision ?? d.decision;
   const decisionDate = conditions?.decision_date ?? d.decision_date;
   const hasAppeal = Boolean(d.appeal_reference || d.appeal_decision);
+  // The council is still asking, not answering. An appeal or a real decision
+  // outranks it — those mean the request was answered and the file moved on.
+  if (conditions?.further_info && !decision && !hasAppeal)
+    return (
+      <FurtherInfoSection
+        detail={d}
+        conditions={conditions}
+        conditionsLoading={conditionsLoading}
+        askedSummary={askedSummary}
+        askedLoading={askedLoading}
+      />
+    );
   if (!decision && !hasAppeal) return null;
   // eplanning/iDocs councils record their reasons only in the scanned
   // decision order — offer the on-demand PDF summary instead of conditions.
@@ -1176,10 +1249,13 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const [conditionsFailed, setConditionsFailed] = useState(false);
   const [refusalSummary, setRefusalSummary] = useState<string | null>(null);
   const [refusalLoading, setRefusalLoading] = useState(false);
+  const [askedSummary, setAskedSummary] = useState<string | null>(null);
+  const [askedLoading, setAskedLoading] = useState(false);
   const [highlights, setHighlights] = useState<ConditionHighlight[] | null>(null);
   const [highlightsLoading, setHighlightsLoading] = useState(false);
   const [enrich, setEnrich] = useState<{
     ai_summary: string | null;
+    summary_status?: "ok" | "insufficient" | "unavailable";
     applicant_name: string | null;
     agent_name: string | null;
     description?: string | null;
@@ -1209,6 +1285,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     setConditionsFailed(false);
     setRefusalSummary(null);
     setRefusalLoading(false);
+    setAskedSummary(null);
+    setAskedLoading(false);
     setHighlights(null);
     setHighlightsLoading(false);
     setEnrich(null);
@@ -1326,6 +1404,22 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
                 .catch(() => {})
                 .finally(() => {
                   if (!cancelled) setRefusalLoading(false);
+                });
+            }
+            // The council has asked for more before it will decide. The
+            // request is already here, as D/I items — several thousand words
+            // of planning prose on a house extension — so summarise what is
+            // actually being asked for.
+            if (res.conditions.further_info) {
+              setAskedLoading(true);
+              api
+                .furtherInfoSummary(d.id)
+                .then((r) => {
+                  if (!cancelled) setAskedSummary(r.summary ?? null);
+                })
+                .catch(() => {})
+                .finally(() => {
+                  if (!cancelled) setAskedLoading(false);
                 });
             }
             // Conditions bind whatever the outcome, so this runs on grants
@@ -1537,13 +1631,17 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         ) : enrichLoading ? (
           <p className="ai-summary lead-summary loading-line">✦ Writing a summary…</p>
         ) : (
-          // Enrichment ran (enrich resolved) but produced no usable summary —
-          // usually a description too thin/truncated to summarise. Say so
-          // plainly rather than showing a stale or leaked model reply.
+          // Enrichment ran and produced no usable summary. Which of the two
+          // reasons it was matters: "not enough information" is a claim about
+          // the council's description, and making it when our own model call
+          // had timed out was simply untrue — the description in front of the
+          // reader was often several hundred words.
           enrich !== null &&
           description && (
             <p className="ai-summary lead-summary summary-empty">
-              Not enough information to generate a summary.
+              {enrich.summary_status === "insufficient"
+                ? "Not enough information to generate a summary."
+                : "Couldn't write a summary just now — the description is below."}
             </p>
           )
         )}
@@ -1609,6 +1707,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         conditionsFailed={conditionsFailed}
         refusalSummary={refusalSummary}
         refusalLoading={refusalLoading}
+        askedSummary={askedSummary}
+        askedLoading={askedLoading}
         highlights={highlights}
         highlightsLoading={highlightsLoading}
       />

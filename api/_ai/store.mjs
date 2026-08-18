@@ -40,6 +40,7 @@ export const AI_CACHE_KINDS = Object.freeze({
   HIGHLIGHTS: "condition_highlights",
   APPEAL: "appeal_summary",
   DECISION: "decision_extract",
+  FURTHER_INFO: "further_info_summary",
 });
 
 let schemaReady = null;
