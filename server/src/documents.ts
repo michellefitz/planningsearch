@@ -63,8 +63,35 @@ const GENERIC_LABEL_RE = /^(view|open|download|show|file|document|link)?$/i;
 /** A DD/MM/YYYY (or -/.- separated) date as councils display it. */
 const DATE_RE = /\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\b/;
 
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
+}
+
+/**
+ * Cell text from a council listing: tags out, entities decoded, whitespace
+ * collapsed.
+ *
+ * The decode is what stops an empty iDocs cell reading as content. Kildare
+ * writes an unused comment column as `<td>&nbsp;</td>`, which stripping alone
+ * left as the literal string "&nbsp;" — truthy, so every document with no
+ * comment came out as "Application Form - Part A — &nbsp;". Decoding turns it
+ * into a space that the collapse then removes, and the empty cell is falsy
+ * again. It also fixes titles like "Plans &amp; Particulars" along the way.
+ *
+ * Tags are stripped before decoding, so "&lt;b&gt;" becomes the text "<b>"
+ * rather than markup — and it is rendered as text, never as HTML.
+ */
 function stripTags(html: string): string {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return decodeEntities(html.replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function resolveDocHref(href: string, baseUrl: string): string | null {
@@ -223,17 +250,6 @@ const UA_HEADERS = {
   "User-Agent": "PlanView/0.1 (planning register viewer; respectful on-demand fetch)",
   Accept: "text/html",
 };
-
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ");
-}
 
 /** Third-party submissions/observations show up in council file listings as
  *  document types like "Third Party Submission" or "Submission/ Objection". */
