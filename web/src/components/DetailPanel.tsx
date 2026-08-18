@@ -530,56 +530,81 @@ type AppealState =
   | { phase: "failed" };
 
 /**
- * The appeal, told inside the decision section: a one-click AI summary of the
- * case, the deep link to the file, and the fuller national record on demand.
- * Status/dates live in the timeline and facts, so they aren't repeated here.
+ * The appeal, told inside the decision section: the AI summary of the case,
+ * the national record, and the deep link to the file. Status/dates live in the
+ * timeline and facts, so they aren't repeated here.
+ *
+ * Both the summary and the case record load themselves once this scrolls into
+ * view. Pressing a button to see the appeal bought nothing — nobody opens an
+ * appealed application and decides they would rather not read the appeal — and
+ * it was the last thing in the sheet still asking. It is still not fetched on
+ * open: An Coimisiún Pleanála's record is a live round-trip to their servers,
+ * so it fires for pages someone actually scrolled to.
  */
 function AppealBlock({ detail: d }: { detail: AppDetail }) {
   const [state, setState] = useState<AppealState>({ phase: "idle" });
   const [summary, setSummary] = useState<SummaryState>({ phase: "idle" });
+  const rootRef = useRef<HTMLDivElement>(null);
+  const loadRef = useRef<() => void>(() => {});
   useEffect(() => {
     setState({ phase: "idle" });
     setSummary({ phase: "idle" });
   }, [d.id]);
-  if (!d.appeal_reference) return null;
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          loadRef.current();
+        }
+      },
+      { rootMargin: "300px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [d.id]);
 
   const load = async () => {
-    setState({ phase: "loading" });
-    try {
-      const res = await api.appeal(d.id);
-      if (res.fields?.length || res.documents?.length)
-        setState({ phase: "loaded", fields: res.fields ?? [], documents: res.documents ?? [] });
-      else setState({ phase: "empty" });
-    } catch {
-      setState({ phase: "failed" });
-    }
+    setState((s) => (s.phase === "idle" ? { phase: "loading" } : s));
+    setSummary((s) => (s.phase === "idle" ? { phase: "loading" } : s));
+    // Two independent round-trips — the case record comes from An Coimisiún
+    // Pleanála, the summary from the model — so one failing must not blank the
+    // other.
+    void api
+      .appeal(d.id)
+      .then((res) => {
+        if (res.fields?.length || res.documents?.length)
+          setState({ phase: "loaded", fields: res.fields ?? [], documents: res.documents ?? [] });
+        else setState({ phase: "empty" });
+      })
+      .catch(() => setState({ phase: "failed" }));
+    void api
+      .appealSummary(d.id)
+      .then((res) => {
+        if (res.summary)
+          setSummary({ phase: "loaded", summary: res.summary, source: res.based_on_document ?? null });
+        else setSummary({ phase: "empty" });
+      })
+      .catch(() => setSummary({ phase: "failed" }));
   };
 
-  const loadSummary = async () => {
-    setSummary({ phase: "loading" });
-    try {
-      const res = await api.appealSummary(d.id);
-      if (res.summary)
-        setSummary({ phase: "loaded", summary: res.summary, source: res.based_on_document ?? null });
-      else setSummary({ phase: "empty" });
-    } catch {
-      setSummary({ phase: "failed" });
-    }
-  };
+  loadRef.current = load;
+
+  if (!d.appeal_reference) return null;
 
   return (
-    <div className="appeal-block">
+    <div className="appeal-block" ref={rootRef}>
       <h4>
         Appeal <span className="count">{appealRef(d)}</span>
       </h4>
 
-      {summary.phase === "idle" && (
-        <button type="button" className="btn ai" onClick={loadSummary}>
-          ✦ Summarise the appeal
-        </button>
-      )}
-      {summary.phase === "loading" && (
-        <span className="hint loading-line">Summarising the appeal…</span>
+      {(summary.phase === "idle" || summary.phase === "loading") && (
+        <div className="appeal-summary-skeleton" aria-hidden="true">
+          <span /><span /><span />
+        </div>
       )}
       {summary.phase === "failed" && (
         <p className="list-note">Couldn't generate a summary just now — try again shortly.</p>
@@ -588,38 +613,33 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
         <p className="list-note">Not enough on the case file yet to summarise.</p>
       )}
       {summary.phase === "loaded" && (
-        <blockquote className="ai-summary">
-          {summary.summary}
-          <footer className="hint">AI summary of the case file.</footer>
-        </blockquote>
+        /* The star marks it as model-written, in the same place as every other
+           AI line in the sheet. It used to say so in a footer underneath,
+           which took a line to repeat what the mark says at a glance. */
+        <p className="ai-summary">
+          <span className="ai-mark">✦</span> {summary.summary}
+        </p>
       )}
 
-      {state.phase === "idle" && (
-        <div className="doc-placeholder">
+      {/* Held open at the height of a case record — four documents is the usual
+          count — so the link below it doesn't jump down the page when the
+          record arrives. */}
+      {(state.phase === "idle" || state.phase === "loading") && (
+        <div className="doc-placeholder appeal-placeholder">
           <div className="doc-skeleton" aria-hidden="true">
-            <span /><span /><span />
+            <span /><span /><span /><span />
           </div>
-          <button type="button" className="btn" onClick={load}>
-            Load case details
-          </button>
+          <span className="hint loading-line">Fetching the national case record…</span>
         </div>
-      )}
-      {state.phase === "loading" && (
-        <span className="hint loading-line">Fetching the national case record…</span>
-      )}
-      {d.appeal_url && (
-        <a className="link-btn viewer-link" href={d.appeal_url} target="_blank" rel="noopener noreferrer">
-          Case file on An Coimisiún Pleanála ↗
-        </a>
       )}
       {state.phase === "failed" && (
         <p className="list-note">
-          Couldn't reach An Coimisiún Pleanála just now — use the case-file link above.
+          Couldn't reach An Coimisiún Pleanála just now — use the case-file link below.
         </p>
       )}
       {state.phase === "empty" && (
         <p className="list-note">
-          Nothing extra to show — the case file above has the full national record.
+          Nothing extra to show — the case file below has the full national record.
         </p>
       )}
       {state.phase === "loaded" && (
@@ -649,6 +669,13 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
             </>
           )}
         </div>
+      )}
+      {/* Last, as the council's file viewer is in the documents section: the
+          way out to the full record, after everything we can show inline. */}
+      {d.appeal_url && (
+        <a className="link-btn viewer-link" href={d.appeal_url} target="_blank" rel="noopener noreferrer">
+          Case file on An Coimisiún Pleanála ↗
+        </a>
       )}
     </div>
   );

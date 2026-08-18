@@ -3626,7 +3626,9 @@ a.pill:hover {
 }
 @media (prefers-reduced-motion: reduce) {
   .loading-line,
-  .skeleton-block span {
+  .skeleton-block span,
+  .appeal-summary-skeleton span,
+  .appeal-placeholder .doc-skeleton span {
     animation: none;
   }
 }
@@ -3662,6 +3664,59 @@ a.pill:hover {
 .doc-placeholder .doc-skeleton span:nth-child(2) { width: 55%; }
 .doc-placeholder .doc-skeleton span:nth-child(3) { width: 62%; }
 .doc-placeholder .doc-skeleton span:nth-child(4) { width: 48%; }
+
+/* Appeal placeholders.
+ *
+ * The appeal loads itself, so these are progress, not something to press.
+ * Both are held at roughly the height of what replaces them — three lines of
+ * summary, and a case record of four documents, which is the usual count — so
+ * the case-file link underneath stays put instead of jumping down the page as
+ * each arrives. */
+.appeal-summary-skeleton {
+  display: grid;
+  gap: 0.45rem;
+  /* The same tint and radius the summary itself lands in, so filling it in
+     changes the words and nothing else. */
+  margin: 0.5rem 0 0;
+  padding: 0.75rem 0.85rem;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+}
+.appeal-summary-skeleton span {
+  display: block;
+  height: 0.7rem;
+  border-radius: 3px;
+  background: #bfdbfe;
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+.appeal-summary-skeleton span:nth-child(2) { width: 92%; animation-delay: 0.2s; }
+.appeal-summary-skeleton span:nth-child(3) { width: 64%; animation-delay: 0.4s; }
+
+.appeal-placeholder {
+  margin-top: 0.9rem;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.8rem;
+  min-height: 8rem;
+}
+.appeal-placeholder .doc-skeleton {
+  gap: 0.8rem;
+  margin-bottom: 0;
+}
+.appeal-placeholder .doc-skeleton span {
+  height: 0.7rem;
+  /* The shared placeholder sets these at 0.45 opacity, which all but vanished
+     once there was no button in the box to look at. */
+  opacity: 1;
+  background: var(--line);
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+.appeal-placeholder .doc-skeleton span:nth-child(2) { animation-delay: 0.15s; }
+.appeal-placeholder .doc-skeleton span:nth-child(3) { animation-delay: 0.3s; }
+.appeal-placeholder .doc-skeleton span:nth-child(4) { animation-delay: 0.45s; }
 
 .appeal-outcome {
   font-weight: 620;

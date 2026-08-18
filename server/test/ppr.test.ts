@@ -22,13 +22,70 @@ describe("normalizeAddress", () => {
   });
 
   it("keeps Dublin postal districts (they distinguish addresses)", () => {
-    expect(normalizeAddress("12 Griffith Road, Dublin 11")).toBe("12 GRIFFITH ROAD DUBLIN 11");
+    expect(normalizeAddress("12 Griffith Road, Dublin 11")).toBe("12 GRIFFITH RD DUBLIN 11");
   });
 
   it("strips an embedded Eircode so it doesn't defeat the address match", () => {
     expect(normalizeAddress("31 Mount Prospect Drive, Dublin 3, D03 WP89")).toBe(
-      "31 MOUNT PROSPECT DRIVE DUBLIN 3"
+      "31 MOUNT PROSPECT DR DUBLIN 3"
     );
+  });
+
+  // The register abbreviates, the planning registers spell out. 28 Gilford
+  // Road is the case that surfaced it: two sales, €3.5m and €3m, filed under
+  // "28 GILFORD RD" and matching nothing.
+  it("reads the register's abbreviations and the council's long forms as one", () => {
+    expect(normalizeAddress("28, Gilford Road, Sandymount, Dublin 4")).toBe(
+      normalizeAddress("28 GILFORD RD, SANDYMOUNT, DUBLIN 4")
+    );
+    expect(normalizeAddress("46 Joyce Avenue, Foxrock, Dublin 18")).toBe(
+      normalizeAddress("46 JOYCE AVE, FOXROCK, DUBLIN 18")
+    );
+    expect(normalizeAddress("12 Rockville Drive, Blackrock")).toBe(
+      normalizeAddress("12 ROCKVILLE DR, BLACKROCK")
+    );
+    expect(normalizeAddress("26 Penrose Street, Ringsend")).toBe(
+      normalizeAddress("26 PENROSE ST, RINGSEND")
+    );
+    expect(normalizeAddress("33 Leinster Square, Rathmines")).toBe(
+      normalizeAddress("33 LEINSTER SQ, RATHMINES")
+    );
+    expect(normalizeAddress("Apartment 96, Marlborough Court")).toBe(
+      normalizeAddress("APT 96, MARLBOROUGH COURT")
+    );
+    expect(normalizeAddress("20A Mountpleasant Avenue Lower, Ranelagh")).toBe(
+      normalizeAddress("20A MOUNTPLEASANT AVE LWR, RANELAGH")
+    );
+  });
+
+  // Folding to the short form is what keeps the one genuinely ambiguous word
+  // safe: SAINT and STREET both become ST, but they sit in different places in
+  // the address, so a saint's name never collides with a street's.
+  it("does not confuse a saint with a street", () => {
+    expect(normalizeAddress("1 St John's Road, Dublin 8")).toBe(
+      normalizeAddress("1 SAINT JOHNS RD, DUBLIN 8")
+    );
+    expect(normalizeAddress("1 St John's Road, Dublin 8")).not.toBe(
+      normalizeAddress("1 John Street, Dublin 8")
+    );
+  });
+
+  // Apostrophes close up rather than splitting a word in two: "JOHN S" was
+  // matching nothing.
+  it("reads an apostrophe the same way whichever glyph is used", () => {
+    expect(normalizeAddress("24, St Brigid's Road, Clondalkin")).toBe(
+      normalizeAddress("24 ST BRIGIDS RD, CLONDALKIN")
+    );
+    expect(normalizeAddress("104, St Maelruan\u2019s Park, Tallaght")).toBe(
+      normalizeAddress("104 ST MAELRUANS PARK, TALLAGHT")
+    );
+  });
+
+  // Short forms the register barely uses are left alone: GR is Green as often
+  // as Grove, and folding it would merge two streets in the same estate.
+  it("leaves the ambiguous long tail of abbreviations alone", () => {
+    expect(normalizeAddress("12 Elm Grove, Lucan")).not.toBe(normalizeAddress("12 Elm GR, Lucan"));
+    expect(normalizeAddress("12 Elm Park, Lucan")).not.toBe(normalizeAddress("12 Elm PK, Lucan"));
   });
 });
 
