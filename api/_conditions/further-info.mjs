@@ -38,6 +38,39 @@ export function furtherInfoUserMsg(items) {
     .slice(0, MAX_CHARS);
 }
 
+/**
+ * Pick the council's further-information request out of a scanned file list.
+ *
+ * The eplanning councils (Kildare, Wicklow, Meath) publish no structured
+ * conditions at all — the request is a letter in the document list, titled
+ * "F.I. Request Letter", "Further Information Request" or some near variant.
+ * Returns -1 when the file list holds none, so the sheet can say the request
+ * is on file at the council rather than invent a summary.
+ */
+const FI_DOC_RE =
+  /\bf\.?\s?i\.?\b|further\s+information|additional\s+information|clarification/i;
+/** A response from the applicant, or an acknowledgement of one, is not the
+ *  request — reading it would summarise the answer as though it were the ask. */
+const FI_NOT_REQUEST_RE =
+  /received|response|reply|submitted|acknowledg|receipt|checklist|extension of time/i;
+
+export function findFurtherInfoDocIndex(files) {
+  let best = -1;
+  let bestScore = 0;
+  (files ?? []).forEach((f, i) => {
+    const t = String(f?.title ?? "");
+    if (!FI_DOC_RE.test(t) || FI_NOT_REQUEST_RE.test(t)) return;
+    let score = 1;
+    if (/request/i.test(t)) score += 3;
+    if (/letter/i.test(t)) score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  });
+  return best;
+}
+
 export const FURTHER_INFO_PROMPT =
   "An Irish council has asked an applicant for further information before it will decide their " +
   "planning application. You are given the request. Say what the applicant has to do.\n\n" +

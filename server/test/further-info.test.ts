@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FURTHER_INFO_PROMPT,
+  findFurtherInfoDocIndex,
   furtherInfoItems,
   furtherInfoSummary,
   furtherInfoUserMsg,
@@ -100,5 +101,53 @@ describe("furtherInfoSummary", () => {
     expect(await furtherInfoSummary(SD, async () => null)).toBeNull();
     // A one-word reply is a failure wearing a hat, not a summary.
     expect(await furtherInfoSummary(SD, async () => "Unclear.")).toBeNull();
+  });
+});
+
+/**
+ * The eplanning councils publish no structured conditions at all, so their
+ * request is a scanned letter in the document list. These titles are the real
+ * ones from Wicklow 26136's file list, read live on 2026-08-18.
+ */
+describe("findFurtherInfoDocIndex", () => {
+  const WICKLOW = [
+    { title: "Report Request Letter to Internal Staff — Internal Referrals" },
+    { title: "Report Request Letter to External Body — External Referrals" },
+    { title: "Acknowledgement / Validation Letter — Acknowledgement Letter" },
+    { title: "Validation Check List — Validation Checklist" },
+    { title: "Application - Cover Letter — Cover Letter" },
+    { title: "Application Form - Part A — Application Form" },
+    { title: "Newspaper Notice — Wicklow People" },
+    { title: "Site location map — OS Maps" },
+    { title: "F.I. Request Letter — Further Information Request" },
+  ];
+
+  it("picks the request letter out of a real file list", () => {
+    expect(findFurtherInfoDocIndex(WICKLOW)).toBe(8);
+  });
+
+  it("never picks the applicant's answer, or an acknowledgement of it", () => {
+    // Summarising the response as though it were the request would describe
+    // what was supplied, not what was asked for.
+    const answered = [
+      { title: "F.I. Received Letter — Further Information Received" },
+      { title: "Acknowledgement of Further Information" },
+      { title: "F.I. Response — drawings submitted" },
+    ];
+    expect(findFurtherInfoDocIndex(answered)).toBe(-1);
+  });
+
+  it("prefers the request over a bare mention of further information", () => {
+    const files = [
+      { title: "Further information" },
+      { title: "F.I. Request Letter" },
+    ];
+    expect(findFurtherInfoDocIndex(files)).toBe(1);
+  });
+
+  it("is -1 when the file list holds no request at all", () => {
+    expect(findFurtherInfoDocIndex([{ title: "Site Notice" }, { title: "Fee Receipt" }])).toBe(-1);
+    expect(findFurtherInfoDocIndex([])).toBe(-1);
+    expect(findFurtherInfoDocIndex(null)).toBe(-1);
   });
 });

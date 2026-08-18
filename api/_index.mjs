@@ -15,6 +15,7 @@ import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
 import { conditionHighlights, HIGHLIGHTS_PROMPT } from "./_conditions/highlights.mjs";
 import {
   FURTHER_INFO_PROMPT,
+  findFurtherInfoDocIndex,
   furtherInfoItems,
   furtherInfoSummary,
 } from "./_conditions/further-info.mjs";
@@ -3093,27 +3094,66 @@ export default async function handler(req, res) {
   if (fim) {
     const app = BUNDLE.applications.find((a) => a.id === Number(fim[1]));
     if (!app) return send(res, 404, { error: "Application not found" });
-    if (!(app.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
-      return send(res, 200, { supported: false, summary: null });
+    const isAgileApp = app.authority_id in AGILE_CLIENT_BY_AUTHORITY;
+    const cacheKind = versionedKind(AI_CACHE_KINDS.FURTHER_INFO, FURTHER_INFO_PROMPT);
+
+    if (isAgileApp) {
+      const conditions = await fetchAgileConditions(
+        app.authority_id,
+        app.source_url,
+        app.planning_reference
+      );
+      // Only while the request is the live state of the file. Once a decision
+      // issues, the D/I items are history and the decision is the answer.
+      const decision = conditions?.decision ?? app.decision ?? null;
+      if (!isFurtherInfoRequest(decision)) return send(res, 200, { supported: true, summary: null });
+      const asked = furtherInfoItems(conditions?.items ?? []);
+      if (!asked.length) return send(res, 200, { supported: true, summary: null });
+      const summary = await aiCached(cacheKind, app.authority_id, app.planning_reference, () =>
+        furtherInfoSummary(asked, callClaude)
+      );
+      return send(res, 200, { supported: true, summary });
     }
-    const conditions = await fetchAgileConditions(
-      app.authority_id,
-      app.source_url,
-      app.planning_reference
+
+    /**
+     * eplanning councils (Kildare, Wicklow, Meath) publish no structured
+     * conditions, so the request is a scanned letter in the file list —
+     * "F.I. Request Letter". Read like the decision order: find it, fetch it,
+     * hand the PDF to the model. Cached, because a scanned letter is the most
+     * expensive thing a page view can trigger and the request never changes
+     * once issued.
+     */
+    if (app.status !== "further_info") return send(res, 200, { supported: true, summary: null });
+    const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
+    if (!listUrl) return send(res, 200, { supported: false, summary: null });
+    const stored = await aiCacheGet(cacheKind, app.authority_id, app.planning_reference);
+    if (stored !== undefined) return send(res, 200, { supported: true, ...stored });
+    if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
+    const files = await fetchScannedFileList(listUrl);
+    const index = files ? findFurtherInfoDocIndex(files) : -1;
+    const empty = { supported: true, summary: null, source_document: null };
+    if (index < 0) return send(res, 200, empty);
+    const doc = await fetchScannedDocument(listUrl, index, 10_000_000);
+    const source_document = files[index].title;
+    if (!doc || doc === "too_large") return send(res, 200, { ...empty, source_document });
+    const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
+    if (!isPdf) return send(res, 200, { ...empty, source_document });
+    const raw = await callClaude(
+      FURTHER_INFO_PROMPT,
+      [
+        {
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data: doc.body.toString("base64") },
+        },
+        { type: "text", text: "Say what the applicant has to do." },
+      ],
+      400,
+      30000
     );
-    // Only while the request is the live state of the file. Once a decision
-    // issues, the D/I items are history and the decision is the answer.
-    const decision = conditions?.decision ?? app.decision ?? null;
-    if (!isFurtherInfoRequest(decision)) return send(res, 200, { supported: true, summary: null });
-    const asked = furtherInfoItems(conditions?.items ?? []);
-    if (!asked.length) return send(res, 200, { supported: true, summary: null });
-    const summary = await aiCached(
-      versionedKind(AI_CACHE_KINDS.FURTHER_INFO, FURTHER_INFO_PROMPT),
-      app.authority_id,
-      app.planning_reference,
-      () => furtherInfoSummary(asked, callClaude)
-    );
-    return send(res, 200, { supported: true, summary });
+    const summary = raw ? isUsableSummary(sanitiseSummary(String(raw))) : null;
+    const result = { summary, source_document };
+    if (summary) await aiCachePut(cacheKind, app.authority_id, app.planning_reference, result);
+    return send(res, 200, { supported: true, ...result });
   }
 
   const am = route.match(/^\/api\/applications\/(\d+)\/appeal$/);

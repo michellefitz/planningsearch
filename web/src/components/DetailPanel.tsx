@@ -781,13 +781,16 @@ function FurtherInfoSection({
   askedSummary: string | null;
   askedLoading: boolean;
 }) {
-  const requested = conditions?.decision_date ?? d.further_info_requested_date ?? null;
+  const requested = d.further_info_requested_date ?? conditions?.decision_date ?? null;
   return (
     <section aria-labelledby="further-info-h" aria-busy={conditionsLoading || undefined}>
       <h3 id="further-info-h">Further information requested</h3>
       <p className="decision-line">
         {d.authority_short_name} has asked the applicant for more before deciding
         {requested && <span className="hint"> · {fmtDate(requested)}</span>}
+        {d.further_info_received_date && (
+          <span className="hint"> · answered {fmtDate(d.further_info_received_date)}</span>
+        )}
       </p>
       {askedSummary ? (
         <p className="ai-summary">
@@ -809,6 +812,15 @@ function FurtherInfoSection({
       )}
       {conditions && conditions.items.length > 0 && (
         <ConditionGroups conditions={conditions} decision={null} />
+      )}
+      {/* Kildare, Wicklow and Meath publish no structured conditions — their
+          request is a scanned letter, summarised above from the PDF. The
+          letter itself is in the documents section below. */}
+      {!conditions && !askedLoading && !askedSummary && (
+        <p className="section-note">
+          {d.authority_short_name} publishes the request as a letter on the file rather than as
+          structured text — look for the further-information request in the documents below.
+        </p>
       )}
       <AppealBlock detail={d} />
     </section>
@@ -843,7 +855,14 @@ function DecisionSection({
   const hasAppeal = Boolean(d.appeal_reference || d.appeal_decision);
   // The council is still asking, not answering. An appeal or a real decision
   // outranks it — those mean the request was answered and the file moved on.
-  if (conditions?.further_info && !decision && !hasAppeal)
+  //
+  // `awaitingInfo` covers both shapes: the agile portals say so in the
+  // conditions payload, and everywhere else the status is the only signal —
+  // Kildare, Wicklow and Meath have no conditions endpoint, so without the
+  // second test their applications showed no further-information section at
+  // all, which is what made this look like a Dublin-only feature.
+  const awaitingInfo = Boolean(conditions?.further_info) || d.status === "further_info";
+  if (awaitingInfo && !decision && !hasAppeal)
     return (
       <FurtherInfoSection
         detail={d}
@@ -1379,6 +1398,22 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         .catch(() => {})
         .finally(() => {
           if (!cancelled) setRefusalLoading(false);
+        });
+    }
+    // Councils with no conditions endpoint carry the request as a scanned
+    // letter instead, read on the same endpoint — so the fetch is driven by
+    // the status here rather than by anything in a conditions payload that
+    // will never arrive.
+    if (!hasConditionsSource && d.status === "further_info") {
+      setAskedLoading(true);
+      api
+        .furtherInfoSummary(d.id)
+        .then((r) => {
+          if (!cancelled) setAskedSummary(r.summary ?? null);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setAskedLoading(false);
         });
     }
     if (hasConditionsSource) {

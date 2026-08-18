@@ -722,6 +722,12 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     return { supported: true, summary: await furtherInfoSummary(asked, callClaude) };
   });
 
+  // NOTE: the eplanning councils (Kildare, Wicklow, Meath) publish no
+  // structured conditions — their request is a scanned "F.I. Request Letter"
+  // in the file list, read as a PDF. That path lives in api/_index.mjs, which
+  // is what serves production; this dev server answers `supported: false` for
+  // them (the route above returns early on the missing agile client).
+
   // Plain-English summary of the refusal reasons — dense planning prose in
   // the register. Split from /conditions so those render without waiting on
   // the model; cached because the reasons never change once decided.

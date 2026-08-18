@@ -707,8 +707,11 @@ export default function App() {
                 posthog.capture("search_submitted", { has_query: Boolean(q.trim()) });
                 if (q.trim()) flyOnNextSearch.current = true;
                 applyState({ ...state, q });
-                // On mobile, a keyword search wants results — switch to the list.
-                if (q.trim()) setMobileView("list");
+                // Searching an area used to flip the phone into list view. The
+                // map is the answer to "what's happening around here" — it
+                // flies to the first hit and shows every other pin around it,
+                // which a list of addresses cannot — and the List button is
+                // right there for anyone who wants the other view.
               }}
               onNearMe={nearMe}
             />

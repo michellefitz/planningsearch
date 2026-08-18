@@ -244,22 +244,47 @@ const EMPTY_DETAIL: EplanningDetail = {
   submissionsBy: null,
 };
 
-async function fetchDetail(id: string, cookies: string): Promise<EplanningDetail> {
-  try {
-    const res = await fetchWithTimeout(`${EPLAN_BASE}/AppFileRefDetails/${id}/0`, {
-      headers: { ...UA_HEADERS, Cookie: cookies },
-    });
-    if (!res.ok) return EMPTY_DETAIL;
-    const html = await res.text();
-    return {
-      coords: parseSiteLocation(html),
-      description: parseFullDescription(html),
-      applicationTypeRaw: parseApplicationTypeRaw(html),
-      submissionsBy: parseSubmissionsBy(html),
-    };
-  } catch {
-    return EMPTY_DETAIL;
+/**
+ * Retried, because a page that doesn't answer costs a map pin.
+ *
+ * This was a single best-effort attempt. Measured against the live register on
+ * 2026-08-18, 39 of the 1,000 most recently received applications had no
+ * coordinates — every one of them Kildare — and re-fetching those same detail
+ * pages by hand, 12 of them parsed cleanly on the first try. The council had
+ * recorded a site location all along; the build's one attempt had simply
+ * failed. 20 Glen Easton Gardens (2660804) was one of them: a live application
+ * that appeared in the list and nowhere on the map.
+ *
+ * The other 27 carry no grid coordinates on the page at all, which no amount
+ * of retrying will fix.
+ */
+const DETAIL_ATTEMPTS = 3;
+
+export async function fetchDetail(id: string, cookies: string): Promise<EplanningDetail> {
+  for (let attempt = 1; attempt <= DETAIL_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetchWithTimeout(`${EPLAN_BASE}/AppFileRefDetails/${id}/0`, {
+        headers: { ...UA_HEADERS, Cookie: cookies },
+      });
+      if (res.ok) {
+        const html = await res.text();
+        return {
+          coords: parseSiteLocation(html),
+          description: parseFullDescription(html),
+          applicationTypeRaw: parseApplicationTypeRaw(html),
+          submissionsBy: parseSubmissionsBy(html),
+        };
+      }
+      // 4xx is an answer — the page is not coming, so stop asking.
+      if (res.status < 500 && res.status !== 429) return EMPTY_DETAIL;
+    } catch {
+      // Timeout or transport error: worth another go.
+    }
+    if (attempt < DETAIL_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
   }
+  return EMPTY_DETAIL;
 }
 
 /** Session/antiforgery cookies from a response, joined into a Cookie header. */
@@ -368,6 +393,13 @@ export async function fetchKildareRecent(
     `  eplanning Kildare received: located ${located}/${items.length} on the map, ` +
       `${described} full descriptions`
   );
+  // A record with no pin is invisible on the map however well it reads in the
+  // list, so a run that loses a lot of them should be obvious in the log
+  // rather than something to discover from a user's search months later.
+  const unlocated = items.length - located;
+  if (unlocated > 0) {
+    log(`  eplanning Kildare received: ${unlocated} without coordinates (no pin on the map)`);
+  }
   return items;
 }
 
