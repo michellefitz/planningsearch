@@ -75,6 +75,23 @@ const haystackOf = (a) =>
     .toLowerCase();
 const HAYSTACK = new Map(BUNDLE.applications.map((a) => [a.id, haystackOf(a)]));
 
+/**
+ * The same text with every space and punctuation mark removed.
+ *
+ * Estates get written both ways. The register files Leixlip's as "Glen Easton
+ * Gardens"; people type "Gleneaston". Neither spelling is wrong and exact
+ * matching found nothing for the second, so the search fell through to the
+ * fuzzy fallback and returned the wrong end of the county. Squashed, the two
+ * are the same string. Built lazily, like the trigram index — it is only ever
+ * consulted when the ordinary pass came back empty.
+ */
+const squash = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+let SQUASHED = null;
+function squashedHaystack() {
+  SQUASHED ??= new Map(BUNDLE.applications.map((a) => [a.id, squash(HAYSTACK.get(a.id))]));
+  return SQUASHED;
+}
+
 /** Map pins per request — see /api/map/applications. */
 const MAP_FEATURE_LIMIT = 2000;
 
@@ -1948,10 +1965,22 @@ function runSearch(p) {
       const h = HAYSTACK.get(a.id);
       return tokens.every((t) => h.includes(t));
     });
-    if (exact.length) {
+    // A place written as one word where the register writes it as two (or the
+    // other way round) is still an exact match, not a near one — so this runs
+    // before the fuzzy fallback, and its hits keep match_quality "exact".
+    const squashedQ = squash(q);
+    const loose =
+      exact.length || squashedQ.length < 4
+        ? []
+        : (() => {
+            const hay = squashedHaystack();
+            return rows.filter((a) => hay.get(a.id).includes(squashedQ));
+          })();
+    const hits = exact.length ? exact : loose;
+    if (hits.length) {
       // Relevance is the default order for a keyword search; an explicit date
       // sort below overrides it.
-      rows = exact
+      rows = hits
         .map((a) => ({ a, s: relevanceScore(a, tokens) }))
         .sort((x, y) => y.s - x.s)
         .map((x) => ({ ...x.a, match_quality: "exact" }));
