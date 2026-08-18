@@ -15,6 +15,7 @@ import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
 import { conditionHighlights, HIGHLIGHTS_PROMPT } from "./_conditions/highlights.mjs";
 import {
   FURTHER_INFO_PROMPT,
+  cleanSummary,
   findFurtherInfoDocIndex,
   furtherInfoItems,
   furtherInfoSummary,
@@ -3179,12 +3180,17 @@ export default async function handler(req, res) {
           type: "document",
           source: { type: "base64", media_type: "application/pdf", data: doc.body.toString("base64") },
         },
-        { type: "text", text: "Say what the applicant has to do." },
+        { type: "text", text: "Say what this request is about, within the word limit." },
       ],
-      400,
+      // Tokens sized to the word budget rather than to the letter: a cap the
+      // model can comfortably reach is a cap it will reach, and a multi-page
+      // request invites it to reproduce rather than summarise.
+      220,
       30000
     );
-    const summary = raw ? isUsableSummary(sanitiseSummary(String(raw))) : null;
+    // Same cleanup and word budget as the structured path, so a request read
+    // from a PDF and one read from conditions come out the same length.
+    const summary = cleanSummary(raw);
     const result = { summary, source_document };
     if (summary) await aiCachePut(cacheKind, app.authority_id, app.planning_reference, result);
     return send(res, 200, { supported: true, ...result });

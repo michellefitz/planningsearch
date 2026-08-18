@@ -84,23 +84,69 @@ export function findFurtherInfoDocIndex(files) {
   return best;
 }
 
+/**
+ * How long a summary may run.
+ *
+ * A further-information request is long by nature — Kildare 25189's covers
+ * trees, open space, cycle crossings, a road-safety audit, drainage and
+ * attenuation across several pages — and asked to summarise it the model
+ * happily produced 400 words, which is a rewrite rather than a summary and is
+ * worse than the letter because it reads as though every clause matters
+ * equally. The letter is one tap away underneath; this is the orientation.
+ */
+// 85, not 70: three sentences of ordinary length fit inside it, so the trim
+// stays a backstop against a runaway rather than a guillotine on a good
+// summary that happens to end with a long clause.
+const MAX_WORDS = 85;
+
 export const FURTHER_INFO_PROMPT =
   "An Irish council has asked an applicant for further information before it will decide their " +
-  "planning application. You are given the request. Say what the applicant has to do.\n\n" +
-  "Write 2 to 4 short sentences of plain English for a regular person, not a planner. Lead with " +
-  "the changes to the building or the site — something to be moved, omitted, resized, redesigned " +
-  "or justified — because those are what decide whether the scheme survives. Put the paperwork " +
-  "(surveys, test results, reports, drawings to be resubmitted) after them, grouped, not itemised " +
-  "one by one.\n\n" +
-  "Quote a figure, a material or a standard only where the council named one. Never cite a policy, " +
-  "a plan section or a guideline number — say what it requires instead. Do not mention condition " +
-  "or item numbers.\n\n" +
-  "If the request also signals a concern the council has not yet resolved — that an element may " +
-  "not be acceptable at all, or that it could be read as a separate dwelling — say so plainly in " +
-  "one clause, since that is the real risk to the application.\n\n" +
-  "FORMAT: plain prose only. No Markdown, headings, bullet points or a title. Begin directly with " +
-  "what is being asked for; do not restate the address or the reference. Use only what the request " +
-  "states — never invent a requirement.";
+  "planning application. You are given the request. Say what it is about, briefly.\n\n" +
+  `HARD LIMIT: ${MAX_WORDS} words, in at most three sentences. This is an orientation, not a ` +
+  "reproduction — the request itself is one tap away, and a reader who wants every clause will " +
+  "open it. Going over the limit makes the summary useless.\n\n" +
+  "To stay inside it, name themes rather than items. \"Revised drawings for pedestrian and cyclist " +
+  "access, and a road-safety audit\" — not each drawing. \"Surface-water design\" — not attenuation " +
+  "volumes, discharge rates and percolation tests separately. Six requirements about drainage are " +
+  "one theme.\n\n" +
+  "Lead with what the council wants changed about the building or the site — something moved, " +
+  "omitted, resized, redesigned or kept — because that is what decides whether the scheme " +
+  "survives. Then, in a single clause, the reports and drawings wanted, grouped. If the council " +
+  "has signalled that an element may not be acceptable at all, say so: that is the real risk.\n\n" +
+  "Quote a figure or a material only where it is the point of the requirement. Never cite a " +
+  "policy, a plan section, a guideline, or tree, condition or item numbers.\n\n" +
+  "FORMAT: plain prose, plain English, for a regular person rather than a planner. No Markdown, " +
+  "headings, bullets or a title. Begin with what is being asked for; do not restate the address " +
+  "or the reference. Use only what the request states — never invent a requirement.";
+
+/**
+ * Everything the model returns after the word budget is spent, dropped.
+ *
+ * The prompt asks for brevity and mostly gets it, but "mostly" is not a
+ * guarantee and the failure is the one the reader sees. Cutting at a sentence
+ * boundary keeps it readable, and cutting from the end keeps what matters: the
+ * prompt puts the physical changes first and the paperwork last, so the part
+ * that survives is the part that decides the application.
+ */
+export function trimToSummary(text, maxWords = MAX_WORDS) {
+  // Split on sentence-ending punctuation, but not on the abbreviations these
+  // letters are full of — "Hedge No. 1, Tree Nos. 12, 13" is one sentence.
+  const parts = String(text)
+    .replace(/\b(No|Nos|Fig|Figs|Approx|St|Rd|Ave|Dr|Ltd|etc|i\.e|e\.g)\.\s/gi, "$1\u0000 ")
+    .split(/(?<=[.!?])\s+/)
+    .map((p) => p.replace(/\u0000/g, "."));
+  const out = [];
+  let words = 0;
+  for (const part of parts) {
+    const n = part.trim().split(/\s+/).filter(Boolean).length;
+    // Always keep the first sentence, however long — a truncated one still
+    // says more than nothing.
+    if (out.length && words + n > maxWords) break;
+    out.push(part.trim());
+    words += n;
+  }
+  return out.join(" ").trim();
+}
 
 /**
  * Plain-English summary of a further-information request. `callClaude(system,
@@ -112,14 +158,23 @@ export const FURTHER_INFO_PROMPT =
 export async function furtherInfoSummary(items, callClaude) {
   const asked = furtherInfoItems(items);
   if (!asked.length) return null;
-  const raw = await callClaude(FURTHER_INFO_PROMPT, furtherInfoUserMsg(asked), 400, 30000);
+  // Tokens sized to the word budget rather than to the request: a cap the
+  // model can comfortably reach is a cap it will reach.
+  const raw = await callClaude(FURTHER_INFO_PROMPT, furtherInfoUserMsg(asked), 220, 30000);
+  return cleanSummary(raw);
+}
+
+/** Markdown stripped, then cut to the word budget. Null when there is nothing
+ *  usable — which the UI shows differently from a request with no items. */
+export function cleanSummary(raw) {
   const text = String(raw ?? "").trim();
   if (!text || text.length < 20) return null;
   // Belt and braces for the odd time the model still reaches for Markdown.
-  return text
+  const plain = text
     .replace(/\*\*/g, "")
     .replace(/^\s*#{1,6}\s+/gm, "")
     .replace(/^\s*[-•*]\s+/gm, "")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+  return trimToSummary(plain) || null;
 }

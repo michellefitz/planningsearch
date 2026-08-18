@@ -6,6 +6,8 @@ export interface ConditionLike {
   order?: number | null;
 }
 export declare const FURTHER_INFO_PROMPT: string;
+export declare function trimToSummary(text: string, maxWords?: number): string;
+export declare function cleanSummary(raw: unknown): string | null;
 export declare function findFurtherInfoDocIndex(
   files: Array<{ title?: string | null }> | null | undefined
 ): number;
