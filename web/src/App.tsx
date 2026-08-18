@@ -725,8 +725,11 @@ export default function App() {
             <FiltersBar meta={meta} state={state} onChange={applyState} total={total} />
             {/* Mobile map/list toggle — hidden at ≥768px, where both show. */}
             <div className="view-toggle" role="group" aria-label="View">
-              <span className="vt-count" role="status">
-                {total.toLocaleString()} result{total === 1 ? "" : "s"}
+              {/* The previous search's count used to sit here while the next
+                  one ran, so "49 results" stayed on screen for a query that
+                  had none. A stale number reads as an answer. */}
+              <span className={`vt-count${loading ? " vt-count-busy" : ""}`} role="status">
+                {loading ? "Searching…" : `${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
               </span>
               {/* The native select carries the interaction — it must stay at
                   16px or iOS zooms the page on focus — but it sits invisibly
@@ -775,7 +778,6 @@ export default function App() {
             <div className="results-scroll">
               <ResultsList
                 results={results}
-                total={total}
                 fuzzy={fuzzy}
                 loading={loading}
                 selectedId={selectedId}

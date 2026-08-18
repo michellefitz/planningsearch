@@ -83,25 +83,58 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
   const activeCount = applied.length;
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  /** Where the desktop dropdown hangs, measured from the button. Null on
+   *  mobile, where the panel is a bottom sheet and needs no anchoring. */
+  const [anchor, setAnchor] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
   const statusSelection = statusesCustomised(state) ? state.statuses : [];
   const handleStatusChange = (selected: string[]) =>
     onChange({ ...state, statuses: selected.length === 0 ? [...DEFAULT_STATUSES] : selected });
 
-  // On mobile the panel is a bottom sheet, so the page behind it must not
-  // scroll under the finger.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKey);
+    // On mobile the panel is a bottom sheet, so the page behind it must not
+    // scroll under the finger. On desktop the scrim already swallows the
+    // pointer, and locking the body there only risks a scrollbar reflow.
+    const phone = window.matchMedia("(max-width: 767px)").matches;
     const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (phone) document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
+      if (phone) document.body.style.overflow = prev;
     };
+  }, [open]);
+
+  /**
+   * Hang the desktop panel off the button as a fixed overlay.
+   *
+   * It used to drop inline, which pushed the whole result list down the moment
+   * it opened and hauled it back up on close — the list jumped every time
+   * anyone went near a filter. Fixed positioning takes it out of flow so the
+   * results stay where they are; the coordinates have to be measured because
+   * the side panel scrolls, so `position: absolute` inside it would be clipped
+   * by its own overflow.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const b = btnRef.current;
+      if (!b || !window.matchMedia("(min-width: 768px)").matches) {
+        setAnchor(null);
+        return;
+      }
+      const r = b.getBoundingClientRect();
+      const top = r.bottom + 8;
+      setAnchor({ top, left: r.left, maxHeight: Math.max(220, window.innerHeight - top - 24) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
   }, [open]);
 
   /**
@@ -163,9 +196,11 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
   }, [open]);
 
   return (
-    <div className={`filters-wrap${open ? " filters-open" : ""}`}>
+    <>
+      <div className={`filters-wrap${open ? " filters-open" : ""}`}>
       <button
         type="button"
+        ref={btnRef}
         className={`filters-btn${activeCount > 0 ? " filters-btn-on" : ""}`}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
@@ -177,23 +212,6 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
         {activeCount > 0 && <span className="filters-count">{activeCount}</span>}
       </button>
 
-      {/* Applied chips sit BELOW the button: above it, adding or clearing one
-          re-flowed the row and moved the button out from under the thumb. */}
-      {applied.length > 0 && (
-        <div className="applied-row" role="group" aria-label="Active filters">
-          {applied.map((f) => (
-            <button key={f.key} type="button" className="applied-chip" onClick={f.remove} aria-label={`Remove filter: ${f.label}`}>
-              {f.label}
-              <span className="applied-x" aria-hidden="true">
-                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                  <path d="M1 1l6 6M7 1L1 7" />
-                </svg>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {open && <div className="filters-scrim" onClick={() => setOpen(false)} aria-hidden="true" />}
 
       <div
@@ -203,6 +221,7 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
         aria-modal="true"
         aria-label="Filters"
         hidden={!open}
+        style={anchor ? { top: anchor.top, left: anchor.left, maxHeight: anchor.maxHeight } : undefined}
       >
         {/* Same grab handle as the property sheet — on a phone this is a bottom
             sheet, and the handle is what says "drag me down". Hidden on
@@ -351,12 +370,43 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
             of the way. Naming the count makes that visible, so the button reads
             as "done" rather than "apply". */}
         <div className="sheet-foot">
+          {/* Desktop only. The bottom sheet carries Clear in its title bar,
+              where a thumb reaches; a dropdown has no title bar, so it goes
+              beside the button that closes it. */}
+          <button
+            type="button"
+            className="foot-clear"
+            onClick={() => onChange({ ...state, ...CLEARED })}
+            disabled={activeCount === 0}
+          >
+            Clear
+          </button>
           <button type="button" className="btn btn-primary sheet-submit" onClick={() => setOpen(false)}>
             Show {total.toLocaleString()} result{total === 1 ? "" : "s"}
           </button>
         </div>
       </div>
-    </div>
+      </div>
+
+      {/* Applied chips sit BELOW the controls row: above it, adding or clearing
+          one re-flowed the row and moved the button out from under the thumb.
+          A sibling of the wrap rather than a child, so the row above can stay
+          one line while these wrap onto their own. */}
+      {applied.length > 0 && (
+        <div className="applied-row" role="group" aria-label="Active filters">
+          {applied.map((f) => (
+            <button key={f.key} type="button" className="applied-chip" onClick={f.remove} aria-label={`Remove filter: ${f.label}`}>
+              {f.label}
+              <span className="applied-x" aria-hidden="true">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                  <path d="M1 1l6 6M7 1L1 7" />
+                </svg>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
