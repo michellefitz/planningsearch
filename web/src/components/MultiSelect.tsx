@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { releasePanel, revealPanel } from "../revealPanel";
 
 export interface MultiSelectOption {
   id: string;
@@ -28,6 +29,15 @@ interface Props {
 export default function MultiSelect({ allLabel, options, selected, onChange, ariaLabel }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Opening a control near the bottom of the sheet rendered it below the fold.
+  // See revealPanel: cap it to the room available, then scroll the sheet by the
+  // smallest amount that brings all of it into view.
+  useLayoutEffect(() => {
+    if (open) revealPanel(panelRef.current);
+    else releasePanel(panelRef.current);
+  }, [open]);
 
   // Close on outside click or Escape.
   useEffect(() => {
@@ -70,7 +80,7 @@ export default function MultiSelect({ allLabel, options, selected, onChange, ari
         <span className="ms-caret" aria-hidden="true" />
       </button>
       {open && (
-        <div className="ms-panel">
+        <div className="ms-panel" ref={panelRef}>
           <div className="ms-options">
             {options.map((o) => (
               <label key={o.id} className="ms-option">

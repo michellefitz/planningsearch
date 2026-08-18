@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { releasePanel, revealPanel } from "../revealPanel";
 
 /**
  * Received-date range picker (PRD F2): one control that sets both ends of the
@@ -54,23 +55,16 @@ const PRESETS: Preset[] = [
 ];
 
 /**
- * The dates a preset actually resolves to, e.g. "15 Jul – 17 Aug".
+ * Always the dates themselves, never a preset's name.
  *
- * These ranges are rolling, not calendar: "Last month" is today minus one
- * month up to today, not the whole of last month. Nothing on the chip said so,
- * and the two readings pick out different applications, so the resolved dates
- * are shown rather than left to be inferred from the label.
+ * "Last month" is ambiguous — the 1st to the 31st, or the 15th to the 15th? —
+ * and the two readings pick out different applications. The chips used to
+ * carry their resolved range as a second line to answer that, which cost most
+ * of the panel's width. Since a chip now just fills the calendar in, the
+ * answer is visible in the calendar and here, and the chips can be one word
+ * again.
  */
-function presetRange(p: Preset): string {
-  const start = fmt(p.from());
-  const end = fmt(new Date());
-  const sameYear = start.slice(0, 4) === end.slice(0, 4);
-  return `${shortDate(start, !sameYear)} – ${shortDate(end, false)}`;
-}
-
 function triggerLabel(from: string, to: string): string {
-  const preset = PRESETS.find((p) => from === fmt(p.from()) && !to);
-  if (preset) return `${preset.label} (${presetRange(preset)})`;
   if (from && to) {
     const sameYear = from.slice(0, 4) === to.slice(0, 4);
     return `${shortDate(from, !sameYear)} – ${shortDate(to)}`;
@@ -90,6 +84,14 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
   });
   const [hover, setHover] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // After paint, so the calendar has its real height before anything is
+  // measured against the room available for it.
+  useLayoutEffect(() => {
+    if (open) revealPanel(panelRef.current);
+    else releasePanel(panelRef.current);
+  }, [open]);
 
   useEffect(() => {
     // Drop any hover preview when the panel closes — a stale hovered day would
@@ -113,7 +115,8 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
   }, [open]);
 
   const today = fmt(new Date());
-  const activePreset = PRESETS.find((p) => from === fmt(p.from()) && !to)?.label ?? null;
+  const activePreset =
+    PRESETS.find((p) => from === fmt(p.from()) && to === today)?.label ?? null;
 
   const pickDay = (day: string) => {
     // Hotel-selector flow: first tap starts the range, second tap ends it (and
@@ -128,13 +131,21 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
     }
   };
 
+  /**
+   * A shortcut for two taps on the calendar, and nothing more. It used to
+   * apply an open-ended range and close the panel, which made the chips a
+   * second, parallel way of setting dates — with their own labels to reconcile
+   * against whatever the calendar showed. Now they fill both ends in and leave
+   * the panel open, so the calendar is the single answer to "what is selected"
+   * and the range is still there to adjust by hand.
+   */
   const applyPreset = (p: Preset) => {
     const start = p.from();
-    onChange(fmt(start), "");
-    // Land the calendar on the preset's start month, so reopening shows the
-    // range that was applied rather than wherever the user last browsed.
-    setMonth(new Date(start.getFullYear(), start.getMonth(), 1));
-    setOpen(false);
+    onChange(fmt(start), today);
+    // Land on the month holding the end of the range: it is today's month for
+    // every preset, so the view stays put as you try them.
+    const end = new Date();
+    setMonth(new Date(end.getFullYear(), end.getMonth(), 1));
   };
 
   // Calendar grid for the shown month, weeks starting Monday.
@@ -164,7 +175,7 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
         <span className="dr-caret" aria-hidden="true" />
       </button>
       {open && (
-        <div className="dr-panel">
+        <div className="dr-panel" ref={panelRef}>
           <div className="chip-row">
             {PRESETS.map((p) => (
               <button
@@ -174,10 +185,6 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
                 onClick={() => applyPreset(p)}
               >
                 {p.label}
-                {/* Shown on every chip, not just the chosen one: the question
-                    ("is last month the 1st–31st, or the 15th to the 15th?") is
-                    one you have before you pick, not after. */}
-                <span className="dr-chip-range">({presetRange(p)})</span>
               </button>
             ))}
           </div>

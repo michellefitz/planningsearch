@@ -35,5 +35,8 @@ describe("POST /api/_preplan/generate", () => {
       .map((l) => JSON.parse(l.replace(/^data: /, "")));
     expect(events[0].type).toBe("progress");
     expect(events[events.length - 1].type).toBe("done");
-  });
+    // The route walks every point-data layer before it emits `done`, which
+    // runs 2.5–5s on a warm machine — right on vitest's 5s default, so this
+    // was failing about one run in three for no reason at all.
+  }, 20000);
 });

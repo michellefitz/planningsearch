@@ -790,19 +790,21 @@ body {
     box-shadow: 0 1px 3px rgba(26, 29, 33, 0.1);
   }
 
-  /* Zoom and locate move to the bottom-right, out of the top strip entirely
-     and within thumb reach. The bottom offset clears the Key beneath them and
-     the phone's rounded corner / home indicator. */
+  /* Zoom and locate stay in the top-right corner they occupy everywhere else —
+     it is where people look for them. They sat at the bottom-right while the
+     top strip carried the search box, the count, the sort and the Map/List
+     pair; that strip is now the search box and Filters, so there is room. The
+     offset is --overlay-h, published by a ResizeObserver on the floating panel,
+     because that height changes as the controls wrap. */
   .layout.m-map .maplibregl-ctrl-top-right {
-    top: auto;
-    bottom: calc(5rem + env(safe-area-inset-bottom));
+    top: var(--overlay-h, 6rem);
     right: 0;
   }
   .layout.m-map .maplibregl-ctrl-top-left {
     display: none;
   }
-  /* Key is the least-consulted control, so it takes the least-reachable slot:
-     tucked under the zoom column rather than holding the bottom-left corner. */
+  /* Key takes the corner the zoom column has vacated: the least-consulted
+     control in the least-reachable slot, opposite Layers. */
   .layout.m-map .legend {
     left: auto;
     right: 0.6rem;
@@ -909,6 +911,15 @@ body {
   align-items: center;
 }
 
+/* Holds the input and the clear button, so the X sits inside the field
+   instead of taking width from the placeholder beside it. */
+.search-field {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
 .search-input {
   flex: 1 1 auto;
   min-width: 0;
@@ -920,6 +931,42 @@ body {
   border-radius: 999px;
   background: var(--surface);
   transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+/* Room for the clear button, always — the padding must not change as the X
+   appears, or the text jumps sideways under the cursor mid-word. */
+.search-input {
+  padding-right: 2.1rem;
+}
+
+/* WebKit draws its own, which iOS omits and Firefox never had. Ours is the
+   one that behaves the same everywhere. */
+.search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.45rem;
+  transform: translateY(-50%);
+  display: inline-grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.search-clear:hover {
+  background: var(--line);
+  color: var(--ink);
 }
 
 /* Compact round buttons sit on the same row as the input. */
@@ -1054,6 +1101,28 @@ body {
 .suggestions button:focus,
 .suggestions button.sugg-active {
   background: var(--surface-2);
+}
+
+/* The query row: searching the words as typed, which the list of addresses
+   underneath made look impossible. Set apart by the magnifier and a rule, so
+   it reads as the action it is rather than as one more address. */
+.suggestions button.sugg-query {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+  border-radius: 6px 6px 0 0;
+}
+
+.suggestions .sugg-query strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.suggestions .sugg-icon {
+  flex: none;
+  color: var(--action);
 }
 
 /* Phone-only: desktop shows both panes, so there is nothing to switch to.
@@ -1527,23 +1596,8 @@ body {
   border-color: var(--action);
 }
 
-/* The resolved dates ride along quietly — the label is what you scan, the
-   range is what you check. */
-.dr-chip-range {
-  margin-left: 0.3rem;
-  font-size: 0.92em;
-  font-weight: 400;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.dr-panel .chip-on .dr-chip-range {
-  color: var(--action);
-  opacity: 0.75;
-}
-
-/* The trigger now carries "Last month (15 Jul – 17 Aug)", which can outrun a
-   narrow panel; truncate rather than push the caret off the end. */
+/* The trigger carries a full range — "18 Jul – 18 Aug 2026" — which can outrun
+   a narrow panel; truncate rather than push the caret off the end. */
 .dr-trigger > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2052,7 +2106,9 @@ body {
     gap: 0.4rem;
   }
   .search-input {
-    padding: 0.55rem 0.8rem;
+    /* Right padding still reserves the clear button's slot — the shorthand
+       here would otherwise reset it and let the text run under the X. */
+    padding: 0.55rem 2.1rem 0.55rem 0.8rem;
   }
   .search-bar .btn {
     padding: 0.5rem 0.9rem;
@@ -2269,10 +2325,15 @@ body {
   }
 }
 
+/* Share and close stay pinned to the top corner. Centring them was fine while
+   the badges were one line, but a refused application that also went to appeal
+   carries three pills, and on a phone they wrap — dropping the two controls
+   half a row down the sheet, away from where a thumb reaches for a close
+   button. */
 .sheet-top {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 0.5rem;
 }
 
@@ -2421,14 +2482,28 @@ body {
 .action-row {
   display: flex;
   flex-wrap: wrap;
+  /* Equal heights across the row, so the labels sit on one line. */
+  align-items: stretch;
   gap: 0.4rem;
   margin-top: 0.9rem;
 }
 
-.action-row .btn {
+/* The portal link is an anchor and Save is a flex button with an icon, so
+   their labels sat on different baselines and the two boxes were different
+   heights. One rule for everything in the row: same type, same padding,
+   label centred in its own box. */
+.action-row .btn,
+.action-row .save-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-decoration: none;
   font-size: 0.78rem;
-  padding: 0.38rem 0.75rem;
+  padding: 0.45rem 0.8rem;
+}
+
+.action-row .save-action em {
+  font-size: inherit;
 }
 
 .detail-desc {
