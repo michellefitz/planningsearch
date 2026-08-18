@@ -781,13 +781,18 @@ function FurtherInfoSection({
   askedSummary: string | null;
   askedLoading: boolean;
 }) {
-  const requested = conditions?.decision_date ?? d.further_info_requested_date ?? null;
+  const requested = d.further_info_requested_date ?? conditions?.decision_date ?? null;
   return (
     <section aria-labelledby="further-info-h" aria-busy={conditionsLoading || undefined}>
       <h3 id="further-info-h">Further information requested</h3>
       <p className="decision-line">
-        {d.authority_short_name} has asked the applicant for more before deciding
-        {requested && <span className="hint"> · {fmtDate(requested)}</span>}
+        {d.further_info_received_date
+          ? `${d.authority_short_name} asked the applicant for more, and has it`
+          : `${d.authority_short_name} has asked the applicant for more before deciding`}
+        {requested && <span className="hint"> · asked {fmtDate(requested)}</span>}
+        {d.further_info_received_date && (
+          <span className="hint"> · answered {fmtDate(d.further_info_received_date)}</span>
+        )}
       </p>
       {askedSummary ? (
         <p className="ai-summary">
@@ -810,7 +815,15 @@ function FurtherInfoSection({
       {conditions && conditions.items.length > 0 && (
         <ConditionGroups conditions={conditions} decision={null} />
       )}
-      <AppealBlock detail={d} />
+      {/* Kildare, Wicklow and Meath publish no structured conditions — their
+          request is a scanned letter, summarised above from the PDF. The
+          letter itself is in the documents section below. */}
+      {!conditions && !askedLoading && !askedSummary && (
+        <p className="section-note">
+          {d.authority_short_name} publishes the request as a letter on the file rather than as
+          structured text — look for the further-information request in the documents below.
+        </p>
+      )}
     </section>
   );
 }
@@ -822,8 +835,6 @@ function DecisionSection({
   conditionsFailed,
   refusalSummary,
   refusalLoading,
-  askedSummary,
-  askedLoading,
   highlights,
   highlightsLoading,
 }: {
@@ -833,26 +844,12 @@ function DecisionSection({
   conditionsFailed: boolean;
   refusalSummary: string | null;
   refusalLoading: boolean;
-  askedSummary: string | null;
-  askedLoading: boolean;
   highlights: ConditionHighlight[] | null;
   highlightsLoading: boolean;
 }) {
   const decision = conditions?.decision ?? d.decision;
   const decisionDate = conditions?.decision_date ?? d.decision_date;
   const hasAppeal = Boolean(d.appeal_reference || d.appeal_decision);
-  // The council is still asking, not answering. An appeal or a real decision
-  // outranks it — those mean the request was answered and the file moved on.
-  if (conditions?.further_info && !decision && !hasAppeal)
-    return (
-      <FurtherInfoSection
-        detail={d}
-        conditions={conditions}
-        conditionsLoading={conditionsLoading}
-        askedSummary={askedSummary}
-        askedLoading={askedLoading}
-      />
-    );
   if (!decision && !hasAppeal) return null;
   // eplanning/iDocs councils record their reasons only in the scanned
   // decision order — offer the on-demand PDF summary instead of conditions.
@@ -1287,6 +1284,20 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   // live portal — so it arrives with enrichment, after the sheet has painted.
   const submissionsBy = d.submissions_by_date ?? enrich?.submissions_by_date ?? null;
   const timeline = buildTimeline(d, submissionsBy);
+  /**
+   * Whether the council asked this applicant for more, ever.
+   *
+   * Not only while it is waiting on the answer, and not only before a decision
+   * — a request is the clearest published record of what the planner was
+   * worried about, which is exactly what someone reading a granted or refused
+   * application wants to know. The agile portals say so in the conditions
+   * payload; everywhere else the dates on the record are the signal.
+   */
+  const hasFurtherInfo =
+    Boolean(conditions?.further_info) ||
+    Boolean(conditions?.items.some((i) => i.code === "D" || i.code === "I")) ||
+    d.status === "further_info" ||
+    Boolean(d.further_info_requested_date);
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
   const isLongDesc = (description ?? "").length > 400;
   const hasConditionsSource = AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
@@ -1381,6 +1392,22 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           if (!cancelled) setRefusalLoading(false);
         });
     }
+    // Councils with no conditions endpoint carry the request as a scanned
+    // letter instead, read on the same endpoint — so the fetch is driven by
+    // the status here rather than by anything in a conditions payload that
+    // will never arrive.
+    if (!hasConditionsSource && (d.status === "further_info" || d.further_info_requested_date)) {
+      setAskedLoading(true);
+      api
+        .furtherInfoSummary(d.id)
+        .then((r) => {
+          if (!cancelled) setAskedSummary(r.summary ?? null);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setAskedLoading(false);
+        });
+    }
     if (hasConditionsSource) {
       setConditionsLoading(true);
       setConditionsFailed(false);
@@ -1421,7 +1448,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             // request is already here, as D/I items — several thousand words
             // of planning prose on a house extension — so summarise what is
             // actually being asked for.
-            if (res.conditions.further_info) {
+            if (
+              res.conditions.further_info ||
+              res.conditions.items.some((i) => i.code === "D" || i.code === "I")
+            ) {
               setAskedLoading(true);
               api
                 .furtherInfoSummary(d.id)
@@ -1711,6 +1741,19 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             on the page. One statement of provenance at the end covers it. */}
       </section>
 
+      {/* Before the decision, because it happened before it: on a decided
+          application the request is the clearest record of what the planner
+          was worried about, and reading it after the outcome loses that. */}
+      {hasFurtherInfo && (
+        <FurtherInfoSection
+          detail={d}
+          conditions={conditions}
+          conditionsLoading={conditionsLoading}
+          askedSummary={askedSummary}
+          askedLoading={askedLoading}
+        />
+      )}
+
       <DecisionSection
         detail={d}
         conditions={conditions}
@@ -1718,8 +1761,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         conditionsFailed={conditionsFailed}
         refusalSummary={refusalSummary}
         refusalLoading={refusalLoading}
-        askedSummary={askedSummary}
-        askedLoading={askedLoading}
         highlights={highlights}
         highlightsLoading={highlightsLoading}
       />

@@ -711,16 +711,20 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       row.source_url,
       row.planning_reference
     );
-    // Only while the request is the live state of the file. Once a decision
-    // issues, the D/I items are history and the decision is the answer.
-    const { isFurtherInfoRequest } = await loadDecisionModule();
-    const decision = conditions?.decision ?? row.decision ?? null;
-    if (!isFurtherInfoRequest(decision)) return { supported: true, summary: null };
+    // Not only while the council is waiting: the request is the clearest
+    // record of what the planner was worried about, and that is worth reading
+    // on a decided application too — often more so.
     const { furtherInfoItems, furtherInfoSummary } = await loadFurtherInfoModule();
     const asked = furtherInfoItems(conditions?.items ?? []);
     if (!asked.length) return { supported: true, summary: null };
     return { supported: true, summary: await furtherInfoSummary(asked, callClaude) };
   });
+
+  // NOTE: the eplanning councils (Kildare, Wicklow, Meath) publish no
+  // structured conditions — their request is a scanned "F.I. Request Letter"
+  // in the file list, read as a PDF. That path lives in api/_index.mjs, which
+  // is what serves production; this dev server answers `supported: false` for
+  // them (the route above returns early on the missing agile client).
 
   // Plain-English summary of the refusal reasons — dense planning prose in
   // the register. Split from /conditions so those render without waiting on

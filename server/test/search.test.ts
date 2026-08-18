@@ -290,3 +290,65 @@ describe("Eircode-shaped queries never fall back to fuzzy", () => {
     expect(results).toHaveLength(0);
   });
 });
+
+/**
+ * Estates get written both ways. Kildare's register files Leixlip's as "Glen
+ * Easton Gardens"; people type "Gleneaston". Neither is wrong, and exact
+ * matching found nothing for the second — so search fell through to the fuzzy
+ * fallback, which on a 4,047-record sample of the live register returned 347
+ * results topped by Glenamuck Road in Carrickmines, the wrong end of the
+ * wrong county.
+ */
+describe("a place written as one word matches the register's two", () => {
+  let squashDb: Database.Database;
+  let dir: string;
+
+  beforeAll(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "planview-squash-"));
+    squashDb = openDb(path.join(dir, "t.db"));
+    upsertApplication(squashDb, {
+      ...base,
+      planning_reference: "2660804",
+      address_text: "20 Glen Easton Gardens, Leixlip, Co. Kildare",
+      description: "Retention of a domestic garage",
+    });
+    upsertApplication(squashDb, {
+      ...base,
+      planning_reference: "OTHER/1",
+      address_text: "Site at Carrickmines Great, Glenamuck Road South, Dublin 18",
+      description: "A large mixed-use scheme with many words in its description",
+    });
+  });
+
+  afterAll(() => {
+    squashDb.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("finds Glen Easton for a search for Gleneaston", () => {
+    const { results, fuzzy } = search(squashDb, { q: "Gleneaston" });
+    expect(results.map((r) => r.planning_reference)).toEqual(["2660804"]);
+    // An exact answer to a differently-spelled question, not a near one.
+    expect(fuzzy).toBe(false);
+    expect(results[0].match_quality).toBe("exact");
+  });
+
+  it("handles the whole phrase, not just the compound word", () => {
+    const { results } = search(squashDb, { q: "Gleneaston Gardens" });
+    expect(results.map((r) => r.planning_reference)).toEqual(["2660804"]);
+  });
+
+  it("leaves the ordinary spelling alone", () => {
+    const { results, fuzzy } = search(squashDb, { q: "Glen Easton" });
+    expect(results.map((r) => r.planning_reference)).toEqual(["2660804"]);
+    expect(fuzzy).toBe(false);
+  });
+
+  it("does not fire on a fragment too short to mean anything", () => {
+    // "ngar" only exists once the space in "Easton Gardens" is closed up, so
+    // it isolates this pass from ordinary prefix matching. Three characters
+    // squashed would match inside half the register, so the pass is skipped.
+    expect(search(squashDb, { q: "ngar" }).results).toHaveLength(1);
+    expect(search(squashDb, { q: "nga" }).results).toHaveLength(0);
+  });
+});

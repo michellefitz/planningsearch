@@ -48,12 +48,24 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
     ...suggestions.map((text) => ({ kind: "suggestion" as const, text })),
   ];
 
-  const take = (o: Option) => {
+  /**
+   * Hand the search off and get out of the way.
+   *
+   * The keyboard used to stay up over the results — on a phone that is half
+   * the screen, covering the map you just searched — because nothing ever took
+   * focus off the input. Blurring it is what dismisses the keyboard on iOS.
+   */
+  const submit = (q: string) => {
     setOpen(false);
     setActive(-1);
+    inputRef.current?.blur();
+    onSubmit(q);
+  };
+
+  const take = (o: Option) => {
     // A suggestion replaces what was typed; the query row searches it as-is.
     if (o.kind === "suggestion") onChange(o.text);
-    onSubmit(o.text);
+    submit(o.text);
   };
 
   const clear = () => {
@@ -70,8 +82,7 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
         role="search"
         onSubmit={(e) => {
           e.preventDefault();
-          setOpen(false);
-          onSubmit(value);
+          submit(value);
         }}
       >
         {/* Wrapper so the clear button can sit inside the field rather than

@@ -238,6 +238,19 @@ export function search(
     if (ftsQuery) {
       ({ rows, total } = runFtsSearch(db, "fts_apps", ftsQuery, where, fetchLimit, offset, sort));
     }
+    // A place written as one word where the register writes it as two — the
+    // register files Leixlip's estate as "Glen Easton", people type
+    // "Gleneaston" — is still an exact match, not a near one. So this runs
+    // before the fuzzy fallback and its hits stay "exact". Squashing both
+    // sides makes the two spellings the same string; FTS cannot express that,
+    // so it is a scan, which is affordable only because nothing else matched.
+    if (rows.length === 0) {
+      const squashed = f.q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+      if (squashed.length >= 4) {
+        ({ rows, total } = runSquashedSearch(db, squashed, where, fetchLimit, offset, f.sort));
+        rows.forEach((r) => (r.match_quality = "exact"));
+      }
+    }
     if (rows.length === 0 && !looksLikeReference(f.q) && !looksLikeEircode(f.q)) {
       // No exact/prefix hits: fall back to trigram matching so typos still land.
       // Not for reference- or Eircode-shaped queries though — a "close match" on
@@ -392,6 +405,38 @@ function ftsOrderClause(
     default:
       return `ORDER BY ${rank}`;
   }
+}
+
+/**
+ * Exact match ignoring spaces and punctuation on both sides. Only ever reached
+ * when the ordinary FTS pass found nothing, so the scan is bounded by how
+ * rarely that happens rather than by how large the table is.
+ */
+function runSquashedSearch(
+  db: Database.Database,
+  squashed: string,
+  where: WhereClause,
+  limit: number,
+  offset: number,
+  sort: SearchFilters["sort"]
+): { rows: SearchResultRow[]; total: number } {
+  const squashSql = (col: string) =>
+    `replace(replace(replace(replace(lower(coalesce(${col}, '')), ' ', ''), ',', ''), '.', ''), '-', '')`;
+  const cond = `(${squashSql("a.address_text")} LIKE @sq OR ${squashSql("a.planning_reference")} LIKE @sq)`;
+  const params = { ...where.params, sq: `%${squashed}%` };
+  const total = (
+    db
+      .prepare(`SELECT COUNT(*) AS c FROM applications a WHERE 1=1 ${where.sql} AND ${cond}`)
+      .get(params) as { c: number }
+  ).c;
+  const rows = db
+    .prepare(
+      `SELECT ${RESULT_COLUMNS} FROM applications a WHERE 1=1 ${where.sql} AND ${cond} ` +
+        // No FTS rank to sort by here, so newest-first stands in for relevance.
+        `${orderClause(sort && sort !== "relevance" ? sort : "received")} LIMIT @limit OFFSET @offset`
+    )
+    .all({ ...params, limit, offset }) as SearchResultRow[];
+  return { rows, total };
 }
 
 function runFtsSearch(

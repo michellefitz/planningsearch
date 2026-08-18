@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   eplanningItemToRecord,
+  fetchDetail,
   parseApplicationTypeRaw,
   parseEplanningList,
   parseFullDescription,
@@ -212,5 +213,69 @@ describe("eplanningItemToRecord", () => {
       "2026-07-24T00:00:00Z"
     );
     expect(rec.submissions_by_date).toBe("2026-07-16");
+  });
+});
+
+/**
+ * A detail page that doesn't answer costs a map pin — the record still reads
+ * fine in the list and simply never appears on the map, which is how 20 Glen
+ * Easton Gardens (2660804) went missing. Measured against the live register on
+ * 2026-08-18, 39 of the 1,000 most recently received applications had no
+ * coordinates, all Kildare; refetching those pages by hand, 12 parsed cleanly
+ * first time. The fetch had failed, not the parser.
+ */
+describe("fetchDetail retries", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  const PAGE = `<table><tr><th>Grid Northings:</th><td>736395.02375417</td></tr>
+    <tr><th>Grid Eastings:</th><td>698588.1612861</td></tr></table>`;
+
+  const stub = (responses: Array<Response | Error>) => {
+    let i = 0;
+    const calls = { n: 0 };
+    globalThis.fetch = vi.fn(async () => {
+      calls.n++;
+      const r = responses[Math.min(i++, responses.length - 1)];
+      if (r instanceof Error) throw r;
+      return r;
+    }) as unknown as typeof fetch;
+    return calls;
+  };
+
+  const ok = () => new Response(PAGE, { status: 200 });
+
+  it("recovers a page that failed the first time", async () => {
+    const calls = stub([new Error("socket hang up"), ok()]);
+    const detail = await fetchDetail("2660804", "c=1");
+    expect(calls.n).toBe(2);
+    // 736395/698588 in ITM is 20 Glen Easton Gardens, Leixlip.
+    expect(detail.coords?.lat).toBeCloseTo(53.36854, 4);
+    expect(detail.coords?.lng).toBeCloseTo(-6.51859, 4);
+  });
+
+  it("gives up after three attempts rather than hammering the council", async () => {
+    const calls = stub([new Error("timeout")]);
+    const detail = await fetchDetail("2660804", "c=1");
+    expect(calls.n).toBe(3);
+    expect(detail.coords).toBeNull();
+  });
+
+  it("retries a 500 and a 429, which are worth another go", async () => {
+    const calls = stub([new Response("", { status: 503 }), ok()]);
+    await fetchDetail("1", "c=1");
+    expect(calls.n).toBe(2);
+    const rate = stub([new Response("", { status: 429 }), ok()]);
+    await fetchDetail("1", "c=1");
+    expect(rate.n).toBe(2);
+  });
+
+  it("does not retry a 404 — that is an answer, not a failure", async () => {
+    const calls = stub([new Response("", { status: 404 })]);
+    const detail = await fetchDetail("nope", "c=1");
+    expect(calls.n).toBe(1);
+    expect(detail.coords).toBeNull();
   });
 });

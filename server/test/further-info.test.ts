@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FURTHER_INFO_PROMPT,
+  findFurtherInfoDocIndex,
   furtherInfoItems,
   furtherInfoSummary,
   furtherInfoUserMsg,
@@ -100,5 +101,90 @@ describe("furtherInfoSummary", () => {
     expect(await furtherInfoSummary(SD, async () => null)).toBeNull();
     // A one-word reply is a failure wearing a hat, not a summary.
     expect(await furtherInfoSummary(SD, async () => "Unclear.")).toBeNull();
+  });
+});
+
+/**
+ * The eplanning councils publish no structured conditions at all, so their
+ * request is a scanned letter in the document list. These titles are the real
+ * ones from Wicklow 26136's file list, read live on 2026-08-18.
+ */
+describe("findFurtherInfoDocIndex", () => {
+  const WICKLOW = [
+    { title: "Report Request Letter to Internal Staff — Internal Referrals" },
+    { title: "Report Request Letter to External Body — External Referrals" },
+    { title: "Acknowledgement / Validation Letter — Acknowledgement Letter" },
+    { title: "Validation Check List — Validation Checklist" },
+    { title: "Application - Cover Letter — Cover Letter" },
+    { title: "Application Form - Part A — Application Form" },
+    { title: "Newspaper Notice — Wicklow People" },
+    { title: "Site location map — OS Maps" },
+    { title: "F.I. Request Letter — Further Information Request" },
+  ];
+
+  it("picks the request letter out of a real file list", () => {
+    expect(findFurtherInfoDocIndex(WICKLOW)).toBe(8);
+  });
+
+  /**
+   * Kildare 25189 (Mount View, Green Lane, Leixlip) carries 103 documents:
+   * two requests, roughly thirty of the applicant's answers, and a run of
+   * acknowledgements, publication requests and re-advertisement notices. Each
+   * of those describes something other than what the council asked for.
+   */
+  it("takes the most recent request when an application goes round twice", () => {
+    const kildare = [
+      "Validation Check List — Referrals and Criteria 29/12/2025",
+      "Report Request Letter to External Body — EHO 6 1 26",
+      "F.I. Request Letter — 19/12/2026",
+      "F.I. Received Doc. — 12/05/2026 - Cover Letter",
+      "F.I. Receipt Ack. Letter — 13/05/2026",
+      "F.I. Publication Request Letter — 18/05/2026",
+      "Significant FI News Paper Notice — 22/05/2026",
+      "Significant FI Site Notice — 22/05/2026",
+      "Notice of FI received to PB and Submitters — 22/05/2026",
+      "F.I. Request Letter — 16/06/2026",
+      "F.I. Received Doc. — Design Statement",
+      "F.I. Clarification Acknowledgement Letter — 17/08/2026",
+    ].map((title) => ({ title }));
+    // The June letter, not December's — the register appends, so the last
+    // request is the operative one.
+    expect(findFurtherInfoDocIndex(kildare)).toBe(9);
+  });
+
+  it("skips a direction to re-advertise", () => {
+    // "F.I. Publication Request Letter" is about the newspaper and the site
+    // notice, not about the development, and scores identically otherwise.
+    const notices = [
+      { title: "F.I. Publication Request Letter — 18/05/2026" },
+      { title: "Significant FI News Paper Notice — 22/05/2026" },
+      { title: "Significant FI Site Notice — 22/05/2026" },
+    ];
+    expect(findFurtherInfoDocIndex(notices)).toBe(-1);
+  });
+
+  it("never picks the applicant's answer, or an acknowledgement of it", () => {
+    // Summarising the response as though it were the request would describe
+    // what was supplied, not what was asked for.
+    const answered = [
+      { title: "F.I. Received Letter — Further Information Received" },
+      { title: "Acknowledgement of Further Information" },
+      { title: "F.I. Response — drawings submitted" },
+    ];
+    expect(findFurtherInfoDocIndex(answered)).toBe(-1);
+  });
+
+  it("prefers the request over a bare mention of further information", () => {
+    const files = [
+      { title: "Further information" },
+      { title: "F.I. Request Letter" },
+    ];
+    expect(findFurtherInfoDocIndex(files)).toBe(1);
+  });
+
+  it("is -1 when the file list holds no request at all", () => {
+    expect(findFurtherInfoDocIndex([{ title: "Site Notice" }, { title: "Fee Receipt" }])).toBe(-1);
+    expect(findFurtherInfoDocIndex([])).toBe(-1);
+    expect(findFurtherInfoDocIndex(null)).toBe(-1);
   });
 });
