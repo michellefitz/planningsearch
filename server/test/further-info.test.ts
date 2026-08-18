@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   FURTHER_INFO_PROMPT,
+  cleanSummary,
   findFurtherInfoDocIndex,
   furtherInfoItems,
   furtherInfoSummary,
   furtherInfoUserMsg,
+  trimToSummary,
 } from "../../api/_conditions/further-info.mjs";
 
 /**
@@ -86,6 +88,14 @@ describe("furtherInfoSummary", () => {
     expect(seenSystem).toBe(FURTHER_INFO_PROMPT);
     expect(seenContent).toContain("BRE Digest 365");
     expect(seenContent).not.toContain("Section 34(13)");
+  });
+
+  it("keeps a summary that is already the right length untouched", async () => {
+    const good =
+      "The council wants the layout redesigned to keep more of the Green Road hedgerow and trees, " +
+      "and the public open space overlooked rather than fenced. It also wants revised drawings for " +
+      "pedestrian and cyclist access and a surface-water design limiting runoff to greenfield rates.";
+    expect(await furtherInfoSummary(SD, async () => good)).toBe(good);
   });
 
   it("strips Markdown the model reaches for despite being told not to", async () => {
@@ -186,5 +196,81 @@ describe("findFurtherInfoDocIndex", () => {
     expect(findFurtherInfoDocIndex([{ title: "Site Notice" }, { title: "Fee Receipt" }])).toBe(-1);
     expect(findFurtherInfoDocIndex([])).toBe(-1);
     expect(findFurtherInfoDocIndex(null)).toBe(-1);
+  });
+});
+
+/**
+ * A further-information request is long by nature — Kildare 25189's runs to
+ * several pages of trees, open space, cycle crossings, a road-safety audit,
+ * drainage and attenuation. Asked to summarise it, the model produced 400
+ * words: a rewrite rather than a summary, and worse than the letter, because
+ * at that length every clause reads as though it matters equally.
+ *
+ * The prompt asks for brevity and mostly gets it. "Mostly" is not a guarantee,
+ * and the failure is the one the reader sees.
+ */
+describe("trimToSummary", () => {
+  // The opening of what was actually shown on screen.
+  const RUNAWAY =
+    "The scheme as currently proposed will damage existing plants and wildlife on the site, so you " +
+    "must alter the layout and provide updated tree and ecological assessments that link to a new " +
+    "detailed landscaping plan. The council is particularly concerned that the current proposal " +
+    "retains too few of the existing hedgerow and trees within the public open space and front " +
+    "boundary on Green Road (specifically Hedge No. 1, Tree Nos. 12, 13, 14, 15, 16, 18 and 19), so " +
+    "efforts must focus on keeping these features. The public open space lacks proper supervision as " +
+    "it is currently designed and bordered by wooden garden fencing, which the council will not " +
+    "support. You must provide revised drawings showing how pedestrians and cyclists will safely " +
+    "enter and cross the site, including kerb treatment at the cycle track crossing. Submit an " +
+    "Engineering Services Design Report with full details of surface water drainage.";
+
+  const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+
+  it("cuts a runaway to the budget", () => {
+    expect(words(RUNAWAY)).toBeGreaterThan(140);
+    expect(words(trimToSummary(RUNAWAY))).toBeLessThanOrEqual(85);
+  });
+
+  it("cuts at a sentence boundary, never mid-clause", () => {
+    expect(trimToSummary(RUNAWAY)).toMatch(/[.!?]$/);
+  });
+
+  it("keeps the front, which is where the prompt puts what matters", () => {
+    // Physical changes first, paperwork last — so what survives a cut is what
+    // decides the application.
+    expect(trimToSummary(RUNAWAY)).toContain("damage existing plants and wildlife");
+    expect(trimToSummary(RUNAWAY)).not.toContain("Engineering Services Design Report");
+  });
+
+  it("does not mistake an abbreviation for the end of a sentence", () => {
+    // These letters are full of "Hedge No. 1, Tree Nos. 12, 13" — splitting
+    // there would cut a sentence into nonsense and spend the budget on it.
+    const one = "Keep Hedge No. 1 and Tree Nos. 12, 13 and 14 on the Green Road boundary.";
+    expect(trimToSummary(one, 85)).toBe(one);
+  });
+
+  it("keeps the first sentence however long, since some is better than none", () => {
+    const single = `A single sentence that runs on ${"and on ".repeat(40)}without stopping.`;
+    expect(trimToSummary(single, 20)).toBe(single);
+  });
+
+  it("leaves a summary already inside the budget exactly as written", () => {
+    const good =
+      "The council wants the layout redesigned to keep more of the hedgerow. It also wants a " +
+      "surface-water design limiting runoff to greenfield rates.";
+    expect(trimToSummary(good)).toBe(good);
+  });
+});
+
+describe("cleanSummary", () => {
+  it("is null for nothing usable, so the sheet can say so", () => {
+    expect(cleanSummary(null)).toBeNull();
+    expect(cleanSummary("")).toBeNull();
+    expect(cleanSummary("Unclear.")).toBeNull();
+  });
+
+  it("strips Markdown and then applies the budget", () => {
+    const out = cleanSummary("## Heading\n- **Move** the extension off the boundary. Submit tests.");
+    expect(out).not.toMatch(/[#*]/);
+    expect(out).toContain("Move the extension off the boundary.");
   });
 });
