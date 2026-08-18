@@ -46,6 +46,12 @@ export function furtherInfoUserMsg(items) {
  * "F.I. Request Letter", "Further Information Request" or some near variant.
  * Returns -1 when the file list holds none, so the sheet can say the request
  * is on file at the council rather than invent a summary.
+ *
+ * A file list is a running record, so most of what mentions further
+ * information is not the request: Kildare 25189 carries 103 documents, of
+ * which two are requests and roughly thirty are the applicant's answers, plus
+ * acknowledgements, publication requests and re-advertisement notices. Each of
+ * those describes something other than what the council asked for.
  */
 const FI_DOC_RE =
   /\bf\.?\s?i\.?\b|further\s+information|additional\s+information|clarification/i;
@@ -53,17 +59,24 @@ const FI_DOC_RE =
  *  request — reading it would summarise the answer as though it were the ask. */
 const FI_NOT_REQUEST_RE =
   /received|response|reply|submitted|acknowledg|receipt|checklist|extension of time/i;
+/** Nor is a direction to re-advertise: "F.I. Publication Request Letter" and
+ *  the notices that follow it are about the newspaper and the site notice, not
+ *  about the development. */
+const FI_NOTICE_RE = /publication|news\s?paper|newspaper|site notice|advertis/i;
 
 export function findFurtherInfoDocIndex(files) {
   let best = -1;
   let bestScore = 0;
   (files ?? []).forEach((f, i) => {
     const t = String(f?.title ?? "");
-    if (!FI_DOC_RE.test(t) || FI_NOT_REQUEST_RE.test(t)) return;
+    if (!FI_DOC_RE.test(t) || FI_NOT_REQUEST_RE.test(t) || FI_NOTICE_RE.test(t)) return;
     let score = 1;
     if (/request/i.test(t)) score += 3;
     if (/letter/i.test(t)) score += 1;
-    if (score > bestScore) {
+    // >= so a later entry wins a tie: registers append chronologically, and an
+    // application can go round twice — Kildare 25189 was asked in December and
+    // again in June. The operative request is the most recent one.
+    if (score >= bestScore) {
       bestScore = score;
       best = i;
     }

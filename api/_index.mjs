@@ -3152,7 +3152,12 @@ export default async function handler(req, res) {
      * expensive thing a page view can trigger and the request never changes
      * once issued.
      */
-    if (app.status !== "further_info") return send(res, 200, { supported: true, summary: null });
+    // Answered counts too: what the council asked for is the substance of the
+    // file right up until a decision issues.
+    if (app.status !== "further_info" && !app.further_info_requested_date) {
+      return send(res, 200, { supported: true, summary: null });
+    }
+    if (app.decision) return send(res, 200, { supported: true, summary: null });
     const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
     if (!listUrl) return send(res, 200, { supported: false, summary: null });
     const stored = await aiCacheGet(cacheKind, app.authority_id, app.planning_reference);

@@ -786,8 +786,10 @@ function FurtherInfoSection({
     <section aria-labelledby="further-info-h" aria-busy={conditionsLoading || undefined}>
       <h3 id="further-info-h">Further information requested</h3>
       <p className="decision-line">
-        {d.authority_short_name} has asked the applicant for more before deciding
-        {requested && <span className="hint"> · {fmtDate(requested)}</span>}
+        {d.further_info_received_date
+          ? `${d.authority_short_name} asked the applicant for more, and has it`
+          : `${d.authority_short_name} has asked the applicant for more before deciding`}
+        {requested && <span className="hint"> · asked {fmtDate(requested)}</span>}
         {d.further_info_received_date && (
           <span className="hint"> · answered {fmtDate(d.further_info_received_date)}</span>
         )}
@@ -861,7 +863,16 @@ function DecisionSection({
   // Kildare, Wicklow and Meath have no conditions endpoint, so without the
   // second test their applications showed no further-information section at
   // all, which is what made this look like a Dublin-only feature.
-  const awaitingInfo = Boolean(conditions?.further_info) || d.status === "further_info";
+  //
+  // A request that has since been answered still counts. Kildare 25189 was
+  // asked in February, answered in August, and reads as "pending" again — but
+  // what the council asked for is the substance of the file, and the only
+  // thing standing between it and a decision. Once a decision issues the
+  // decision is the answer and this drops away.
+  const awaitingInfo =
+    Boolean(conditions?.further_info) ||
+    d.status === "further_info" ||
+    Boolean(d.further_info_requested_date);
   if (awaitingInfo && !decision && !hasAppeal)
     return (
       <FurtherInfoSection
@@ -1404,7 +1415,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     // letter instead, read on the same endpoint — so the fetch is driven by
     // the status here rather than by anything in a conditions payload that
     // will never arrive.
-    if (!hasConditionsSource && d.status === "further_info") {
+    if (!hasConditionsSource && (d.status === "further_info" || d.further_info_requested_date)) {
       setAskedLoading(true);
       api
         .furtherInfoSummary(d.id)
