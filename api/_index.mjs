@@ -3134,8 +3134,9 @@ export default async function handler(req, res) {
       );
       // Only while the request is the live state of the file. Once a decision
       // issues, the D/I items are history and the decision is the answer.
-      const decision = conditions?.decision ?? app.decision ?? null;
-      if (!isFurtherInfoRequest(decision)) return send(res, 200, { supported: true, summary: null });
+      // Not only while the council is waiting: the request is the clearest
+      // record of what the planner was worried about, and that is worth
+      // reading on a decided application too — often more so.
       const asked = furtherInfoItems(conditions?.items ?? []);
       if (!asked.length) return send(res, 200, { supported: true, summary: null });
       const summary = await aiCached(cacheKind, app.authority_id, app.planning_reference, () =>
@@ -3152,12 +3153,11 @@ export default async function handler(req, res) {
      * expensive thing a page view can trigger and the request never changes
      * once issued.
      */
-    // Answered counts too: what the council asked for is the substance of the
-    // file right up until a decision issues.
+    // Answered and decided both count: what the council asked for is the
+    // clearest published record of what the planner was worried about.
     if (app.status !== "further_info" && !app.further_info_requested_date) {
       return send(res, 200, { supported: true, summary: null });
     }
-    if (app.decision) return send(res, 200, { supported: true, summary: null });
     const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
     if (!listUrl) return send(res, 200, { supported: false, summary: null });
     const stored = await aiCacheGet(cacheKind, app.authority_id, app.planning_reference);

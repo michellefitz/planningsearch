@@ -17,6 +17,7 @@ import {
   featureToRecord, fetchAllSince, fetchAllSites, SERVICE_URL, siteKey, SITES_URL,
 } from "./ingest/arcgis.js";
 import { buildPprIndex, lookupPpr } from "./ingest/ppr.js";
+import { fillMissingCoordinates } from "./coordinates.js";
 import { fetchKildareRecent, eplanningItemToRecord } from "./ingest/eplanning-list.js";
 import { ACP_AUTHORITY, fetchAcpDirectRecords } from "./ingest/acp.js";
 import { buildCommencementIndex, lookupCommencement } from "./ingest/bcms.js";
@@ -211,6 +212,15 @@ async function main() {
       console.error("ACP direct-case fetch failed (national data unaffected):", err);
     }
   }
+
+  // A record with no pin is invisible on the map however well it reads in the
+  // list. See coordinates.ts for why this is needed and why it is exact.
+  const borrowed = fillMissingCoordinates(records);
+  const stillUnlocated = records.filter((r) => r.lat == null).length;
+  console.log(
+    `Coordinates: ${borrowed} taken from another application at the same address; ` +
+      `${stillUnlocated} records still have no pin.`
+  );
 
   const apps: BundledApp[] = records.map((r, i) => ({ id: i + 1, ...r }));
 

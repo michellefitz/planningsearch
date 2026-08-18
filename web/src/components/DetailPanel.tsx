@@ -824,7 +824,6 @@ function FurtherInfoSection({
           structured text — look for the further-information request in the documents below.
         </p>
       )}
-      <AppealBlock detail={d} />
     </section>
   );
 }
@@ -836,8 +835,6 @@ function DecisionSection({
   conditionsFailed,
   refusalSummary,
   refusalLoading,
-  askedSummary,
-  askedLoading,
   highlights,
   highlightsLoading,
 }: {
@@ -847,42 +844,12 @@ function DecisionSection({
   conditionsFailed: boolean;
   refusalSummary: string | null;
   refusalLoading: boolean;
-  askedSummary: string | null;
-  askedLoading: boolean;
   highlights: ConditionHighlight[] | null;
   highlightsLoading: boolean;
 }) {
   const decision = conditions?.decision ?? d.decision;
   const decisionDate = conditions?.decision_date ?? d.decision_date;
   const hasAppeal = Boolean(d.appeal_reference || d.appeal_decision);
-  // The council is still asking, not answering. An appeal or a real decision
-  // outranks it — those mean the request was answered and the file moved on.
-  //
-  // `awaitingInfo` covers both shapes: the agile portals say so in the
-  // conditions payload, and everywhere else the status is the only signal —
-  // Kildare, Wicklow and Meath have no conditions endpoint, so without the
-  // second test their applications showed no further-information section at
-  // all, which is what made this look like a Dublin-only feature.
-  //
-  // A request that has since been answered still counts. Kildare 25189 was
-  // asked in February, answered in August, and reads as "pending" again — but
-  // what the council asked for is the substance of the file, and the only
-  // thing standing between it and a decision. Once a decision issues the
-  // decision is the answer and this drops away.
-  const awaitingInfo =
-    Boolean(conditions?.further_info) ||
-    d.status === "further_info" ||
-    Boolean(d.further_info_requested_date);
-  if (awaitingInfo && !decision && !hasAppeal)
-    return (
-      <FurtherInfoSection
-        detail={d}
-        conditions={conditions}
-        conditionsLoading={conditionsLoading}
-        askedSummary={askedSummary}
-        askedLoading={askedLoading}
-      />
-    );
   if (!decision && !hasAppeal) return null;
   // eplanning/iDocs councils record their reasons only in the scanned
   // decision order — offer the on-demand PDF summary instead of conditions.
@@ -1317,6 +1284,20 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   // live portal — so it arrives with enrichment, after the sheet has painted.
   const submissionsBy = d.submissions_by_date ?? enrich?.submissions_by_date ?? null;
   const timeline = buildTimeline(d, submissionsBy);
+  /**
+   * Whether the council asked this applicant for more, ever.
+   *
+   * Not only while it is waiting on the answer, and not only before a decision
+   * — a request is the clearest published record of what the planner was
+   * worried about, which is exactly what someone reading a granted or refused
+   * application wants to know. The agile portals say so in the conditions
+   * payload; everywhere else the dates on the record are the signal.
+   */
+  const hasFurtherInfo =
+    Boolean(conditions?.further_info) ||
+    Boolean(conditions?.items.some((i) => i.code === "D" || i.code === "I")) ||
+    d.status === "further_info" ||
+    Boolean(d.further_info_requested_date);
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
   const isLongDesc = (description ?? "").length > 400;
   const hasConditionsSource = AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
@@ -1467,7 +1448,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             // request is already here, as D/I items — several thousand words
             // of planning prose on a house extension — so summarise what is
             // actually being asked for.
-            if (res.conditions.further_info) {
+            if (
+              res.conditions.further_info ||
+              res.conditions.items.some((i) => i.code === "D" || i.code === "I")
+            ) {
               setAskedLoading(true);
               api
                 .furtherInfoSummary(d.id)
@@ -1757,6 +1741,19 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             on the page. One statement of provenance at the end covers it. */}
       </section>
 
+      {/* Before the decision, because it happened before it: on a decided
+          application the request is the clearest record of what the planner
+          was worried about, and reading it after the outcome loses that. */}
+      {hasFurtherInfo && (
+        <FurtherInfoSection
+          detail={d}
+          conditions={conditions}
+          conditionsLoading={conditionsLoading}
+          askedSummary={askedSummary}
+          askedLoading={askedLoading}
+        />
+      )}
+
       <DecisionSection
         detail={d}
         conditions={conditions}
@@ -1764,8 +1761,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         conditionsFailed={conditionsFailed}
         refusalSummary={refusalSummary}
         refusalLoading={refusalLoading}
-        askedSummary={askedSummary}
-        askedLoading={askedLoading}
         highlights={highlights}
         highlightsLoading={highlightsLoading}
       />
