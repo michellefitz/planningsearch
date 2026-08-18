@@ -7,7 +7,6 @@ import SaveStar from "./SaveStar";
 
 interface Props {
   results: AppSummary[];
-  total: number;
   fuzzy: boolean;
   loading: boolean;
   selectedId: number | null;
@@ -117,7 +116,6 @@ export function SecondaryPills({
 
 export default function ResultsList({
   results,
-  total,
   fuzzy,
   loading,
   selectedId,
@@ -144,10 +142,14 @@ export default function ResultsList({
     );
   return (
     <div className="results">
-      <p className="list-note" role="status">
-        {total.toLocaleString()} application{total === 1 ? "" : "s"}
-        {fuzzy && " — showing close matches (no exact hits)"}
-      </p>
+      {/* The count lives in the controls row above, next to the sort — it was
+          printed twice, once as "49 results" and again as "49 applications".
+          What is left is the warning, which only appears when it applies. */}
+      {fuzzy && (
+        <p className="list-note" role="status">
+          No exact hits — showing close matches.
+        </p>
+      )}
       <ul className="result-list">
         {results.map((r) => (
           <li key={r.id}>

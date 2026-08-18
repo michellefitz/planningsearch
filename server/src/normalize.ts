@@ -113,6 +113,41 @@ function decisionToStatus(decision: string | null | undefined): CanonicalStatus 
   return null;
 }
 
+/**
+ * Councils use the decision column as a running log of the last thing that
+ * happened to the file, so an application still under assessment carries a
+ * decision of "N/A" or "Request Additional Information". Mirrors
+ * api/_conditions/decision.mjs, which the browser and the serverless API use
+ * for the same job on live portal reads; server/test/decision-stage.test.ts
+ * holds the two to the same answers. The rationale and the measurements are
+ * documented there.
+ */
+const NAMES_AN_OUTCOME =
+  /grant|approv|conditional|unconditional|refus|reject|withdraw|invalid|declar|exempt|split|quash|annul|cannot determine|precluded|returned application|other body|referred to/i;
+const DECISION_PLACEHOLDER = /^(n\s*\/?\s*a|none|nil|null|tbc|tbd|no fee|-+|\.+)$/i;
+const DECISION_INFO_REQUEST =
+  /\b(additional|further)\s+information\b|\bfurther particulars\b|\breq(uest)?\s*a\.?i\.?\b|\bai\s+(request|ext)\b|\bclarification\b/i;
+const DECISION_OTHER_PROCEDURAL =
+  /\b(revised|new)\s+(public|newspaper|site)\s+notice\b|\brevised drawings\b|\bextension of time\b|\brequest time extension\b|\bpublication required\b/i;
+
+export type DecisionStage = "further_info" | "procedural" | "placeholder" | null;
+
+/** What the decision field is really recording; null when it names an outcome. */
+export function decisionStage(decision: string | null | undefined): DecisionStage {
+  const dec = `${decision ?? ""}`.trim();
+  if (!dec) return null;
+  if (NAMES_AN_OUTCOME.test(dec)) return null;
+  if (DECISION_PLACEHOLDER.test(dec)) return "placeholder";
+  if (DECISION_INFO_REQUEST.test(dec)) return "further_info";
+  if (DECISION_OTHER_PROCEDURAL.test(dec)) return "procedural";
+  return null;
+}
+
+/** The decision text, or null when the field holds a stage instead. */
+export function realDecision(decision: string | null | undefined): string | null {
+  return decisionStage(decision) === null ? (decision ?? null) : null;
+}
+
 function statusFromRules(source: string): CanonicalStatus | null {
   for (const [re, status] of STATUS_RULES) {
     if (re.test(source)) return status;
@@ -125,22 +160,31 @@ export function normalizeStatus(raw: string | null | undefined, decision?: strin
   const fromDecision = (): CanonicalStatus | null => decisionToStatus(decision);
   const fromRules = (): CanonicalStatus | null => statusFromRules(source);
   const viaDecision = fromDecision();
+  // The decision column naming a request for more information is still a
+  // signal — the weakest one, consulted only when neither the status text nor
+  // a real decision says anything. Dublin City files 83 of these as
+  // "Decision Notice Issued" + "ADDITIONAL INFORMATION": the notice that
+  // issued was the request, and without this they all read as "Unknown".
+  const viaStage: CanonicalStatus | null =
+    decisionStage(decision) === "further_info" ? "further_info" : null;
   if (source) {
     // "Finalised"/"decision made" style statuses often carry no outcome — the
     // Decision field is authoritative there. But some do embed the outcome in
     // the status itself (e.g. "Finalised Unconditional" = granted without
     // conditions), so if the Decision field is empty, still read the status
     // text before giving up.
-    if (DECIDED_OPAQUE.test(source)) return viaDecision ?? fromRules() ?? "unknown";
+    if (DECIDED_OPAQUE.test(source)) return viaDecision ?? fromRules() ?? viaStage ?? "unknown";
     const viaRules = fromRules();
     // A recorded decision beats a status that is only a not-yet-decided stage
     // (the register lags); a status that itself names a terminal outcome
     // (refused/withdrawn/invalid/appealed) still stands.
     if (viaDecision && (!viaRules || NON_TERMINAL_STAGES.has(viaRules))) return viaDecision;
     if (viaRules) return viaRules;
+    if (viaStage) return viaStage;
   }
   // Some sources leave status blank once decided; fall back to the decision text.
   if (viaDecision) return viaDecision;
+  if (viaStage) return viaStage;
   return source ? "unknown" : "pending";
 }
 

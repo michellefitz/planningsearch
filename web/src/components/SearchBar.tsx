@@ -82,11 +82,11 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
           }}
           autoComplete="off"
         />
-        {/* Labelled on desktop, a magnifier on a phone — the word cost the
-            input enough width to truncate its own placeholder. aria-label
-            carries the name either way, so the button is never unnamed. */}
+        {/* A magnifier, not the word. The label cost the input enough width to
+            truncate its own placeholder on a phone, and on desktop it was the
+            heaviest thing in a row whose job is the text field. aria-label
+            carries the name, so the button is never unnamed. */}
         <button type="submit" className="btn btn-primary btn-search" aria-label="Search">
-          <span className="btn-search-label">Search</span>
           <svg
             className="btn-search-icon"
             aria-hidden="true"

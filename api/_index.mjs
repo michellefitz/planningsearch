@@ -13,6 +13,12 @@ import { fileURLToPath } from "node:url";
 import { handleAccountRoute, isAccountRoute } from "./_accounts/routes.mjs";
 import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
 import { conditionHighlights, HIGHLIGHTS_PROMPT } from "./_conditions/highlights.mjs";
+import {
+  FURTHER_INFO_PROMPT,
+  furtherInfoItems,
+  furtherInfoSummary,
+} from "./_conditions/further-info.mjs";
+import { decisionStage, isFurtherInfoRequest, realDecision } from "./_conditions/decision.mjs";
 import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached, versionedKind } from "./_ai/store.mjs";
 import { descriptionKey } from "./_ai/descriptions.mjs";
 
@@ -1289,6 +1295,24 @@ const NO_LEAK_RULE =
 
 const LEAK_RE =
   /\b(?:I (?:don'?t|do not|cannot|can'?t|couldn'?t|am unable|'?m unable|'?m sorry)|as an AI|could you (?:provide|clarify|share)|please provide|not enough (?:info|information|detail)|appears? (?:incomplete|to be incomplete)|the (?:description|text) (?:appears|seems|is) |would you like|unable to (?:summari|determine|tell))/i;
+
+/**
+ * Why there is no summary.
+ *
+ * "Not enough information to generate a summary" was shown for both, which
+ * blamed the council's description when the truth was often that our own call
+ * to the model timed out or came back 429. On a 300-word description that
+ * reads as a claim about the data, and it is wrong.
+ */
+function summaryStatus(trace, description) {
+  if (trace.some((t) => t.step === "haiku" && t.error)) return "unavailable";
+  // The model answered and the guard threw the answer away — it said
+  // INSUFFICIENT, or addressed the reader instead of the application.
+  if (trace.some((t) => t.step === "summarise" && t.error === "reply rejected by isUsableSummary"))
+    return "insufficient";
+  if (!description || description.trim().length < 40) return "insufficient";
+  return "unavailable";
+}
 
 function isUsableSummary(text) {
   if (!text) return null;
@@ -2955,10 +2979,22 @@ export default async function handler(req, res) {
     }
     // The plain-English refusal line is its own (cached) endpoint so the
     // conditions themselves never wait on a model call.
+    //
+    // The portal's decision field doubles as a progress log, so an application
+    // still being assessed comes back as "Seek Clarification of Additional
+    // Information" with the request itself in the items. Resolved here rather
+    // than in the browser: decision carries only a real outcome, and
+    // further_info says the file is waiting on the applicant.
     return send(res, 200, {
       supported: true,
       conditions: conditions
-        ? { ...conditions, refusal_summary: REFUSAL_SUMMARY_CACHE.get(app.id) ?? null }
+        ? {
+            ...conditions,
+            decision: realDecision(conditions.decision),
+            decision_stage: decisionStage(conditions.decision),
+            further_info: isFurtherInfoRequest(conditions.decision),
+            refusal_summary: REFUSAL_SUMMARY_CACHE.get(app.id) ?? null,
+          }
         : null,
     });
   }
@@ -3021,6 +3057,36 @@ export default async function handler(req, res) {
       }
     );
     return send(res, 200, { supported: true, highlights });
+  }
+
+  // What the council has asked for before it will decide. Its own endpoint, so
+  // the request itself renders without waiting on the model — the same shape
+  // as the refusal line and the condition highlights.
+  const fim = route.match(/^\/api\/applications\/(\d+)\/further-info-summary$/);
+  if (fim) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(fim[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    if (!(app.authority_id in AGILE_CLIENT_BY_AUTHORITY)) {
+      return send(res, 200, { supported: false, summary: null });
+    }
+    const conditions = await fetchAgileConditions(
+      app.authority_id,
+      app.source_url,
+      app.planning_reference
+    );
+    // Only while the request is the live state of the file. Once a decision
+    // issues, the D/I items are history and the decision is the answer.
+    const decision = conditions?.decision ?? app.decision ?? null;
+    if (!isFurtherInfoRequest(decision)) return send(res, 200, { supported: true, summary: null });
+    const asked = furtherInfoItems(conditions?.items ?? []);
+    if (!asked.length) return send(res, 200, { supported: true, summary: null });
+    const summary = await aiCached(
+      versionedKind(AI_CACHE_KINDS.FURTHER_INFO, FURTHER_INFO_PROMPT),
+      app.authority_id,
+      app.planning_reference,
+      () => furtherInfoSummary(asked, callClaude)
+    );
+    return send(res, 200, { supported: true, summary });
   }
 
   const am = route.match(/^\/api\/applications\/(\d+)\/appeal$/);
@@ -3277,7 +3343,7 @@ export default async function handler(req, res) {
     let description = app.description ?? null;
     let parties = { applicant: null, agent: null };
     const debug = p.get("debug") === "1";
-    const summaryTrace = debug ? [] : undefined;
+    const summaryTrace = [];
     // Summarise in parallel only for non-agile councils, whose description we
     // already hold in full. Agile councils get a fuller description from the
     // portal, so we summarise after that fetch (below) — otherwise the summary
@@ -3347,8 +3413,11 @@ export default async function handler(req, res) {
         : quickSummary;
     return send(res, 200, {
       ai_summary: aiSummary,
+      // Only meaningful when ai_summary is null: "insufficient" is a fact
+      // about the description, "unavailable" is a fact about us.
+      summary_status: aiSummary ? "ok" : summaryStatus(summaryTrace, description),
       // debug=1 only: why a null summary is null.
-      ...(summaryTrace ? { summary_trace: summaryTrace, description_len: description?.length ?? 0 } : {}),
+      ...(debug ? { summary_trace: summaryTrace, description_len: description?.length ?? 0 } : {}),
       applicant_name: app.applicant_name ?? parties.applicant,
       agent_name: app.agent_name ?? parties.agent,
       description,
