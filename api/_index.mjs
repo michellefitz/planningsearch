@@ -96,6 +96,26 @@ function triIndex() {
   return TRI_INDEX;
 }
 
+/** Street types written both ways — see STREET_TYPES in
+ *  server/src/ingest/ppr.ts for how this list was chosen. */
+const STREET_TYPES = {
+  ROAD: "RD",
+  AVENUE: "AVE",
+  AV: "AVE",
+  STREET: "ST",
+  STR: "ST",
+  SAINT: "ST",
+  DRIVE: "DR",
+  DRV: "DR",
+  SQUARE: "SQ",
+  CRESCENT: "CRES",
+  LOWER: "LWR",
+  UPPER: "UPR",
+  APARTMENT: "APT",
+  APARTMENTS: "APT",
+  APTS: "APT",
+};
+
 /**
  * Normalised address key — mirrors normalizeAddress() in server/src/ingest/ppr.ts.
  * Council staff type these free-hand, so "31 Mount Prospect Drive, Dublin 3",
@@ -105,6 +125,9 @@ function triIndex() {
 function addressKey(s) {
   if (!s) return "";
   let n = String(s).toUpperCase();
+  // Apostrophes close up rather than becoming a space, so "St Brigid's Road"
+  // and "ST BRIGIDS RD" are one address. Straight and curly both appear.
+  n = n.replace(/[\u2019']/g, "");
   n = n.replace(/[^A-Z0-9 ]/g, " ");
   n = n.replace(/\b(D6W|[A-Z]\d{2})\s?[A-Z0-9]{4}\b/g, " ");
   n = n.replace(/\b(CO|COUNTY)\s+(KILDARE|DUBLIN|WICKLOW|MEATH)\b/g, " ");
@@ -113,7 +136,11 @@ function addressKey(s) {
   n = n.replace(/\bNO\s+(?=\d)/g, " ");
   n = n.replace(/\s+/g, " ").trim();
   n = n.replace(/\s(KILDARE|DUBLIN)$/g, "");
-  return n.trim();
+  return n
+    .trim()
+    .split(" ")
+    .map((w) => STREET_TYPES[w] ?? w)
+    .join(" ");
 }
 
 /** authority_id + normalised address -> application ids, built once per cold start. */
