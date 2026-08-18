@@ -867,6 +867,23 @@ function pickOfficer(d) {
   return best;
 }
 
+/**
+ * The close of the public consultation window — the portal's "Due date to
+ * submit observations". Mirrors pickSubmissionsBy() in server/src/agile.ts.
+ *
+ * publicityEndDate is the only one populated across all four councils:
+ * sampled 2026-08-18, Dublin City and DLR carry it alone, while Fingal and
+ * South Dublin carry submissionExpiryDate too — always the same date.
+ */
+function pickSubmissionsBy(d) {
+  for (const key of ["publicityEndDate", "submissionExpiryDate"]) {
+    const v = d[key];
+    const iso = typeof v === "string" ? v.slice(0, 10) : "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  }
+  return null;
+}
+
 // Detail fetch for a known agile id — the nightly harvest caches resolved ids
 // in Neon and skips the slow resolveAgileId search step entirely.
 async function fetchAgileDetailById(authorityId, id, debug = false) {
@@ -882,6 +899,7 @@ async function fetchAgileDetailById(authorityId, id, debug = false) {
     description: pickDescription(d),
     eircode: normaliseEircode(d.postcode),
     officer: pickOfficer(d),
+    submissionsBy: pickSubmissionsBy(d),
     application_type:
       typeof d.applicationType === "string" && d.applicationType.trim() ? d.applicationType.trim() : null,
     ...(debug ? { keys: Object.keys(d) } : {}),
@@ -3434,6 +3452,10 @@ export default async function handler(req, res) {
       // often has the real Eircode.
       eircode: app.eircode ?? detail?.eircode ?? null,
       officer_name: detail?.officer ?? null,
+      // The window for public observations. Only the agile portals publish it;
+      // the national dataset leaves the column empty for these councils, so an
+      // application open for submissions showed no deadline and no countdown.
+      submissions_by_date: detail?.submissionsBy ?? null,
       // Present only when the live portal outcome supersedes the baked status,
       // so the panel can correct the badge.
       status: useLiveStatus ? liveStatus : null,

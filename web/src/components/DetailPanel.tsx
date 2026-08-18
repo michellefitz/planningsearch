@@ -60,8 +60,15 @@ function daysUntil(iso: string): number {
 
 const isPast = (iso: string): boolean => daysUntil(iso) < 0;
 
-function buildTimeline(d: AppDetail): TimelineStep[] {
+/**
+ * `submissionsBy` is passed in rather than read off the record because only
+ * the agile councils publish it, and only on the live portal — the national
+ * dataset leaves the column empty for all four, so it arrives with enrichment
+ * a moment after the sheet has already painted.
+ */
+function buildTimeline(d: AppDetail, submissionsBy?: string | null): TimelineStep[] {
   const decided = Boolean(d.decision_date);
+  const submissions = d.submissions_by_date ?? submissionsBy ?? null;
   const steps: TimelineStep[] = [
     { label: "Received", date: d.received_date, state: d.received_date ? "done" : "future" },
   ];
@@ -76,11 +83,11 @@ function buildTimeline(d: AppDetail): TimelineStep[] {
     }
   }
   // The window for public submissions/observations closes before the decision.
-  if (d.submissions_by_date) {
+  if (submissions) {
     steps.push({
       label: "Submissions by",
-      date: d.submissions_by_date,
-      state: decided || isPast(d.submissions_by_date) ? "done" : "current",
+      date: submissions,
+      state: decided || isPast(submissions) ? "done" : "current",
       statutory: true,
     });
   }
@@ -1240,7 +1247,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const isMobile = useIsMobile();
   const isEplanning =
     meta?.authorities.find((a) => a.id === d.authority_id)?.source_system === "eplanning";
-  const timeline = buildTimeline(d);
   const [conditions, setConditions] = useState<DecisionConditions | null>(null);
   const [conditionsLoading, setConditionsLoading] = useState(false);
   // A council portal that didn't answer must never look like a permission with
@@ -1261,6 +1267,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     description?: string | null;
     eircode?: string | null;
     officer_name?: string | null;
+    submissions_by_date?: string | null;
     status?: string | null;
     status_raw?: string | null;
     status_label?: string | null;
@@ -1276,6 +1283,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   // it exactly in that case, but guard here too so a correct baked status is
   // never displaced.
   const liveStatus = d.status === "unknown" ? enrich?.status ?? null : null;
+  // Only the agile councils publish the observation deadline, and only on the
+  // live portal — so it arrives with enrichment, after the sheet has painted.
+  const submissionsBy = d.submissions_by_date ?? enrich?.submissions_by_date ?? null;
+  const timeline = buildTimeline(d, submissionsBy);
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
   const isLongDesc = (description ?? "").length > 400;
   const hasConditionsSource = AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
@@ -1684,11 +1695,11 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         </ol>
         {/* While the window is open, make the submissions deadline actionable —
             this is the one date a member of the public can still act on. */}
-        {!d.decision_date && d.submissions_by_date && !isPast(d.submissions_by_date) && (
+        {!d.decision_date && submissionsBy && !isPast(submissionsBy) && (
           <p className="submissions-open">
-            <strong>Open for submissions until {fmtDate(d.submissions_by_date)}</strong>
+            <strong>Open for submissions until {fmtDate(submissionsBy)}</strong>
             {(() => {
-              const left = daysUntil(d.submissions_by_date);
+              const left = daysUntil(submissionsBy);
               return left === 0 ? " — today is the last day" : ` — ${left} day${left === 1 ? "" : "s"} left`;
             })()}
             . Observations are made to {d.authority_name}, usually with a fee.

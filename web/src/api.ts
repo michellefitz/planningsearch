@@ -327,6 +327,9 @@ export const api = {
       description?: string | null;
       eircode?: string | null;
       officer_name?: string | null;
+      /** Close of the public consultation window, read live from the agile
+       *  portal — the national dataset leaves it empty for those councils. */
+      submissions_by_date?: string | null;
       status?: string | null;
       status_raw?: string | null;
       status_label?: string | null;

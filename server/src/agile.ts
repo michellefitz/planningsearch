@@ -216,6 +216,13 @@ export interface AgileDetail {
    *  a stage ("Decision Notice Issued"); feeding it to normalizeStatus lets the
    *  outcome win over the stage. */
   decision: string | null;
+  /**
+   * When the public consultation window closes — the portal's "Due date to
+   * submit observations". Absent from the national dataset entirely, so
+   * without this the one time-critical fact on an undecided application had
+   * nowhere to come from.
+   */
+  submissionsBy: string | null;
   /** Full proposal description — the national dataset truncates this for big
    *  (e.g. SHD/strategic) applications. */
   description: string | null;
@@ -322,6 +329,24 @@ export function pickAgileDecision(d: Record<string, unknown>): string | null {
 }
 
 /**
+ * The close of the public consultation window.
+ *
+ * publicityEndDate is the one the portal prints as "Due date to submit
+ * observations", and it is the only one populated across all four councils:
+ * sampled on 2026-08-18, Dublin City and DLR carry it alone, while Fingal and
+ * South Dublin carry submissionExpiryDate as well — always the same date. So
+ * publicity first, the other as a fallback for any record that inverts it.
+ */
+export function pickSubmissionsBy(d: Record<string, unknown>): string | null {
+  for (const key of ["publicityEndDate", "submissionExpiryDate"]) {
+    const v = d[key];
+    const iso = typeof v === "string" ? v.slice(0, 10) : "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  }
+  return null;
+}
+
+/**
  * GET /application/{id}: applicant/agent names (absent in the national
  * dataset) and the full proposal description. Returns null if the id can't be
  * resolved or the call fails.
@@ -349,6 +374,7 @@ export async function fetchAgileDetail(
     decision: pickAgileDecision(d),
     description: pickDescription(d),
     eircode: normaliseEircode(d.postcode),
+    submissionsBy: pickSubmissionsBy(d),
     ...(debug ? { keys: Object.keys(d) } : {}),
   };
 }

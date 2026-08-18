@@ -1038,6 +1038,10 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       description,
       eircode,
       officer_name: detail?.officer ?? null,
+      // The window for public observations. Only the agile portals publish it;
+      // the national dataset leaves the column empty for these councils, so an
+      // application open for submissions showed no deadline and no countdown.
+      submissions_by_date: detail?.submissionsBy ?? null,
       // Present only when the live portal outcome supersedes the baked status,
       // so the panel can correct the badge without disturbing the rest.
       status: useLiveStatus ? liveStatus : null,
