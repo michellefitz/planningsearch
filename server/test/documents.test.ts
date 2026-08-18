@@ -276,6 +276,31 @@ describe("parseFileListHtml", () => {
     expect(parseFileListHtml(html, base)[0].title).toBe("Application Form — 02/06/2026");
   });
 
+  // Kildare's iDocs GridView writes an unused comment column as
+  // `<td>&nbsp;</td>`. Stripping tags alone left the literal string "&nbsp;",
+  // which is truthy — so every document without a comment came out as
+  // "Application Form - Part A — &nbsp;".
+  it("reads an empty &nbsp; cell as empty, not as a comment", () => {
+    const html = `
+      <table id="gvFiles">
+        <tr><th>Document</th><th>Comment</th><th></th></tr>
+        <tr><td>Application Form - Part A</td><td>&nbsp;</td><td><a href="getFile.aspx?fileid=1">View</a></td></tr>
+        <tr><td>Report Request Letter to External Body</td><td>Uisce &Eacute;ireann</td><td><a href="getFile.aspx?fileid=2">View</a></td></tr>
+      </table>`;
+    const files = parseFileListHtml(html, base);
+    expect(files[0].title).toBe("Application Form - Part A");
+    // A cell that does carry a comment still gets appended.
+    expect(files[1].title).toContain("Report Request Letter to External Body —");
+  });
+
+  it("decodes the entities councils leave in document titles", () => {
+    const html = `
+      <table>
+        <tr><td><a href="ViewDocument?fileId=9">Plans &amp; Particulars</a></td><td>&#160;</td></tr>
+      </table>`;
+    expect(parseFileListHtml(html, base)[0].title).toBe("Plans & Particulars");
+  });
+
   it("returns an empty list for unrecognisable markup (deep-link fallback)", () => {
     expect(parseFileListHtml("<html><body>No anchors here</body></html>", base)).toEqual([]);
   });
