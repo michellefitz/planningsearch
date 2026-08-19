@@ -62,6 +62,10 @@ export default function App() {
   const [total, setTotal] = useState(0);
   const [fuzzy, setFuzzy] = useState(false);
   const [loading, setLoading] = useState(true);
+  /* Panning refetches the pins without touching the list, so it must not blank
+     the result cards or the count — but it is still the map working, and the
+     map has to say so. Tracked apart from `loading` for exactly that reason. */
+  const [pinsLoading, setPinsLoading] = useState(false);
   const [mapData, setMapData] = useState<PointFeatureCollection | null>(null);
   const [sitePolygons, setSitePolygons] = useState<GeoJSON.FeatureCollection | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -148,7 +152,11 @@ export default function App() {
         window.clearTimeout(pinTimer.current);
         pinTimer.current = null;
       }
+      // Any in-flight pin refresh is now superseded, and its own guard will
+      // decline to clear the flag it set — so clear it here, or the map keeps
+      // a progress bar for a request nobody is waiting on.
       ++pinSeq.current;
+      setPinsLoading(false);
       const seq = ++searchSeq.current;
       const shouldFly = flyOnNextSearch.current;
       flyOnNextSearch.current = false;
@@ -308,6 +316,7 @@ export default function App() {
     if (pinTimer.current != null) window.clearTimeout(pinTimer.current);
     pinTimer.current = window.setTimeout(async () => {
       const seq = ++pinSeq.current;
+      setPinsLoading(true);
       try {
         const mp = mapParams(s, bboxRef.current, nearRef.current);
         const geo = await api.mapGeoJson(mp);
@@ -324,6 +333,8 @@ export default function App() {
       } catch {
         // A failed pin refresh leaves the previous pins up; the list is
         // unaffected and the next move retries.
+      } finally {
+        if (seq === pinSeq.current) setPinsLoading(false);
       }
     }, 350);
   }, []);
@@ -949,6 +960,22 @@ export default function App() {
             >
               {watchNotice ?? `Watching: ${watchView.name}`} ✕
             </button>
+          )}
+          {/* The map had no loading state at all.
+           *
+           * The only "Searching…" in the app lives in the view-toggle strip,
+           * which map view hides on a phone — so opening the app or running a
+           * search over the map was a still picture with nothing happening on
+           * it, and reviewers who never opened the list read that as the app
+           * being broken. The bar runs along the top edge of the pane rather
+           * than over the middle of it: the pins from the last search stay
+           * readable underneath while the next one runs, which is the point of
+           * staying on the map. */}
+          {(loading || pinsLoading) && (
+            <div className="map-busy" role="status">
+              <span className="map-busy-bar" aria-hidden="true" />
+              {!mapData && <span className="map-busy-label">Finding applications…</span>}
+            </div>
           )}
           {/* A map that quietly stops drawing pins reads as "there's nothing
               else here". Say when it's a subset and what to do about it. */}

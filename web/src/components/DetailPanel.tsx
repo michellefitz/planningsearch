@@ -4,6 +4,7 @@ import {
   fmtDate,
   type AppDetail,
   type ConditionHighlight,
+  type ConditionItem,
   type DecisionConditions,
   type Meta,
   type ZoningInfo,
@@ -14,8 +15,10 @@ import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "../statusStyle";
 import SaveStar from "./SaveStar";
 import { itemLabel } from "../../../api/_conditions/labels.mjs";
+import { realDecision } from "../../../api/_conditions/decision.mjs";
 import { developmentContribution } from "../../../api/_conditions/contribution.mjs";
 import { getFloodData } from "../floodData";
+import { Waiting } from "../loading";
 import { coverageNoteFor } from "../coverage";
 import { SHEET_PEEK_FRACTION } from "../sheetMetrics";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
@@ -237,7 +240,7 @@ export function isRefusalDecision(decision: string | null | undefined): boolean 
  * setting out why permission *was* given. Labelling it "Reasons for refusal"
  * on a grant told readers an application had been refused when it hadn't.
  */
-function conditionGroups(decision: string | null | undefined) {
+function conditionGroups(decision: string | null | undefined, superseded = false) {
   return [
     {
       code: "R",
@@ -251,8 +254,17 @@ function conditionGroups(decision: string | null | undefined) {
     },
     {
       code: "C",
-      label: "Conditions of this decision",
-      blurb: "Binding — the permission only stands if these are met.",
+      label: superseded ? "Conditions the council had attached" : "Conditions of this decision",
+      /**
+       * "Binding" is a claim about a live permission. DLR D07B/0746 was
+       * granted by the council and refused by An Coimisiún Pleanála on
+       * appeal — nothing about it binds anyone, and nothing is payable, yet
+       * the page said both. The status badge already reads the appeal; this
+       * is the same fact reaching the rest of the sheet.
+       */
+      blurb: superseded
+        ? "Not in force — the council's decision was superseded, so none of these apply."
+        : "Binding — the permission only stands if these are met.",
     },
     { code: "D", label: "Further information the council asked for", blurb: null },
     { code: "I", label: "Clarifications & informatives", blurb: null },
@@ -291,9 +303,15 @@ function ConditionHighlights({
 }) {
   if (loading)
     return (
-      <p className="ai-summary highlights-loading loading-line">
-        ✦ Reading the conditions…
-      </p>
+      <Waiting
+        active
+        className="ai-summary highlights-loading loading-line"
+        stages={[
+          [0, "✦ Reading the conditions…"],
+          [12, "✦ Still reading — working out which ones actually bind."],
+          [30, "✦ Still going. Some decisions carry twenty conditions."],
+        ]}
+      />
     );
   // null is "we couldn't read them" — saying "nothing notable" there would be
   // a claim we haven't earned, and this is exactly where a false all-clear
@@ -342,18 +360,62 @@ function ConditionHighlights({
 }
 
 /** The full conditions / reasons, grouped and collapsible. */
+/**
+ * On a split decision Dublin City files the two halves as an "Informative" and
+ * a "Note", and each one says in its own words which it is: "It is recommended
+ * that permission is refused for the provision of three new flags…", "It is
+ * recommended the planning permission is GRANTED for the construction of a new
+ * first floor…". Checked against five Dublin City split decisions; DLR's use
+ * neither code.
+ *
+ * Read rather than assumed, because the codes carry the opposite meaning on an
+ * ordinary decision, and mislabelling them is worse than leaving them alone:
+ * the refused half was filed under "Clarifications & informatives" and the
+ * granted half under "Notes — Advisory only, not conditions", so the page
+ * called the part of the scheme that was actually permitted advisory, and hid
+ * the refusal that a buyer most needs to see. 22 Rathgar Road's refused
+ * vehicular access — the driveway as built has no permission — was in there.
+ */
+function splitHalf(items: ConditionItem[]): { label: string; blurb: string } | null {
+  const text = items.map((i) => i.text ?? "").join(" ");
+  if (/\brefus/i.test(text) && !/\bgrant/i.test(text)) {
+    return {
+      label: "Refused part of this decision",
+      blurb: "This part of the proposal was not permitted.",
+    };
+  }
+  if (/\bgrant/i.test(text) && !/\brefus/i.test(text)) {
+    return {
+      label: "Granted part of this decision",
+      blurb: "This part of the proposal was permitted, subject to the conditions above.",
+    };
+  }
+  return null;
+}
+
+/** "Split Decision", "Grant Permission & Refuse Permission" and the rest. */
+function isSplitDecision(decision: string | null | undefined): boolean {
+  const d = String(decision ?? "");
+  return /split\s*decision/i.test(d) || (/grant|permission/i.test(d) && /refus/i.test(d));
+}
+
 function ConditionGroups({
   conditions,
   decision,
+  superseded = false,
 }: {
   conditions: DecisionConditions;
   decision: string | null;
+  superseded?: boolean;
 }) {
-  const groups = conditionGroups(decision)
-    .map((g) => ({
-      ...g,
-      items: conditions.items.filter((i) => i.code === g.code),
-    }))
+  const split = isSplitDecision(decision);
+  const groups = conditionGroups(decision, superseded)
+    .map((g) => {
+      const items = conditions.items.filter((i) => i.code === g.code);
+      // Only where the wording settles it; otherwise the ordinary label stands.
+      const half = split && (g.code === "I" || g.code === "N") ? splitHalf(items) : null;
+      return { ...g, items, ...(half ?? {}) };
+    })
     .filter((g) => g.items.length > 0);
 
   return (
@@ -462,9 +524,14 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
           ✦ Summarise the decision
         </button>
       )}
-      {state.phase === "loading" && (
-        <span className="hint loading-line">Summarising the decision…</span>
-      )}
+      <Waiting
+        active={state.phase === "loading"}
+        stages={[
+          [0, "Reading the council's decision order…"],
+          [10, "Still reading — it is a scanned document, so this is slow."],
+          [30, "Still going. Nearly there."],
+        ]}
+      />
       {state.phase === "failed" && (
         <>
           <p className="list-note">Couldn't read the decision order just now.</p>
@@ -636,7 +703,14 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
           <div className="doc-skeleton" aria-hidden="true">
             <span /><span /><span /><span />
           </div>
-          <span className="hint loading-line">Fetching the national case record…</span>
+          <Waiting
+            active
+            stages={[
+              [0, "Fetching the national case record…"],
+              [8, "Still fetching — An Coimisiún Pleanála's site is slow to answer."],
+              [20, "Still going."],
+            ]}
+          />
         </div>
       )}
       {state.phase === "failed" && (
@@ -781,7 +855,12 @@ function FurtherInfoSection({
   askedSummary: string | null;
   askedLoading: boolean;
 }) {
-  const requested = d.further_info_requested_date ?? conditions?.decision_date ?? null;
+  // The portal's decision_date is when the request issued only while the file
+  // is actually at that stage; on a decided application it is the decision's
+  // own date, which is how "asked 15 Jul 2022" appeared under a decision made
+  // on 15 Jul 2022.
+  const requested =
+    d.further_info_requested_date ?? (conditions?.further_info ? conditions.decision_date : null);
   return (
     <section aria-labelledby="further-info-h" aria-busy={conditionsLoading || undefined}>
       <h3 id="further-info-h">Further information requested</h3>
@@ -799,18 +878,31 @@ function FurtherInfoSection({
           <span className="ai-mark">✦</span> {askedSummary}
         </p>
       ) : (
-        askedLoading && (
-          <p className="ai-summary loading-line">
-            <span className="ai-mark">✦</span> Reading what was asked for…
-          </p>
-        )
+        <Waiting
+          active={askedLoading}
+          className="ai-summary loading-line"
+          stages={[
+            [0, "✦ Reading what was asked for…"],
+            [12, "✦ Still reading — the request is a scanned letter."],
+            [30, "✦ Still going. These letters run to several pages."],
+          ]}
+        />
       )}
       {conditionsLoading && (
-        <div className="skeleton-block" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
+        <>
+          <Waiting
+            active
+            stages={[
+              [0, `Fetching the request from ${d.authority_short_name}…`],
+              [12, "Still fetching — the council's portal is slow to answer."],
+            ]}
+          />
+          <div className="skeleton-block" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </>
       )}
       {conditions && conditions.items.length > 0 && (
         <ConditionGroups conditions={conditions} decision={null} />
@@ -859,6 +951,18 @@ function DecisionSection({
   // by the Commission on appeal. On a grant the same reasons are the First
   // Schedule, and a refusal-shaped sentence about them is simply wrong.
   const refused = isRefusalDecision(decision) || isRefusalDecision(d.appeal_decision);
+  /**
+   * The Commission's decision replaces the council's, so a grant that was
+   * refused on appeal leaves nothing standing. The status badge has always
+   * read the appeal; the conditions block and the contribution line did not,
+   * and between them they told a reader that a permission which does not
+   * exist was binding and that money was payable on it (DLR D07B/0746,
+   * granted 2007, refused by the Board in June 2008, €696.37 "payable").
+   */
+  const superseded =
+    Boolean(d.appeal_decision) &&
+    !isRefusalDecision(decision) &&
+    isRefusalDecision(d.appeal_decision);
   const summary = refused ? conditions?.refusal_summary ?? refusalSummary : null;
 
   return (
@@ -909,21 +1013,44 @@ function DecisionSection({
           number in the decision people ask for, so it is stated as a fact.
           Totalled in code, since councils split it across several conditions
           and no single one carries the sum. */}
-      <ContributionLine conditions={conditions} />
+      {/* Nothing is payable on a permission the Commission refused. */}
+      {!superseded && <ContributionLine conditions={conditions} />}
       {summary ? (
         <p className="ai-summary refusal-summary">✦ {summary}</p>
       ) : (
         refused &&
         refusalLoading && (
-          <p className="ai-summary refusal-summary loading-line">✦ Summarising the reasons…</p>
+          <Waiting
+            active
+            className="ai-summary refusal-summary loading-line"
+            stages={[
+              [0, "✦ Summarising the reasons for refusal…"],
+              [12, "✦ Still working — reading the full wording."],
+            ]}
+          />
         )
       )}
+      {/* This was three grey bars and nothing else. On Dublin City the
+          conditions come out of a scanned decision order and can take over a
+          minute, and an unlabelled skeleton for that long reads as an
+          unconditional grant — the most expensive thing this sheet could
+          imply. */}
       {conditionsLoading && (
-        <div className="skeleton-block" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
+        <>
+          <Waiting
+            active
+            stages={[
+              [0, `Reading the conditions from ${d.authority_short_name}…`],
+              [10, "Still reading — the decision order is a scanned document."],
+              [30, "Still going. Long decisions take a while to read."],
+            ]}
+          />
+          <div className="skeleton-block" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </>
       )}
       {conditions && conditions.items.length > 0 && (
         <>
@@ -932,7 +1059,7 @@ function DecisionSection({
             loading={highlightsLoading}
             total={conditions.items.filter((i) => i.code === "C").length}
           />
-          <ConditionGroups conditions={conditions} decision={decision} />
+          <ConditionGroups conditions={conditions} decision={decision} superseded={superseded} />
         </>
       )}
       {/* Three distinct outcomes, never collapsed into a blank space: the
@@ -1000,7 +1127,10 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
   if (!d.scanned_files_url && !d.files_supported) return null;
 
   const load = async () => {
-    setState((s) => (s.phase === "idle" ? { phase: "loading" } : s));
+    // Anything but a list already on screen goes back to waiting — the guard
+    // used to admit only "idle", so pressing Try again refetched but left the
+    // failure notice up, and the retry looked like it had done nothing.
+    setState((s) => (s.phase === "loaded" ? s : { phase: "loading" }));
     try {
       const res = await api.files(d.id);
       if (res.files?.length)
@@ -1022,19 +1152,34 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
     <div className="scanned-files" ref={rootRef}>
       {/* Idle and loading look the same now: the list starts fetching as this
           scrolls into view, so the skeleton is a progress indicator rather
-          than something waiting to be pressed. */}
+          than something waiting to be pressed. The wording moves on as the
+          wait does, because a message that has not changed in twenty seconds
+          is the thing people read as broken. */}
       {(state.phase === "idle" || state.phase === "loading") && (
         <div className="doc-placeholder">
           <div className="doc-skeleton" aria-hidden="true">
             <span /><span /><span /><span />
           </div>
-          <span className="hint loading-line">Fetching the file list from the council…</span>
+          <Waiting
+            active
+            stages={[
+              [0, `Fetching the file list from ${d.authority_short_name}…`],
+              [6, `Still fetching — ${d.authority_short_name}'s portal is slow to answer.`],
+              [18, "Still going. The council's own site is the slow part here."],
+            ]}
+          />
         </div>
       )}
       {state.phase === "failed" && (
-        <p className="list-note">
-          Couldn't load the file list from the council just now — try the official portal above.
-        </p>
+        <div className="doc-failed">
+          <p className="list-note">
+            Couldn't load the file list from {d.authority_short_name} just now. This does{" "}
+            <strong>not</strong> mean there are no documents.
+          </p>
+          <button type="button" className="btn" onClick={load}>
+            Try again
+          </button>
+        </div>
       )}
       {state.phase === "loaded" && state.objections > 0 && (
         <p className="objection-flag">
@@ -1279,7 +1424,44 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   // The live portal status only overrides a baked "unknown" — the server sends
   // it exactly in that case, but guard here too so a correct baked status is
   // never displaced.
-  const liveStatus = d.status === "unknown" ? enrich?.status ?? null : null;
+  /**
+   * The live portal status, whenever enrichment offers one.
+   *
+   * This used to be taken only when the baked status was "unknown", which
+   * threw away every correction the API had already decided was safe. The
+   * endpoint does the judging: it returns `status` only when the portal shows
+   * a terminal outcome the national dataset has not caught up to, and never
+   * overrides an outcome that is already recorded. Dublin City WEB2660/26 was
+   * withdrawn on 10 August and still read "Pending decision · Decision due 27
+   * Aug" nine days later — the correction was in the response the whole time.
+   */
+  const liveStatus = enrich?.status ?? null;
+  /**
+   * Statuses where the file is closed and there is nothing left to say to the
+   * council. Anything not on this list is still live — an appeal, further
+   * information and a plain pending case all still move.
+   */
+  const CLOSED = new Set([
+    "granted", "refused", "withdrawn", "invalid", "split", "exempt", "not_exempt", "decided",
+  ]);
+  /**
+   * Is the application still open to the public?
+   *
+   * Three independent signals, because each of them has been wrong on its own:
+   * the baked status lags the council by months, the live portal status is the
+   * correction for that, and the portal's conditions payload carries an
+   * outcome the status field sometimes still hides. Any one of them saying the
+   * file is closed is enough — the cost of wrongly inviting a submission is
+   * someone paying a fee and writing to the council about a decided or
+   * withdrawn application, which is exactly what happened with Dublin City
+   * WEB2660/26: withdrawn on 10 August, still reading "Open for submissions"
+   * nine days later.
+   */
+  const closedDecision = realDecision(conditions?.decision ?? d.decision);
+  const stillLive =
+    !d.decision_date &&
+    !closedDecision &&
+    !CLOSED.has(liveStatus ?? d.status);
   // Only the agile councils publish the observation deadline, and only on the
   // live portal — so it arrives with enrichment, after the sheet has painted.
   const submissionsBy = d.submissions_by_date ?? enrich?.submissions_by_date ?? null;
@@ -1295,7 +1477,12 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
    */
   const hasFurtherInfo =
     Boolean(conditions?.further_info) ||
-    Boolean(conditions?.items.some((i) => i.code === "D" || i.code === "I")) ||
+    // "D" (Directive) is the agile portals' further-information item. "I"
+    // used to count too, which was wrong: Dublin City files the two halves of
+    // a *split decision* as an Informative and a Note, so every split decision
+    // grew a "Further information requested" heading — 4034/22, decided in
+    // July 2022, read as still awaiting information four years later.
+    Boolean(conditions?.items.some((i) => i.code === "D")) ||
     d.status === "further_info" ||
     Boolean(d.further_info_requested_date);
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
@@ -1670,7 +1857,14 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         {aiSummary ? (
           <p className="ai-summary lead-summary">✦ {aiSummary}</p>
         ) : enrichLoading ? (
-          <p className="ai-summary lead-summary loading-line">✦ Writing a summary…</p>
+          <Waiting
+            active
+            className="ai-summary lead-summary loading-line"
+            stages={[
+              [0, "✦ Writing a plain-English summary…"],
+              [12, "✦ Still writing — the description is a long one."],
+            ]}
+          />
         ) : (
           // Enrichment ran and produced no usable summary. Which of the two
           // reasons it was matters: "not enough information" is a claim about
@@ -1725,7 +1919,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         </ol>
         {/* While the window is open, make the submissions deadline actionable —
             this is the one date a member of the public can still act on. */}
-        {!d.decision_date && submissionsBy && !isPast(submissionsBy) && (
+        {stillLive && submissionsBy && !isPast(submissionsBy) && (
           <p className="submissions-open">
             <strong>Open for submissions until {fmtDate(submissionsBy)}</strong>
             {(() => {

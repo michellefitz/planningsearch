@@ -451,6 +451,10 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
 
     const doc = details ? pickAppealDocument(details.documents) : null;
     const pdf = doc ? await fetchAppealDocumentBase64(doc.url, 12_000_000, trace) : null;
+    // Nothing to read means nothing to say — see the same guard in
+    // api/_index.mjs for the case that prompted it.
+    const hasSource = Boolean(pdf) || (details?.fields?.length ?? 0) >= 3;
+    if (!hasSource) return { supported: true, summary: null, based_on_document: null };
     const summary = await summariseAppeal(context, pdf);
 
     if (debug) return { case_url: caseUrl, based_on_document: pdf ? doc?.title : null, summary, trace };

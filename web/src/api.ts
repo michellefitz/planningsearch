@@ -269,11 +269,60 @@ export function fmtDate(iso: string | null | undefined): string {
   });
 }
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-  return res.json() as Promise<T>;
+/**
+ * Every request gets a deadline.
+ *
+ * There was none, and the serverless functions are allowed to run for five
+ * minutes, so a council portal that stopped answering left "Fetching the file
+ * list from the council…" on screen indefinitely — which is what three
+ * reviewers reported as the file list never loading. A request that has failed
+ * has to be able to say so, and a wait has to be able to end.
+ *
+ * The budgets are per endpoint below, because they measure different work: a
+ * portal round-trip is a couple of seconds, while reading a scanned decision
+ * order and summarising it is a minute of honest work and must not be cut off
+ * at the length of an HTTP call.
+ */
+export class TimedOut extends Error {
+  constructor(url: string, ms: number) {
+    super(`${url}: no answer within ${Math.round(ms / 1000)}s`);
+    this.name = "TimedOut";
+  }
 }
+
+const DEFAULT_TIMEOUT_MS = 45000;
+
+async function getJson<T>(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+    return (await res.json()) as T;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw new TimedOut(url, timeoutMs);
+    throw err;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+/**
+ * How long each kind of work is allowed before we call it failed.
+ *
+ * Measured against the live API rather than guessed: a file list comes back in
+ * about two and a half seconds and the conditions endpoint in ten to twelve,
+ * so these are several times the working case — long enough that a slow day
+ * still succeeds, short enough that a dead one is reported as dead.
+ */
+const T = {
+  /** Bundled JSON, no upstream call. */
+  bundle: 20000,
+  /** One round-trip to a council portal. */
+  portal: 30000,
+  /** Reads a scanned PDF and/or calls the model. */
+  reading: 120000,
+} as const;
 
 export interface PointFeatureCollection {
   type: "FeatureCollection";
@@ -289,12 +338,12 @@ export interface PointFeatureCollection {
 }
 
 export const api = {
-  meta: () => getJson<Meta>("/api/meta"),
+  meta: () => getJson<Meta>("/api/meta", T.bundle),
   search: (p: URLSearchParams) =>
-    getJson<{ total: number; fuzzy: boolean; results: AppSummary[] }>(`/api/search?${p}`),
+    getJson<{ total: number; fuzzy: boolean; results: AppSummary[] }>(`/api/search?${p}`, T.bundle),
   suggest: (q: string) =>
-    getJson<{ suggestions: string[] }>(`/api/suggest?q=${encodeURIComponent(q)}`),
-  detail: (id: number) => getJson<AppDetail>(`/api/applications/${id}`),
+    getJson<{ suggestions: string[] }>(`/api/suggest?q=${encodeURIComponent(q)}`, T.bundle),
+  detail: (id: number) => getJson<AppDetail>(`/api/applications/${id}`, T.bundle),
   related: (id: number) =>
     getJson<{
       supported: boolean;
@@ -307,7 +356,7 @@ export const api = {
         status: string | null;
         eplanning_url: string;
       }>;
-    }>(`/api/applications/${id}/related`),
+    }>(`/api/applications/${id}/related`, T.portal),
   files: (id: number) =>
     getJson<{
       supported: boolean;
@@ -315,7 +364,7 @@ export const api = {
       list_url: string | null;
       files: Array<{ title: string; url: string }> | null;
       objection_count: number | null;
-    }>(`/api/applications/${id}/files`),
+    }>(`/api/applications/${id}/files`, T.portal),
   enrich: (id: number) =>
     getJson<{
       ai_summary: string | null;
@@ -333,26 +382,31 @@ export const api = {
       status?: string | null;
       status_raw?: string | null;
       status_label?: string | null;
-    }>(`/api/applications/${id}/enrich`),
+    }>(`/api/applications/${id}/enrich`, T.portal),
   zoning: (id: number) =>
     getJson<{ supported: boolean; zones: ZoningInfo[] | null }>(
-      `/api/applications/${id}/zoning`
+      `/api/applications/${id}/zoning`,
+      T.portal
     ),
   conditions: (id: number) =>
     getJson<{ supported: boolean; conditions: DecisionConditions | null }>(
-      `/api/applications/${id}/conditions`
+      `/api/applications/${id}/conditions`,
+      T.reading
     ),
   refusalSummary: (id: number) =>
     getJson<{ supported: boolean; summary: string | null }>(
-      `/api/applications/${id}/refusal-summary`
+      `/api/applications/${id}/refusal-summary`,
+      T.reading
     ),
   furtherInfoSummary: (id: number) =>
     getJson<{ supported: boolean; summary: string | null }>(
-      `/api/applications/${id}/further-info-summary`
+      `/api/applications/${id}/further-info-summary`,
+      T.reading
     ),
   conditionHighlights: (id: number) =>
     getJson<{ supported: boolean; highlights: ConditionHighlight[] | null }>(
-      `/api/applications/${id}/condition-highlights`
+      `/api/applications/${id}/condition-highlights`,
+      T.reading
     ),
   appeal: (id: number) =>
     getJson<{
@@ -365,13 +419,13 @@ export const api = {
       decision_date?: string | null;
       fields?: Array<{ label: string; value: string }> | null;
       documents?: Array<{ title: string; url: string }> | null;
-    }>(`/api/applications/${id}/appeal`),
+    }>(`/api/applications/${id}/appeal`, T.portal),
   appealSummary: (id: number) =>
     getJson<{
       supported: boolean;
       summary?: string | null;
       based_on_document?: string | null;
-    }>(`/api/applications/${id}/appeal-summary`),
+    }>(`/api/applications/${id}/appeal-summary`, T.reading),
   decisionSummary: (id: number) =>
     getJson<{
       supported: boolean;
@@ -379,15 +433,15 @@ export const api = {
       source_document?: string | null;
       conditions?: Array<{ number: number | null; title: string; text: string }>;
       reasons?: Array<{ number: number | null; text: string }>;
-    }>(`/api/applications/${id}/decision-summary`),
+    }>(`/api/applications/${id}/decision-summary`, T.reading),
   mapGeoJson: (p: URLSearchParams) =>
-    getJson<PointFeatureCollection>(`/api/map/applications?${p}`),
+    getJson<PointFeatureCollection>(`/api/map/applications?${p}`, T.bundle),
   mapPolygons: (p: URLSearchParams) =>
-    getJson<GeoJSON.FeatureCollection>(`/api/map/polygons?${p}`),
+    getJson<GeoJSON.FeatureCollection>(`/api/map/polygons?${p}`, T.bundle),
   resolve: (authority: string, reference: string) =>
     getJson<{ id: number }>(
       `/api/resolve?authority=${encodeURIComponent(authority)}&reference=${encodeURIComponent(reference)}`
     ),
   overlay: (layer: "zoning" | "conservation" | "archaeology", bbox: [number, number, number, number]) =>
-    getJson<GeoJSON.FeatureCollection>(`/api/overlays/${layer}?bbox=${bbox.join(",")}`),
+    getJson<GeoJSON.FeatureCollection>(`/api/overlays/${layer}?bbox=${bbox.join(",")}`, T.bundle),
 };

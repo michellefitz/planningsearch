@@ -9,6 +9,7 @@ import {
 import { renderMarkdown as renderText } from "../markdown";
 import { StatusBadge } from "./ResultsList";
 import { posthog } from "../posthog";
+import { Waiting } from "../loading";
 
 interface Props {
   onSelectApp: (id: number) => void;
@@ -137,6 +138,12 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  /* Once words are arriving the reply is its own progress report; until then
+     something has to speak for it. The gap this closes is the first one: the
+     model can spend the better part of a minute deciding what to look up
+     before it emits a single tool call, and that whole time the panel showed
+     an ellipsis on a disabled button and nothing else. */
+  const [answering, setAnswering] = useState(false);
   const appRefs = useRef(new Map<number, AgentAppRef>());
 
   const threadRef = useRef<HTMLDivElement>(null);
@@ -206,6 +213,7 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
     posthog.capture("chat_question_submitted", { question_length: q.length });
     setBusy(true);
     setStatus(null);
+    setAnswering(false);
     // A previous reply may still be drip-revealing — complete it instantly.
     stopReveal();
     if (shownRef.current < targetRef.current.length) setReplyContent(targetRef.current);
@@ -225,6 +233,7 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
       collectAppRefs(ev, appRefs.current);
       if (ev.type === "text") {
         setStatus(null);
+        setAnswering(true);
         targetRef.current += ev.text;
         ensureReveal();
       } else if (ev.type === "tool_start") {
@@ -292,10 +301,28 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
             )
           );
         })()}
-        {status && (
-          <p className="chat-status" role="status">
-            {status}
-          </p>
+        {/* Keyed on the status so each new step restarts its own clock:
+            "Reading a council document" genuinely takes a minute, and the
+            escalation has to be about that step rather than about the whole
+            answer. */}
+        {busy && (status !== null || !answering) && (
+          <Waiting
+            key={status ?? "thinking"}
+            active
+            className="chat-status"
+            stages={
+              status
+                ? [
+                    [0, status],
+                    [20, `${status.replace(/[….]+$/, "")} — still going.`],
+                  ]
+                : [
+                    [0, "Thinking…"],
+                    [8, "Still thinking — working out what to look up."],
+                    [25, "Still going. This one is taking a while."],
+                  ]
+            }
+          />
         )}
       </div>
       <form

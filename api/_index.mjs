@@ -23,6 +23,7 @@ import {
 import { decisionStage, isFurtherInfoRequest, realDecision } from "./_conditions/decision.mjs";
 import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached, versionedKind } from "./_ai/store.mjs";
 import { descriptionKey } from "./_ai/descriptions.mjs";
+import { idfOver, queryHouseNumbers, relevanceScore } from "./_search/relevance.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));
@@ -1931,37 +1932,19 @@ function looksLikeReference(q) {
   return (s.match(/\d/g)?.length ?? 0) >= 2;
 }
 
-/**
- * Field-weighted relevance: a reference match beats an address match, which
- * beats an applicant, which beats a passing mention in the description.
- * Mirrors the BM25 column weights the SQLite backend uses — without it, exact
- * matches came back in bundle order, so a road-name search was arbitrary.
- */
-function relevanceScore(app, tokens) {
-  const fields = [
-    [String(app.planning_reference ?? "").toLowerCase(), 12],
-    [String(app.address_text ?? "").toLowerCase(), 8],
-    [String(app.applicant_name ?? "").toLowerCase(), 4],
-    [String(app.description ?? "").toLowerCase(), 1],
-  ];
-  let score = 0;
-  for (const t of tokens) {
-    for (const [text, weight] of fields) {
-      if (text.includes(t)) {
-        score += weight;
-        break; // strongest field wins for this token
-      }
-    }
-  }
-  return score;
-}
-
 function runSearch(p) {
   let rows = applyFilters(BUNDLE.applications, p);
   let fuzzy = false;
   const q = (p.get("q") ?? "").trim().toLowerCase();
   if (q) {
-    const tokens = q.split(/\s+/).map((t) => t.replace(/\*+$/, "")).filter(Boolean);
+    // Trailing punctuation is dropped, but not internal: "Rathgar Road," and
+    // "Rathgar Road" are the same street, while "4034/22" and "17a/18" are one
+    // token each. Picking a geocoded suggestion types the commas for you, and
+    // requiring the register to have written them the same way lost rows.
+    const tokens = q
+      .split(/\s+/)
+      .map((t) => t.replace(/\*+$/, "").replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+      .filter(Boolean);
     const exact = rows.filter((a) => {
       const h = HAYSTACK.get(a.id);
       return tokens.every((t) => h.includes(t));
@@ -1981,8 +1964,12 @@ function runSearch(p) {
     if (hits.length) {
       // Relevance is the default order for a keyword search; an explicit date
       // sort below overrides it.
+      // Weighted against this result set rather than the whole register: what
+      // separates 59 Rathgar addresses is not the word "Rathgar".
+      const idf = idfOver(hits, tokens, (a) => HAYSTACK.get(a.id));
+      const wanted = queryHouseNumbers(q);
       rows = hits
-        .map((a) => ({ a, s: relevanceScore(a, tokens) }))
+        .map((a) => ({ a, s: relevanceScore(a, tokens, idf, wanted) }))
         .sort((x, y) => y.s - x.s)
         .map((x) => ({ ...x.a, match_quality: "exact" }));
     } else if (looksLikeReference(q) || looksLikeEircode(q)) {
@@ -3255,6 +3242,37 @@ export default async function handler(req, res) {
       .join("\n");
     const doc = details ? pickAppealDocument(details.documents) : null;
     const pdf = doc ? await fetchAppealDocumentBase64(doc.url, 12_000_000, trace) : null;
+    /**
+     * Nothing to read means nothing to say.
+     *
+     * The context above is built from fields the sheet already displays — the
+     * development, the council's decision, the Commission's decision and its
+     * date. Handed only that and asked who appealed and why, the model has to
+     * invent both, and it does: DLR D07B/0746 (case page unreachable, no
+     * documents, no fields) produced "A householder appealed against the
+     * council's decision… their property" — which describes an applicant
+     * appealing their own grant — and "finding that the proposed development
+     * was not acceptable", a tautology standing in for the reasons. Five named
+     * third-party observers are on that file; it was a neighbour appeal.
+     *
+     * So a summary requires something the reader cannot already see: the
+     * board order or inspector's report, or enough of the case record to carry
+     * facts of its own. The sheet handles a null summary honestly already —
+     * it says the case file has the full record and links to it.
+     */
+    const hasSource = Boolean(pdf) || (details?.fields?.length ?? 0) >= 3;
+    if (!hasSource) {
+      if (debug) {
+        return send(res, 200, {
+          case_url: caseUrl,
+          summary: null,
+          declined: "no case document and too little of the case record to summarise",
+          fields: details?.fields?.length ?? 0,
+          trace,
+        });
+      }
+      return send(res, 200, { supported: true, summary: null, based_on_document: null });
+    }
     const summary = await summariseAppeal(context, pdf);
     if (debug) return send(res, 200, { case_url: caseUrl, based_on_document: pdf ? doc?.title : null, summary, trace });
     if (!summary) return send(res, 200, { supported: true, summary: null, based_on_document: null });
