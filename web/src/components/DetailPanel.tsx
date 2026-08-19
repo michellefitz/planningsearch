@@ -4,6 +4,7 @@ import {
   fmtDate,
   type AppDetail,
   type ConditionHighlight,
+  type ConditionItem,
   type DecisionConditions,
   type Meta,
   type ZoningInfo,
@@ -352,6 +353,45 @@ function ConditionHighlights({
 }
 
 /** The full conditions / reasons, grouped and collapsible. */
+/**
+ * On a split decision Dublin City files the two halves as an "Informative" and
+ * a "Note", and each one says in its own words which it is: "It is recommended
+ * that permission is refused for the provision of three new flags…", "It is
+ * recommended the planning permission is GRANTED for the construction of a new
+ * first floor…". Checked against five Dublin City split decisions; DLR's use
+ * neither code.
+ *
+ * Read rather than assumed, because the codes carry the opposite meaning on an
+ * ordinary decision, and mislabelling them is worse than leaving them alone:
+ * the refused half was filed under "Clarifications & informatives" and the
+ * granted half under "Notes — Advisory only, not conditions", so the page
+ * called the part of the scheme that was actually permitted advisory, and hid
+ * the refusal that a buyer most needs to see. 22 Rathgar Road's refused
+ * vehicular access — the driveway as built has no permission — was in there.
+ */
+function splitHalf(items: ConditionItem[]): { label: string; blurb: string } | null {
+  const text = items.map((i) => i.text ?? "").join(" ");
+  if (/\brefus/i.test(text) && !/\bgrant/i.test(text)) {
+    return {
+      label: "Refused part of this decision",
+      blurb: "This part of the proposal was not permitted.",
+    };
+  }
+  if (/\bgrant/i.test(text) && !/\brefus/i.test(text)) {
+    return {
+      label: "Granted part of this decision",
+      blurb: "This part of the proposal was permitted, subject to the conditions above.",
+    };
+  }
+  return null;
+}
+
+/** "Split Decision", "Grant Permission & Refuse Permission" and the rest. */
+function isSplitDecision(decision: string | null | undefined): boolean {
+  const d = String(decision ?? "");
+  return /split\s*decision/i.test(d) || (/grant|permission/i.test(d) && /refus/i.test(d));
+}
+
 function ConditionGroups({
   conditions,
   decision,
@@ -361,11 +401,14 @@ function ConditionGroups({
   decision: string | null;
   superseded?: boolean;
 }) {
+  const split = isSplitDecision(decision);
   const groups = conditionGroups(decision, superseded)
-    .map((g) => ({
-      ...g,
-      items: conditions.items.filter((i) => i.code === g.code),
-    }))
+    .map((g) => {
+      const items = conditions.items.filter((i) => i.code === g.code);
+      // Only where the wording settles it; otherwise the ordinary label stands.
+      const half = split && (g.code === "I" || g.code === "N") ? splitHalf(items) : null;
+      return { ...g, items, ...(half ?? {}) };
+    })
     .filter((g) => g.items.length > 0);
 
   return (
@@ -793,7 +836,12 @@ function FurtherInfoSection({
   askedSummary: string | null;
   askedLoading: boolean;
 }) {
-  const requested = d.further_info_requested_date ?? conditions?.decision_date ?? null;
+  // The portal's decision_date is when the request issued only while the file
+  // is actually at that stage; on a decided application it is the decision's
+  // own date, which is how "asked 15 Jul 2022" appeared under a decision made
+  // on 15 Jul 2022.
+  const requested =
+    d.further_info_requested_date ?? (conditions?.further_info ? conditions.decision_date : null);
   return (
     <section aria-labelledby="further-info-h" aria-busy={conditionsLoading || undefined}>
       <h3 id="further-info-h">Further information requested</h3>
@@ -1357,7 +1405,12 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
    */
   const hasFurtherInfo =
     Boolean(conditions?.further_info) ||
-    Boolean(conditions?.items.some((i) => i.code === "D" || i.code === "I")) ||
+    // "D" (Directive) is the agile portals' further-information item. "I"
+    // used to count too, which was wrong: Dublin City files the two halves of
+    // a *split decision* as an Informative and a Note, so every split decision
+    // grew a "Further information requested" heading — 4034/22, decided in
+    // July 2022, read as still awaiting information four years later.
+    Boolean(conditions?.items.some((i) => i.code === "D")) ||
     d.status === "further_info" ||
     Boolean(d.further_info_requested_date);
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
