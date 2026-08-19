@@ -18,6 +18,7 @@ import { itemLabel } from "../../../api/_conditions/labels.mjs";
 import { realDecision } from "../../../api/_conditions/decision.mjs";
 import { developmentContribution } from "../../../api/_conditions/contribution.mjs";
 import { getFloodData } from "../floodData";
+import { Waiting } from "../loading";
 import { coverageNoteFor } from "../coverage";
 import { SHEET_PEEK_FRACTION } from "../sheetMetrics";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
@@ -302,9 +303,15 @@ function ConditionHighlights({
 }) {
   if (loading)
     return (
-      <p className="ai-summary highlights-loading loading-line">
-        ✦ Reading the conditions…
-      </p>
+      <Waiting
+        active
+        className="ai-summary highlights-loading loading-line"
+        stages={[
+          [0, "✦ Reading the conditions…"],
+          [12, "✦ Still reading — working out which ones actually bind."],
+          [30, "✦ Still going. Some decisions carry twenty conditions."],
+        ]}
+      />
     );
   // null is "we couldn't read them" — saying "nothing notable" there would be
   // a claim we haven't earned, and this is exactly where a false all-clear
@@ -517,9 +524,14 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
           ✦ Summarise the decision
         </button>
       )}
-      {state.phase === "loading" && (
-        <span className="hint loading-line">Summarising the decision…</span>
-      )}
+      <Waiting
+        active={state.phase === "loading"}
+        stages={[
+          [0, "Reading the council's decision order…"],
+          [10, "Still reading — it is a scanned document, so this is slow."],
+          [30, "Still going. Nearly there."],
+        ]}
+      />
       {state.phase === "failed" && (
         <>
           <p className="list-note">Couldn't read the decision order just now.</p>
@@ -691,7 +703,14 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
           <div className="doc-skeleton" aria-hidden="true">
             <span /><span /><span /><span />
           </div>
-          <span className="hint loading-line">Fetching the national case record…</span>
+          <Waiting
+            active
+            stages={[
+              [0, "Fetching the national case record…"],
+              [8, "Still fetching — An Coimisiún Pleanála's site is slow to answer."],
+              [20, "Still going."],
+            ]}
+          />
         </div>
       )}
       {state.phase === "failed" && (
@@ -859,18 +878,31 @@ function FurtherInfoSection({
           <span className="ai-mark">✦</span> {askedSummary}
         </p>
       ) : (
-        askedLoading && (
-          <p className="ai-summary loading-line">
-            <span className="ai-mark">✦</span> Reading what was asked for…
-          </p>
-        )
+        <Waiting
+          active={askedLoading}
+          className="ai-summary loading-line"
+          stages={[
+            [0, "✦ Reading what was asked for…"],
+            [12, "✦ Still reading — the request is a scanned letter."],
+            [30, "✦ Still going. These letters run to several pages."],
+          ]}
+        />
       )}
       {conditionsLoading && (
-        <div className="skeleton-block" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
+        <>
+          <Waiting
+            active
+            stages={[
+              [0, `Fetching the request from ${d.authority_short_name}…`],
+              [12, "Still fetching — the council's portal is slow to answer."],
+            ]}
+          />
+          <div className="skeleton-block" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </>
       )}
       {conditions && conditions.items.length > 0 && (
         <ConditionGroups conditions={conditions} decision={null} />
@@ -988,15 +1020,37 @@ function DecisionSection({
       ) : (
         refused &&
         refusalLoading && (
-          <p className="ai-summary refusal-summary loading-line">✦ Summarising the reasons…</p>
+          <Waiting
+            active
+            className="ai-summary refusal-summary loading-line"
+            stages={[
+              [0, "✦ Summarising the reasons for refusal…"],
+              [12, "✦ Still working — reading the full wording."],
+            ]}
+          />
         )
       )}
+      {/* This was three grey bars and nothing else. On Dublin City the
+          conditions come out of a scanned decision order and can take over a
+          minute, and an unlabelled skeleton for that long reads as an
+          unconditional grant — the most expensive thing this sheet could
+          imply. */}
       {conditionsLoading && (
-        <div className="skeleton-block" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
+        <>
+          <Waiting
+            active
+            stages={[
+              [0, `Reading the conditions from ${d.authority_short_name}…`],
+              [10, "Still reading — the decision order is a scanned document."],
+              [30, "Still going. Long decisions take a while to read."],
+            ]}
+          />
+          <div className="skeleton-block" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </>
       )}
       {conditions && conditions.items.length > 0 && (
         <>
@@ -1073,7 +1127,10 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
   if (!d.scanned_files_url && !d.files_supported) return null;
 
   const load = async () => {
-    setState((s) => (s.phase === "idle" ? { phase: "loading" } : s));
+    // Anything but a list already on screen goes back to waiting — the guard
+    // used to admit only "idle", so pressing Try again refetched but left the
+    // failure notice up, and the retry looked like it had done nothing.
+    setState((s) => (s.phase === "loaded" ? s : { phase: "loading" }));
     try {
       const res = await api.files(d.id);
       if (res.files?.length)
@@ -1095,19 +1152,34 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
     <div className="scanned-files" ref={rootRef}>
       {/* Idle and loading look the same now: the list starts fetching as this
           scrolls into view, so the skeleton is a progress indicator rather
-          than something waiting to be pressed. */}
+          than something waiting to be pressed. The wording moves on as the
+          wait does, because a message that has not changed in twenty seconds
+          is the thing people read as broken. */}
       {(state.phase === "idle" || state.phase === "loading") && (
         <div className="doc-placeholder">
           <div className="doc-skeleton" aria-hidden="true">
             <span /><span /><span /><span />
           </div>
-          <span className="hint loading-line">Fetching the file list from the council…</span>
+          <Waiting
+            active
+            stages={[
+              [0, `Fetching the file list from ${d.authority_short_name}…`],
+              [6, `Still fetching — ${d.authority_short_name}'s portal is slow to answer.`],
+              [18, "Still going. The council's own site is the slow part here."],
+            ]}
+          />
         </div>
       )}
       {state.phase === "failed" && (
-        <p className="list-note">
-          Couldn't load the file list from the council just now — try the official portal above.
-        </p>
+        <div className="doc-failed">
+          <p className="list-note">
+            Couldn't load the file list from {d.authority_short_name} just now. This does{" "}
+            <strong>not</strong> mean there are no documents.
+          </p>
+          <button type="button" className="btn" onClick={load}>
+            Try again
+          </button>
+        </div>
       )}
       {state.phase === "loaded" && state.objections > 0 && (
         <p className="objection-flag">
@@ -1785,7 +1857,14 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         {aiSummary ? (
           <p className="ai-summary lead-summary">✦ {aiSummary}</p>
         ) : enrichLoading ? (
-          <p className="ai-summary lead-summary loading-line">✦ Writing a summary…</p>
+          <Waiting
+            active
+            className="ai-summary lead-summary loading-line"
+            stages={[
+              [0, "✦ Writing a plain-English summary…"],
+              [12, "✦ Still writing — the description is a long one."],
+            ]}
+          />
         ) : (
           // Enrichment ran and produced no usable summary. Which of the two
           // reasons it was matters: "not enough information" is a claim about

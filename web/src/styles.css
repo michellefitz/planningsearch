@@ -363,6 +363,68 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* The map is busy.
+ *
+ * Indeterminate rather than a percentage, because there is no percentage to
+ * report — the request is one round-trip and we know nothing about its
+ * progress. A bar that travels is still the honest signal: it says work is
+ * happening without claiming to know how much is left. */
+.map-busy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Above the map's own overlays, below the panel and the filter sheet. */
+  z-index: 8;
+  pointer-events: none;
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+}
+.map-busy-bar {
+  display: block;
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--action) 18%, transparent);
+}
+.map-busy-bar::after {
+  content: "";
+  display: block;
+  width: 35%;
+  height: 100%;
+  background: var(--action);
+  animation: map-busy-sweep 1.15s ease-in-out infinite;
+}
+/* Only on a cold open, where there are no pins to look at and a bar alone
+   does not say what is being waited for. A search over pins already drawn
+   gets the bar and nothing else — a label over the map would cover the
+   answer. */
+.map-busy-label {
+  margin-top: 0.5rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(26, 29, 33, 0.14);
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+@keyframes map-busy-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-busy-bar::after {
+    width: 100%;
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .map-skeleton-pulse {
     animation: none;
@@ -766,6 +828,12 @@ body {
      cluster counts already show. */
   .layout.m-map .map-truncated {
     display: none;
+  }
+  /* The floating search box and Filters chip sit over the top of the map here,
+     and the pill landed underneath them. Same --overlay-h the zoom controls
+     clear themselves by, so it stays put as those controls wrap. */
+  .layout.m-map .map-busy-label {
+    margin-top: calc(var(--overlay-h, 6rem) + 0.4rem);
   }
   .layout.m-map .results-scroll {
     display: none;
@@ -3790,6 +3858,25 @@ a.pill:hover {
 .loading-line {
   color: var(--ink-3);
   animation: pulse-soft 1.6s ease-in-out infinite;
+}
+/* Waiting lines are paragraphs so the text can wrap onto a second line as it
+   escalates — without this they inherit the sheet's paragraph margins and the
+   placeholder they sit in grows as the wording changes. */
+p.loading-line {
+  margin: 0;
+}
+/* A wait that ended badly. The retry sits under the sentence rather than
+   beside it: the sentence is two lines on a phone, and a button trailing the
+   end of a wrapped sentence is hard to find. */
+.doc-failed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-bottom: 0.6rem;
+}
+.doc-failed .list-note {
+  margin: 0;
 }
 .skeleton-block {
   display: grid;
