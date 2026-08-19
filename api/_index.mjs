@@ -3255,6 +3255,37 @@ export default async function handler(req, res) {
       .join("\n");
     const doc = details ? pickAppealDocument(details.documents) : null;
     const pdf = doc ? await fetchAppealDocumentBase64(doc.url, 12_000_000, trace) : null;
+    /**
+     * Nothing to read means nothing to say.
+     *
+     * The context above is built from fields the sheet already displays — the
+     * development, the council's decision, the Commission's decision and its
+     * date. Handed only that and asked who appealed and why, the model has to
+     * invent both, and it does: DLR D07B/0746 (case page unreachable, no
+     * documents, no fields) produced "A householder appealed against the
+     * council's decision… their property" — which describes an applicant
+     * appealing their own grant — and "finding that the proposed development
+     * was not acceptable", a tautology standing in for the reasons. Five named
+     * third-party observers are on that file; it was a neighbour appeal.
+     *
+     * So a summary requires something the reader cannot already see: the
+     * board order or inspector's report, or enough of the case record to carry
+     * facts of its own. The sheet handles a null summary honestly already —
+     * it says the case file has the full record and links to it.
+     */
+    const hasSource = Boolean(pdf) || (details?.fields?.length ?? 0) >= 3;
+    if (!hasSource) {
+      if (debug) {
+        return send(res, 200, {
+          case_url: caseUrl,
+          summary: null,
+          declined: "no case document and too little of the case record to summarise",
+          fields: details?.fields?.length ?? 0,
+          trace,
+        });
+      }
+      return send(res, 200, { supported: true, summary: null, based_on_document: null });
+    }
     const summary = await summariseAppeal(context, pdf);
     if (debug) return send(res, 200, { case_url: caseUrl, based_on_document: pdf ? doc?.title : null, summary, trace });
     if (!summary) return send(res, 200, { supported: true, summary: null, based_on_document: null });

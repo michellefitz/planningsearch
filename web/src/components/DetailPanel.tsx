@@ -14,6 +14,7 @@ import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "../statusStyle";
 import SaveStar from "./SaveStar";
 import { itemLabel } from "../../../api/_conditions/labels.mjs";
+import { realDecision } from "../../../api/_conditions/decision.mjs";
 import { developmentContribution } from "../../../api/_conditions/contribution.mjs";
 import { getFloodData } from "../floodData";
 import { coverageNoteFor } from "../coverage";
@@ -237,7 +238,7 @@ export function isRefusalDecision(decision: string | null | undefined): boolean 
  * setting out why permission *was* given. Labelling it "Reasons for refusal"
  * on a grant told readers an application had been refused when it hadn't.
  */
-function conditionGroups(decision: string | null | undefined) {
+function conditionGroups(decision: string | null | undefined, superseded = false) {
   return [
     {
       code: "R",
@@ -251,8 +252,17 @@ function conditionGroups(decision: string | null | undefined) {
     },
     {
       code: "C",
-      label: "Conditions of this decision",
-      blurb: "Binding — the permission only stands if these are met.",
+      label: superseded ? "Conditions the council had attached" : "Conditions of this decision",
+      /**
+       * "Binding" is a claim about a live permission. DLR D07B/0746 was
+       * granted by the council and refused by An Coimisiún Pleanála on
+       * appeal — nothing about it binds anyone, and nothing is payable, yet
+       * the page said both. The status badge already reads the appeal; this
+       * is the same fact reaching the rest of the sheet.
+       */
+      blurb: superseded
+        ? "Not in force — the council's decision was superseded, so none of these apply."
+        : "Binding — the permission only stands if these are met.",
     },
     { code: "D", label: "Further information the council asked for", blurb: null },
     { code: "I", label: "Clarifications & informatives", blurb: null },
@@ -345,11 +355,13 @@ function ConditionHighlights({
 function ConditionGroups({
   conditions,
   decision,
+  superseded = false,
 }: {
   conditions: DecisionConditions;
   decision: string | null;
+  superseded?: boolean;
 }) {
-  const groups = conditionGroups(decision)
+  const groups = conditionGroups(decision, superseded)
     .map((g) => ({
       ...g,
       items: conditions.items.filter((i) => i.code === g.code),
@@ -859,6 +871,18 @@ function DecisionSection({
   // by the Commission on appeal. On a grant the same reasons are the First
   // Schedule, and a refusal-shaped sentence about them is simply wrong.
   const refused = isRefusalDecision(decision) || isRefusalDecision(d.appeal_decision);
+  /**
+   * The Commission's decision replaces the council's, so a grant that was
+   * refused on appeal leaves nothing standing. The status badge has always
+   * read the appeal; the conditions block and the contribution line did not,
+   * and between them they told a reader that a permission which does not
+   * exist was binding and that money was payable on it (DLR D07B/0746,
+   * granted 2007, refused by the Board in June 2008, €696.37 "payable").
+   */
+  const superseded =
+    Boolean(d.appeal_decision) &&
+    !isRefusalDecision(decision) &&
+    isRefusalDecision(d.appeal_decision);
   const summary = refused ? conditions?.refusal_summary ?? refusalSummary : null;
 
   return (
@@ -909,7 +933,8 @@ function DecisionSection({
           number in the decision people ask for, so it is stated as a fact.
           Totalled in code, since councils split it across several conditions
           and no single one carries the sum. */}
-      <ContributionLine conditions={conditions} />
+      {/* Nothing is payable on a permission the Commission refused. */}
+      {!superseded && <ContributionLine conditions={conditions} />}
       {summary ? (
         <p className="ai-summary refusal-summary">✦ {summary}</p>
       ) : (
@@ -932,7 +957,7 @@ function DecisionSection({
             loading={highlightsLoading}
             total={conditions.items.filter((i) => i.code === "C").length}
           />
-          <ConditionGroups conditions={conditions} decision={decision} />
+          <ConditionGroups conditions={conditions} decision={decision} superseded={superseded} />
         </>
       )}
       {/* Three distinct outcomes, never collapsed into a blank space: the
@@ -1279,7 +1304,44 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   // The live portal status only overrides a baked "unknown" — the server sends
   // it exactly in that case, but guard here too so a correct baked status is
   // never displaced.
-  const liveStatus = d.status === "unknown" ? enrich?.status ?? null : null;
+  /**
+   * The live portal status, whenever enrichment offers one.
+   *
+   * This used to be taken only when the baked status was "unknown", which
+   * threw away every correction the API had already decided was safe. The
+   * endpoint does the judging: it returns `status` only when the portal shows
+   * a terminal outcome the national dataset has not caught up to, and never
+   * overrides an outcome that is already recorded. Dublin City WEB2660/26 was
+   * withdrawn on 10 August and still read "Pending decision · Decision due 27
+   * Aug" nine days later — the correction was in the response the whole time.
+   */
+  const liveStatus = enrich?.status ?? null;
+  /**
+   * Statuses where the file is closed and there is nothing left to say to the
+   * council. Anything not on this list is still live — an appeal, further
+   * information and a plain pending case all still move.
+   */
+  const CLOSED = new Set([
+    "granted", "refused", "withdrawn", "invalid", "split", "exempt", "not_exempt", "decided",
+  ]);
+  /**
+   * Is the application still open to the public?
+   *
+   * Three independent signals, because each of them has been wrong on its own:
+   * the baked status lags the council by months, the live portal status is the
+   * correction for that, and the portal's conditions payload carries an
+   * outcome the status field sometimes still hides. Any one of them saying the
+   * file is closed is enough — the cost of wrongly inviting a submission is
+   * someone paying a fee and writing to the council about a decided or
+   * withdrawn application, which is exactly what happened with Dublin City
+   * WEB2660/26: withdrawn on 10 August, still reading "Open for submissions"
+   * nine days later.
+   */
+  const closedDecision = realDecision(conditions?.decision ?? d.decision);
+  const stillLive =
+    !d.decision_date &&
+    !closedDecision &&
+    !CLOSED.has(liveStatus ?? d.status);
   // Only the agile councils publish the observation deadline, and only on the
   // live portal — so it arrives with enrichment, after the sheet has painted.
   const submissionsBy = d.submissions_by_date ?? enrich?.submissions_by_date ?? null;
@@ -1725,7 +1787,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         </ol>
         {/* While the window is open, make the submissions deadline actionable —
             this is the one date a member of the public can still act on. */}
-        {!d.decision_date && submissionsBy && !isPast(submissionsBy) && (
+        {stillLive && submissionsBy && !isPast(submissionsBy) && (
           <p className="submissions-open">
             <strong>Open for submissions until {fmtDate(submissionsBy)}</strong>
             {(() => {
