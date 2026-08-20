@@ -2699,9 +2699,28 @@ body {
   font-size: 0.86rem;
 }
 
+/* Bulleted, because a document list is a list and a stack of blue lines with
+   no marks down the left edge reads as one paragraph of links. The marker sits
+   in the margin so the titles still line up with everything else in the
+   section, and it is the muted ink rather than the link colour — the bullet is
+   structure, not another thing to click. */
+.doc-list {
+  list-style: disc;
+  padding-left: 0.8rem;
+}
 .doc-list li {
   padding: 0.28rem 0;
-  line-height: 1.45;
+  line-height: 1.15;
+}
+.doc-list li::marker {
+  color: var(--ink-3);
+  font-size: 0.85em;
+}
+/* Related applications are cards, not a list of links — they keep their own
+   layout and want no markers. */
+.related-list {
+  list-style: none;
+  padding-left: 0;
 }
 
 /* Related applications as compact cards: ref + status + date on top, a clamped
@@ -4000,10 +4019,32 @@ p.loading-line {
 }
 
 /* Council file viewer, tucked under the file list. */
+/* The way out to the council's own file — the authoritative copy, and the
+   only route to anything we could not carry. It sat under the list as another
+   blue line among fifteen of them and disappeared into the stack; as a bordered
+   control it reads as the thing to press when the list has not answered. */
 .viewer-link {
-  display: inline-block;
-  margin-top: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.8rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
   font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.viewer-link:hover {
+  border-color: var(--action);
+  color: var(--action);
+  text-decoration: none;
+}
+.viewer-link:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
 }
 
 /* ---- Agent chat ---- */
