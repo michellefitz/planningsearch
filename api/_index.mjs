@@ -31,6 +31,7 @@ import {
   stripTags,
 } from "./_documents/listing.mjs";
 import { djvuToImageBlocks, djvuToPdf, isDjvu } from "./_documents/djvu.mjs";
+import { documentLoadingShell } from "./_documents/loading-page.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));
@@ -2832,6 +2833,18 @@ export default async function handler(req, res) {
     const index = Number(dm[2]);
     const debug = p.get("debug") === "1";
     const trace = debug ? [] : undefined;
+    // A browser navigating here gets the waiting page; anything else — our own
+    // fetches, the agent's tools, curl — gets the document. Only a navigation
+    // sends `Accept: text/html`, which is exactly the case that has a blank
+    // tab to fill.
+    if (!debug && !p.has("open") && /text\/html/i.test(req.headers.accept ?? "")) {
+      const target = `${route}?${new URLSearchParams({ ...Object.fromEntries(p), open: "1" })}`;
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(documentLoadingShell(target));
+      return;
+    }
     const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
     const slug = AGILE_SLUGS[app.authority_id];
 
