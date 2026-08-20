@@ -30,6 +30,7 @@ import {
   parseFileListHtml,
   stripTags,
 } from "./_documents/listing.mjs";
+import { djvuToImageBlocks, isDjvu } from "./_documents/djvu.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));
@@ -1327,10 +1328,16 @@ function parseJsonLoose(raw) {
 const ovClip = (v, max) => String(v ?? "").trim().slice(0, max);
 const ovNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 
-async function extractDecisionDocument(pdfBase64, decision) {
-  if (!pdfBase64) return null;
+/**
+ * `pages` is what the model is given to look at: one PDF block for a modern
+ * order, or one image block per page for an older scan that had to be decoded
+ * out of DjVu first. Everything downstream is the same either way — the model
+ * reads a picture of a page in both cases.
+ */
+async function extractDecisionDocument(pages, decision) {
+  if (!pages?.length) return null;
   const content = [
-    { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+    ...pages,
     { type: "text", text: `Recorded decision: ${decision ?? "unknown"}. Extract the decision order as JSON.` },
   ];
   const raw = await callClaude(DECISION_EXTRACT_PROMPT, content, 2000, 30000);
@@ -3004,14 +3011,36 @@ export default async function handler(req, res) {
  * PDF: the decision order is there, we fetch it successfully, and it is a DjVu,
  * which the model cannot read and no converter here can turn into one.
  */
-const readableReason = (doc) => {
+/**
+ * A fetched council document as something the model can look at.
+ *
+ * A PDF goes straight through. An older scan has to be decoded first — see
+ * _documents/djvu.mjs for why the councils hold these in DjVu and why nobody
+ * else can render it for us. Returns [] when neither applies, which the
+ * callers report as a fact about the document rather than about the decision.
+ */
+async function documentAsContent(doc) {
+  if (!doc || doc === "too_large") return [];
+  const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
+  if (isPdf) {
+    return [
+      {
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: doc.body.toString("base64") },
+      },
+    ];
+  }
+  if (isDjvu(doc.contentType, doc.filename)) return djvuToImageBlocks(doc.body);
+  return [];
+}
+
+const readableReason = (doc, content) => {
   if (!doc) return "unavailable";
   if (doc === "too_large") return "too_large";
-  const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
-  if (isPdf) return null;
-  return /djvu/i.test(doc.contentType) || /\.djvu$/i.test(doc.filename ?? "")
-    ? "djvu"
-    : "unreadable_format";
+  if (content?.length) return null;
+  // A DjVu that produced no pages is a decode that failed, not a format we
+  // decline to read — those are read now, out of a page of pixels.
+  return isDjvu(doc.contentType, doc.filename) ? "djvu" : "unreadable_format";
 };
 
   const fim = route.match(/^\/api\/applications\/(\d+)\/further-info-summary$/);
@@ -3064,15 +3093,13 @@ const readableReason = (doc) => {
     if (index < 0) return send(res, 200, empty);
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000);
     const source_document = files[index].title;
-    const unreadable = readableReason(doc);
+    const content = await documentAsContent(doc);
+    const unreadable = readableReason(doc, content);
     if (unreadable) return send(res, 200, { ...empty, source_document, reason: unreadable });
     const raw = await callClaude(
       FURTHER_INFO_PROMPT,
       [
-        {
-          type: "document",
-          source: { type: "base64", media_type: "application/pdf", data: doc.body.toString("base64") },
-        },
+        ...content,
         { type: "text", text: "Say what this request is about, within the word limit." },
       ],
       // Tokens sized to the word budget rather than to the letter: a cap the
@@ -3231,9 +3258,10 @@ const readableReason = (doc) => {
     if (!files || index < 0) return send(res, 200, { ...empty, reason: "not_found" });
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000, trace);
     const source_document = files[index].title;
-    const unreadable = readableReason(doc);
+    const content = await documentAsContent(doc);
+    const unreadable = readableReason(doc, content);
     if (unreadable) return send(res, 200, { ...empty, source_document, reason: unreadable });
-    const extract = await extractDecisionDocument(doc.body.toString("base64"), app.decision);
+    const extract = await extractDecisionDocument(content, app.decision);
     if (!extract) return send(res, 200, { ...empty, source_document, reason: "unavailable" });
     const result = { ...extract, source_document };
     DECISION_SUMMARY_CACHE.set(app.id, result);
