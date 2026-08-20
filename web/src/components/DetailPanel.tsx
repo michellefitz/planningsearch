@@ -493,6 +493,34 @@ function AiParagraphs({ text, className }: { text: string; className: string }) 
   );
 }
 
+/**
+ * The two flags on a Commission case page worth repeating.
+ *
+ * EIAR and NIS are "No" on an ordinary house or mast and say nothing; on a
+ * 249-unit scheme they are "Yes", and that is a real fact about the
+ * development — it was large enough, or close enough to a protected site, to
+ * need a formal environmental assessment before it could be decided. Spelt
+ * out, because the acronyms are meaningless outside the profession.
+ */
+function EnvironmentalAssessment({ fields }: { fields: Array<{ label: string; value: string }> }) {
+  const yes = (label: string) =>
+    fields.some(
+      (f) => f.label.trim().toLowerCase() === label && /^\s*yes\b/i.test(f.value ?? "")
+    );
+  const eiar = yes("eiar");
+  const nis = yes("nis");
+  if (!eiar && !nis) return null;
+  return (
+    <p className="section-note">
+      {eiar && nis
+        ? "Assessed for environmental impact and for its effect on European conservation sites."
+        : eiar
+          ? "Large enough to need a formal environmental impact assessment."
+          : "Assessed for its effect on nearby European conservation sites."}
+    </p>
+  );
+}
+
 type AppealConditions = {
   conditions: Array<{ number: number | null; title: string; text: string }>;
   reasons: Array<{ number: number | null; text: string }>;
@@ -894,19 +922,12 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
           </ul>
         </div>
       )}
-      {summary.phase === "loaded" && summary.reasons.length > 0 && (
-        <div className="condition-group">
-          <h4>
-            Reasons for refusal on appeal <span className="count">{summary.reasons.length}</span>
-          </h4>
-          <ul className="decision-list">
-            {summary.reasons.map((r, i) => (
-              <li key={i}>{r.text}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {summary.phase === "loaded" && (summary.conditions.length > 0 || summary.reasons.length > 0) && (
+      {/* The reasons for refusal are not listed under this. A refusal's reasons
+          are what the summary above has just said in English, and the council
+          side of the sheet made the same call for the same reason: the summary
+          is the readable version, and the order underneath is a click away.
+          Conditions are different — they are instructions, not explanation. */}
+      {summary.phase === "loaded" && summary.conditions.length > 0 && (
         <p className="list-note">AI-extracted from "{summary.source ?? "the appeal order"}".</p>
       )}
 
@@ -940,16 +961,13 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
       )}
       {state.phase === "loaded" && (
         <div className="appeal-details">
-          {state.fields.length > 0 && (
-            <dl className="facts">
-              {state.fields.map((f) => (
-                <Fragment key={f.label}>
-                  <dt>{f.label}</dt>
-                  <dd>{f.value}</dd>
-                </Fragment>
-              ))}
-            </dl>
-          )}
+          {/* The case page publishes the same six fields every time, and five
+              of them are already on this screen: the description at the top of
+              the sheet, the decision and its date on the line above, and the
+              case type is "Planning Appeal" on nearly all of them. Only the
+              environmental flags say anything the reader could not otherwise
+              know, and only when they say yes. */}
+          <EnvironmentalAssessment fields={state.fields} />
           {state.documents.length > 0 && (
             <>
               <p className="doc-list-label">Case documents</p>
