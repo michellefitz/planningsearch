@@ -7,8 +7,9 @@
  *   .vercel/output/functions/api.func → the dependency-free API function
  *   .vercel/output/config.json        → routes (/api/* → function, SPA fallback)
  *
- * The API function has zero npm dependencies (Node builtins + a bundled JSON
- * file), so the .func is just the handler plus its data.
+ * The API function has zero npm dependencies — Node builtins, a bundled JSON
+ * file, and one vendored .wasm (the DjVu decoder the older council scans need;
+ * see api/_documents/djvu.mjs). So the .func is just the handler plus its data.
  */
 import { execSync } from "node:child_process";
 import fs from "node:fs";

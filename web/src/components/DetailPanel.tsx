@@ -481,10 +481,12 @@ function unreadableNote(
   const named = document ? <> — <em>{document}</em></> : null;
   switch (reason) {
     case "djvu":
+      // These are decoded now — reaching this means the decode itself failed,
+      // which is a fault on our side and worth saying so.
       return (
         <>
-          The decision order on this file{named} was scanned in DjVu, which can't be read here.
-          Open it on {council}'s viewer below to see the conditions.
+          Couldn't read the scanned decision order{named}. This does <strong>not</strong> mean
+          there are no conditions — the order is on {council}'s viewer below.
         </>
       );
     case "too_large":
@@ -522,8 +524,7 @@ function unreadableRequestNote(
   if (reason === "djvu")
     return (
       <>
-        The request letter{named} was scanned in DjVu, which can't be read here. Open it on{" "}
-        {council}'s viewer below to see what was asked for.
+        Couldn't read the scanned request letter{named} — it is on {council}'s viewer below.
       </>
     );
   if (reason === "too_large")
