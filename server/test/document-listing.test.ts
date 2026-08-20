@@ -17,12 +17,7 @@ const load = (name: string) => readFileSync(join(FIXTURES, `${name}.html`), "utf
 
 const IDOCS_BASE = "https://idocswebdpss.meathcoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id=2161";
 const parse = (name: string, base = IDOCS_BASE) =>
-  parseFileListHtml(load(name), base) as Array<{
-    title: string;
-    url: string;
-    size?: number;
-    viewer_only?: boolean;
-  }>;
+  parseFileListHtml(load(name), base) as Array<{ title: string; url: string; size?: number }>;
 
 describe("a listing that offers every document twice", () => {
   const files = parse("meath-old");
@@ -52,15 +47,6 @@ describe("a listing that offers every document twice", () => {
     }
   });
 
-  /** The council's own note: use the JPEG option "to view DjVu files on
-   *  devices / browsers that don't support the DjVu viewer". So a row that
-   *  offers one is a row whose file is a DjVu — unreadable in a browser, and
-   *  not convertible on our side, since the server behind the JPEG option
-   *  serves DjVu fragments that its JavaScript decodes in the page. */
-  it("marks the DjVu-era scans as readable only at the council", () => {
-    expect(files.filter((f) => f.viewer_only)).toHaveLength(14);
-  });
-
   it("reads the size the listing prints", () => {
     expect(files.every((f) => typeof f.size === "number")).toBe(true);
     // "17 Mb" and "9 Mb" — both past what a serverless response can carry.
@@ -84,8 +70,6 @@ describe("listings that were already right", () => {
   it("reads a modern Meath listing unchanged", () => {
     const files = parse("meath-new");
     expect(files).toHaveLength(19);
-    // PDF era: no JPEG column, so nothing is diverted to the council.
-    expect(files.filter((f) => f.viewer_only)).toEqual([]);
     expect(files[0].title).toBe("Application Form - Part A");
     expect(files.at(-1)?.title).toBe("Site assessment report — Site Assessment");
   });

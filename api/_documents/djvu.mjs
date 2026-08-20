@@ -27,7 +27,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { greyPng } from "./png.mjs";
+import { greyPng, greyScanlines } from "./png.mjs";
+import { greyPagesToPdf } from "./pdf.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -82,30 +83,39 @@ async function decoder() {
 }
 
 /**
- * DjVu bytes in, one PNG per page out. Empty when the file will not decode —
- * the caller must treat that as "could not read", never as "nothing there".
+ * How much of a document may come back through the proxy.
+ *
+ * A serverless response is capped at four megabytes, and a scan re-encoded
+ * page by page is small — tens of kilobytes each — but a long file of dense
+ * drawings is not. Pages are added until the budget is spent, so a reader gets
+ * the front of a long document rather than an error about all of it.
  */
-export async function djvuToPngPages(bytes, { dpi = DPI, maxPages = MAX_PAGES } = {}) {
+const MAX_OUTPUT_BYTES = 3_400_000;
+
+/**
+ * DjVu bytes in, one compressed greyscale page out at a time.
+ *
+ * Yields rather than collects: a page of RGBA at 150 dpi is about nine
+ * megabytes, and holding twenty of them at once is the one way this could run
+ * a function out of memory. Each page is compressed and the pixels dropped
+ * before the next is decoded.
+ */
+async function* djvuPages(bytes, { dpi = DPI, maxPages = MAX_PAGES } = {}) {
   let doc;
   try {
     const { WasmDocument } = await decoder();
     doc = WasmDocument.from_bytes(new Uint8Array(bytes));
   } catch {
-    return [];
+    return;
   }
-  const pages = [];
   try {
     const count = Math.min(doc.page_count(), maxPages);
     for (let i = 0; i < count; i++) {
       const page = doc.page(i);
       try {
-        pages.push(
-          greyPng({
-            width: page.width_at(dpi),
-            height: page.height_at(dpi),
-            data: page.render(dpi),
-          })
-        );
+        const width = page.width_at(dpi);
+        const height = page.height_at(dpi);
+        yield { width, height, deflated: greyScanlines({ width, height, data: page.render(dpi) }) };
       } finally {
         // Rust-side pixel buffers are not the JS heap's to collect.
         page.free?.();
@@ -117,7 +127,40 @@ export async function djvuToPngPages(bytes, { dpi = DPI, maxPages = MAX_PAGES } 
   } finally {
     doc.free?.();
   }
+}
+
+/**
+ * DjVu bytes in, one PNG per page out. Empty when the file will not decode —
+ * the caller must treat that as "could not read", never as "nothing there".
+ */
+export async function djvuToPngPages(bytes, opts) {
+  const pages = [];
+  for await (const page of djvuPages(bytes, opts)) pages.push(greyPng(page));
   return pages;
+}
+
+/**
+ * DjVu bytes in, one PDF out — what the reader actually wanted from the link.
+ *
+ * Null when nothing decoded, which the route must report as a failure to read
+ * rather than as an empty document.
+ */
+export async function djvuToPdf(
+  bytes,
+  { title = "", maxPages = 200, maxBytes = MAX_OUTPUT_BYTES, ...opts } = {}
+) {
+  const pages = [];
+  let total = 0;
+  for await (const page of djvuPages(bytes, { ...opts, maxPages })) {
+    total += page.deflated.length;
+    // Half a document handed over as though it were the whole one is worse
+    // than not handing it over: nobody can tell which condition is missing.
+    // The council's own viewer has no such limit, so that is where a document
+    // this long belongs.
+    if (total > maxBytes) return "too_large";
+    pages.push(page);
+  }
+  return pages.length ? greyPagesToPdf(pages, { dpi: opts.dpi ?? DPI, title }) : null;
 }
 
 /** The same, as base64 image blocks for the model. */

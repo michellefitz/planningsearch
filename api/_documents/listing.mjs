@@ -125,10 +125,10 @@ function parsePublicAccessModel(html, baseUrl) {
 export function parseFileListHtml(html, baseUrl) {
   const files = [];
   const seen = new Set();
-  const push = (url, title, fallback, extra) => {
+  const push = (url, title, fallback, size) => {
     if (seen.has(url)) return;
     seen.add(url);
-    files.push({ title: title || fallback, url, ...extra });
+    files.push({ title: title || fallback, url, ...(size ? { size } : {}) });
   };
 
   // NEC PublicAccess (Dublin City) serves the list with no anchors at all —
@@ -171,19 +171,11 @@ export function parseFileListHtml(html, baseUrl) {
     let displayTitle = GENERIC_LABEL_RE.test(label) ? title : fullerCell ?? label ?? title;
     const dateInRow = cells.map((c) => c.match(DATE_RE)?.[1]).find(Boolean);
     if (dateInRow && !displayTitle.includes(dateInRow)) displayTitle = `${displayTitle} — ${dateInRow}`;
-    const size = cells.map(cellSize).find(Boolean) ?? null;
-    // A JPEG sibling is how these listings say "this one is DjVu" — the option
-    // exists, in the council's own words, "to view DjVu files on devices /
-    // browsers that don't support the DjVu viewer". So the file behind "View"
-    // is a DjVu, which no browser draws and which we cannot convert: the tile
-    // server behind the JPEG option serves DjVu fragments too, decoded in the
-    // page by JavaScript. Handing it over as a download is no use to anyone,
-    // so these are sent to the council's viewer, which does render them.
-    const djvu = anchors.length > usable.length;
-    push(url, displayTitle, filename, {
-      ...(size ? { size } : {}),
-      ...(djvu ? { viewer_only: true } : {}),
-    });
+    // Only the size travels with a row now. A JPEG sibling used to be recorded
+    // too, as the listings' own way of saying "this one is DjVu" — but those
+    // are decoded and served as PDFs, so knowing it in advance changes
+    // nothing about where the link goes.
+    push(url, displayTitle, filename, cells.map(cellSize).find(Boolean) ?? null);
   }
 
   // Last resort, for a listing with no table to read. It used to run always,

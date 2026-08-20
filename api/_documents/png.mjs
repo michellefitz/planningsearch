@@ -31,11 +31,16 @@ const chunk = (type, data) => {
   return Buffer.concat([len, body, crc]);
 };
 
-/** RGBA ImageData → greyscale PNG. */
-export function greyPng({ width, height, data }) {
-  // One filter byte per row, then one grey byte per pixel. Filter 1 (Sub)
-  // beats None on scanned text by a wide margin: long runs of identical
-  // pixels become long runs of zeroes.
+/**
+ * RGBA pixels → the deflated scanline stream both PNG and PDF want.
+ *
+ * One filter byte per row, then one grey byte per pixel. Filter 1 (Sub) beats
+ * None on scanned text by a wide margin: long runs of identical pixels become
+ * long runs of zeroes. PDF understands exactly this layout as
+ * `/Predictor 15`, so a page compressed once serves both formats and a
+ * multi-page document costs one deflate per page rather than two.
+ */
+export function greyScanlines({ width, height, data }) {
   const raw = Buffer.alloc(height * (width + 1));
   let p = 0;
   for (let y = 0; y < height; y++) {
@@ -49,6 +54,12 @@ export function greyPng({ width, height, data }) {
       prev = g;
     }
   }
+  return zlib.deflateSync(raw, { level: 9 });
+}
+
+/** RGBA ImageData → greyscale PNG. */
+export function greyPng(image) {
+  const { width, height } = image;
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
@@ -57,7 +68,7 @@ export function greyPng({ width, height, data }) {
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", ihdr),
-    chunk("IDAT", zlib.deflateSync(raw, { level: 9 })),
+    chunk("IDAT", image.deflated ?? greyScanlines(image)),
     chunk("IEND", Buffer.alloc(0)),
   ]);
 }
