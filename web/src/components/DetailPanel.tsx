@@ -410,10 +410,15 @@ function ConditionGroups({
   conditions,
   decision,
   superseded = false,
+  titles = null,
 }: {
   conditions: DecisionConditions;
   decision: string | null;
   superseded?: boolean;
+  /** Written labels, by condition number, for the ones their council left
+   *  untitled. Null until they arrive, and often for good — South Dublin
+   *  writes its own and never needs any. */
+  titles?: Map<number, string> | null;
 }) {
   const split = isSplitDecision(decision);
   const groups = conditionGroups(decision, superseded)
@@ -442,7 +447,11 @@ function ConditionGroups({
             // reason on an appealed Dublin City case arrives as "ACP Reason",
             // so the list read "ACP Reason 1…4" and had to be opened to learn
             // anything. Derive a label from the wording in that case.
-            const title = itemLabel(item, num);
+            // The written label wins where there is one: it says what the
+            // condition controls, which is the job. Everything else is the
+            // deterministic fallback — the council's own title where it wrote
+            // a real one, then a theme, then the opening words.
+            const title = titles?.get(num) ?? itemLabel(item, num);
             return (
               <details
                 key={`${g.code}-${item.order}-${i}`}
@@ -1082,6 +1091,7 @@ function FurtherInfoSection({
   askedSummary,
   askedLoading,
   askedReason,
+  titles,
 }: {
   detail: AppDetail;
   conditions: DecisionConditions | null;
@@ -1089,6 +1099,7 @@ function FurtherInfoSection({
   askedSummary: string | null;
   askedLoading: boolean;
   askedReason: { reason: DocumentReason | null; document: string | null } | null;
+  titles: Map<number, string> | null;
 }) {
   // The portal's decision_date is when the request issued only while the file
   // is actually at that stage; on a decided application it is the decision's
@@ -1160,7 +1171,7 @@ function FurtherInfoSection({
         </>
       )}
       {conditions && conditions.items.length > 0 && (
-        <ConditionGroups conditions={conditions} decision={null} />
+        <ConditionGroups conditions={conditions} decision={null} titles={titles} />
       )}
       {/* Kildare, Wicklow and Meath publish no structured conditions — their
           request is a scanned letter, summarised above from the PDF. The
@@ -1189,6 +1200,7 @@ function DecisionSection({
   refusalSummary,
   refusalLoading,
   highlights,
+  titles,
   highlightsLoading,
 }: {
   detail: AppDetail;
@@ -1198,6 +1210,7 @@ function DecisionSection({
   refusalSummary: string | null;
   refusalLoading: boolean;
   highlights: ConditionHighlight[] | null;
+  titles: Map<number, string> | null;
   highlightsLoading: boolean;
 }) {
   const decision = conditions?.decision ?? d.decision;
@@ -1324,7 +1337,12 @@ function DecisionSection({
             loading={highlightsLoading}
             total={conditions.items.filter((i) => i.code === "C").length}
           />
-          <ConditionGroups conditions={conditions} decision={decision} superseded={superseded} />
+          <ConditionGroups
+            conditions={conditions}
+            decision={decision}
+            superseded={superseded}
+            titles={titles}
+          />
         </>
       )}
       {/* Three distinct outcomes, never collapsed into a blank space: the
@@ -1732,6 +1750,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     document: string | null;
   } | null>(null);
   const [highlights, setHighlights] = useState<ConditionHighlight[] | null>(null);
+  /* Labels for the conditions their council left untitled — DLR sends "C1",
+     Fingal sends the first seventy characters of the wording. Applied over the
+     deterministic label when they arrive, so no row is ever blank waiting. */
+  const [titles, setTitles] = useState<Map<number, string> | null>(null);
   const [highlightsLoading, setHighlightsLoading] = useState(false);
   const [enrich, setEnrich] = useState<{
     ai_summary: string | null;
@@ -1830,6 +1852,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     setAskedLoading(false);
     setAskedReason(null);
     setHighlights(null);
+    setTitles(null);
     setHighlightsLoading(false);
     setEnrich(null);
     setDescExpanded(false);
@@ -2000,6 +2023,15 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
                 .finally(() => {
                   if (!cancelled) setHighlightsLoading(false);
                 });
+              // Its own request: a failure here must leave the conditions and
+              // the highlights exactly as they were.
+              api
+                .conditionTitles(d.id)
+                .then((r) => {
+                  if (cancelled || !r.titles?.length) return;
+                  setTitles(new Map(r.titles.map((t) => [t.n, t.title])));
+                })
+                .catch(() => {});
             }
           });
         })
@@ -2282,6 +2314,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           askedSummary={askedSummary}
           askedLoading={askedLoading}
           askedReason={askedReason}
+          titles={titles}
         />
       )}
 
@@ -2293,6 +2326,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         refusalSummary={refusalSummary}
         refusalLoading={refusalLoading}
         highlights={highlights}
+        titles={titles}
         highlightsLoading={highlightsLoading}
       />
 

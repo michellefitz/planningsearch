@@ -432,6 +432,13 @@ export const api = {
       `/api/applications/${id}/further-info-summary`,
       T.reading
     ),
+  /** Five-word labels for the conditions their council left untitled — see
+   *  api/_conditions/titles.mjs for why the councils differ so much. */
+  conditionTitles: (id: number) =>
+    getJson<{ supported: boolean; titles: Array<{ n: number; title: string }> | null }>(
+      `/api/applications/${id}/condition-titles`,
+      T.reading
+    ),
   conditionHighlights: (id: number) =>
     getJson<{ supported: boolean; highlights: ConditionHighlight[] | null }>(
       `/api/applications/${id}/condition-highlights`,

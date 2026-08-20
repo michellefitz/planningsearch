@@ -70,8 +70,26 @@ describe("itemLabel", () => {
     ).toBe("Construction hours");
   });
 
-  it("falls back to a numbered label when no theme is recognised", () => {
-    expect(itemLabel({ title: "Reason", code_label: "Reason", text: "Unclassifiable.", order: 2 }, 2))
-      .toBe("Reason 2");
+  /**
+   * This used to fall back to "Reason 2", which says nothing the group heading
+   * and the number beside it had not already said. The opening words at least
+   * name a subject — and where there are none, the numbered form still stands.
+   */
+  it("falls back to the opening words when no theme is recognised", () => {
+    expect(
+      itemLabel({ title: "Reason", code_label: "Reason", text: "Unclassifiable.", order: 2 }, 2)
+    ).toBe("Unclassifiable");
+    expect(
+      itemLabel(
+        { title: "Reason", code_label: "Reason", text: "The applicant shall notify the council in writing.", order: 2 },
+        2
+      )
+    ).toBe("The applicant shall notify the council…");
+  });
+
+  it("still numbers an item with no wording at all to draw on", () => {
+    expect(itemLabel({ title: "Reason", code_label: "Reason", text: "", order: 2 }, 2)).toBe(
+      "Reason 2"
+    );
   });
 });
