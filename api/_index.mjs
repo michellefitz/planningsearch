@@ -30,7 +30,7 @@ import {
   parseFileListHtml,
   stripTags,
 } from "./_documents/listing.mjs";
-import { djvuToImageBlocks, isDjvu } from "./_documents/djvu.mjs";
+import { djvuToImageBlocks, djvuToPdf, isDjvu } from "./_documents/djvu.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));
@@ -2845,18 +2845,43 @@ export default async function handler(req, res) {
     if (debug) {
       return send(res, 200, { listUrl, index, result: doc === null ? "null" : doc === "too_large" ? "too_large" : "ok", trace });
     }
-    if (doc === "too_large" || doc === null) {
+    // The older council scans are DjVu, which no browser draws. Handing one
+    // over was a download nobody could open; sending the reader to the
+    // council's viewer instead worked but was a detour with instructions
+    // attached. Decoded here, it arrives as what it always should have been.
+    const converted =
+      doc && doc !== "too_large" && isDjvu(doc.contentType, doc.filename)
+        ? await djvuToPdf(doc.body, { title: doc.filename ?? "" })
+        : null;
+    if (converted && converted !== "too_large") {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${safeFilename(String(doc.filename ?? "document").replace(/\.djvu$/i, "") + ".pdf")}"`
+      );
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.end(converted);
+      return;
+    }
+    // A DjVu that would not decode is a failure to read, not an empty file;
+    // one that decoded to more than a response can carry is a size problem,
+    // and says so like any other.
+    const oversize = doc === "too_large" || converted === "too_large";
+    const undecodable = converted === null && doc && doc !== "too_large" && isDjvu(doc.contentType, doc.filename);
+    if (oversize || doc === null || undecodable) {
       // Land the user on the specific application, not the generic portal.
       const fallbackUrl =
         listUrl ??
         (slug
           ? (await agilePortalUrl(app.authority_id, app.source_url, app.planning_reference)) ?? `${AGILE_BASE}/${slug}`
           : "");
-      const reason =
-        doc === "too_large"
-          ? "This document is too large to display here."
+      const reason = oversize
+        ? "This document is too large to display here."
+        : undecodable
+          ? "Couldn't read this scanned document."
           : "Couldn't retrieve this document from the council just now.";
-      res.statusCode = doc === "too_large" ? 413 : 502;
+      res.statusCode = oversize ? 413 : 502;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.end(
         `<!doctype html><meta charset="utf-8"><title>PlanView</title>` +

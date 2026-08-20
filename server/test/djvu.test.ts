@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { djvuToImageBlocks, djvuToPngPages, isDjvu } from "../../api/_documents/djvu.mjs";
+import { djvuToImageBlocks, djvuToPdf, djvuToPngPages, isDjvu } from "../../api/_documents/djvu.mjs";
 import { greyPng } from "../../api/_documents/png.mjs";
 
 /**
@@ -71,6 +71,78 @@ describe("handing the pages to the model", () => {
       expect(block.source.media_type).toBe("image/png");
       expect(Buffer.from(block.source.data, "base64").subarray(0, 8).equals(PNG_MAGIC)).toBe(true);
     }
+  });
+});
+
+/**
+ * Structural, not visual: a PDF that renders in one viewer and not another is
+ * usually a byte offset in the cross-reference table, which nothing but
+ * arithmetic will catch.
+ */
+function readPdf(pdf: Buffer) {
+  const startxref = Number(/startxref\s+(\d+)\s+%%EOF/.exec(pdf.toString("latin1"))?.[1]);
+  const text = pdf.toString("latin1");
+  const entries = [
+    ...text
+      .slice(startxref)
+      .matchAll(/(\d{10}) (\d{5}) ([nf])/g),
+  ].map((m) => ({ at: Number(m[1]), kind: m[3] }));
+  return {
+    header: pdf.subarray(0, 8).toString("latin1"),
+    xrefAt: startxref,
+    xrefIsWhereItSays: text.slice(startxref, startxref + 4) === "xref",
+    /** Every entry must land exactly on "N 0 obj" or no reader can follow it. */
+    offsetsLandOnObjects: entries.every(
+      (e, i) => e.kind === "f" || text.startsWith(`${i} 0 obj`, e.at)
+    ),
+    pageCount: Number(/\/Type \/Pages \/Count (\d+)/.exec(text)?.[1]),
+    images: [...text.matchAll(/\/Subtype \/Image \/Width (\d+) \/Height (\d+)/g)].map((m) => ({
+      width: Number(m[1]),
+      height: Number(m[2]),
+    })),
+    predictor: text.includes("/Predictor 15"),
+  };
+}
+
+describe("serving an old scan as a PDF", () => {
+  it("puts every page in one file a browser can open", async () => {
+    const pdf = (await djvuToPdf(ORDER, { title: "Chief Executives Order" })) as Buffer;
+    const read = readPdf(pdf);
+    expect(read.header).toBe("%PDF-1.4");
+    expect(read.pageCount).toBe(2);
+    expect(read.images).toHaveLength(2);
+  });
+
+  it("writes a cross-reference table that points at the objects", async () => {
+    const read = readPdf((await djvuToPdf(ORDER)) as Buffer);
+    expect(read.xrefIsWhereItSays).toBe(true);
+    expect(read.offsetsLandOnObjects).toBe(true);
+  });
+
+  /** The same filtered, deflated scanlines the PNG path builds, handed to PDF
+   *  as /Predictor 15 rather than compressed a second time. */
+  it("reuses the PNG compression rather than re-encoding", async () => {
+    expect(readPdf((await djvuToPdf(ORDER)) as Buffer).predictor).toBe(true);
+  });
+
+  it("stays small enough to come back through a serverless response", async () => {
+    const pdf = (await djvuToPdf(ORDER)) as Buffer;
+    expect(pdf.byteLength).toBeLessThan(500_000);
+  });
+
+  /** Half a decision order handed over as though it were the whole one is
+   *  worse than none: nobody can tell which condition is missing. */
+  it("refuses rather than truncates when it will not fit", async () => {
+    expect(await djvuToPdf(ORDER, { maxBytes: 1000 })).toBe("too_large");
+  });
+
+  /** A budget the document fits inside changes nothing. */
+  it("returns the document when it does fit", async () => {
+    expect(await djvuToPdf(ORDER, { maxBytes: 1_000_000 })).toBeInstanceOf(Buffer);
+  });
+
+  it("returns nothing for a file that is not DjVu", async () => {
+    expect(await djvuToPdf(Buffer.from("not a djvu"))).toBeNull();
   });
 });
 
