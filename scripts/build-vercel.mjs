@@ -45,7 +45,7 @@ fs.cpSync(path.join(root, "api", "_data"), path.join(funcDir, "_data"), {
 });
 // Every directory _index.mjs imports from. Missing one is not a build error —
 // it is a runtime crash on the first request that touches it.
-for (const dir of ["_accounts", "_preplan", "_conditions", "_ai", "_search"]) {
+for (const dir of ["_accounts", "_preplan", "_conditions", "_ai", "_search", "_documents"]) {
   fs.cpSync(path.join(root, "api", dir), path.join(funcDir, dir), { recursive: true });
 }
 fs.writeFileSync(
