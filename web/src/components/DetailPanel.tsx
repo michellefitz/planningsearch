@@ -17,6 +17,7 @@ import { STATUS_STYLE } from "../statusStyle";
 import SaveStar from "./SaveStar";
 import { itemLabel } from "../../../api/_conditions/labels.mjs";
 import { realDecision } from "../../../api/_conditions/decision.mjs";
+import { appealOutcome } from "../../../api/_conditions/appeal.mjs";
 import { developmentContribution } from "../../../api/_conditions/contribution.mjs";
 import { getFloodData } from "../floodData";
 import { Waiting } from "../loading";
@@ -115,8 +116,13 @@ function buildTimeline(d: AppDetail, submissionsBy?: string | null): TimelineSte
       state: d.appeal_decision ? "done" : "current",
     });
     if (d.appeal_decision) {
+      // The register's own word where it names an outcome; otherwise just that
+      // it was decided. "Appeal decided — MODIFIED" reads as an outcome and is
+      // not one — on this file it sat under "Decided — REFUSED" while the
+      // Commission had in fact granted permission.
+      const label = appealOutcome(d.appeal_decision).label;
       steps.push({
-        label: `Appeal decided — ${d.appeal_decision}`,
+        label: label ? `Appeal decided — ${label}` : "Appeal decided",
         date: d.appeal_decision_date,
         state: "done",
       });
@@ -459,11 +465,44 @@ function ConditionGroups({
   );
 }
 
+/**
+ * An AI summary that runs to more than a few sentences.
+ *
+ * An appeal summary is a narrative — who appealed, what was at stake, what the
+ * Commission made of it — and the model breaks it where the story turns. HTML
+ * collapses those breaks, so the whole thing arrived as one dense block that
+ * people gave up on halfway. The paragraphs were always in the text; only the
+ * rendering threw them away.
+ */
+function AiParagraphs({ text, className }: { text: string; className: string }) {
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  return (
+    <div className={className}>
+      {paragraphs.map((para, i) => (
+        <p key={i}>
+          {/* The mark belongs to the summary, not to each paragraph of it. */}
+          {i === 0 && <span className="ai-mark">✦</span>}
+          {i === 0 ? " " : ""}
+          {para}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+type AppealConditions = {
+  conditions: Array<{ number: number | null; title: string; text: string }>;
+  reasons: Array<{ number: number | null; text: string }>;
+};
+
 type SummaryState =
   | { phase: "idle" }
   | { phase: "loading" }
-  | { phase: "loaded"; summary: string; source: string | null }
-  | { phase: "empty" }
+  | ({ phase: "loaded"; summary: string | null; source: string | null } & AppealConditions)
+  | ({ phase: "empty" } & Partial<AppealConditions>)
   | { phase: "failed" };
 
 /**
@@ -698,12 +737,22 @@ type AppealState =
 function AppealBlock({ detail: d }: { detail: AppDetail }) {
   const [state, setState] = useState<AppealState>({ phase: "idle" });
   const [summary, setSummary] = useState<SummaryState>({ phase: "idle" });
+  /* What the appeal came to. Seeded from the register so the line is there
+     before anything loads, and replaced by the Commission's own wording when
+     the case record arrives — the register's MODIFIED resolves to nothing at
+     all, which is the honest answer until the case page speaks. */
+  const [outcome, setOutcome] = useState<{ label: string | null; kind: string | null }>(() => {
+    const o = appealOutcome(d.appeal_decision);
+    return { label: o.label, kind: o.kind };
+  });
   const rootRef = useRef<HTMLDivElement>(null);
   const loadRef = useRef<() => void>(() => {});
   useEffect(() => {
     setState({ phase: "idle" });
     setSummary({ phase: "idle" });
-  }, [d.id]);
+    const o = appealOutcome(d.appeal_decision);
+    setOutcome({ label: o.label, kind: o.kind });
+  }, [d.id, d.appeal_decision]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -730,6 +779,9 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
     void api
       .appeal(d.id)
       .then((res) => {
+        // The Commission's own wording beats the register's code, and arrives
+        // with the case record rather than with the model's read of it.
+        if (res.decision_label) setOutcome({ label: res.decision_label, kind: res.outcome ?? null });
         if (res.fields?.length || res.documents?.length)
           setState({ phase: "loaded", fields: res.fields ?? [], documents: res.documents ?? [] });
         else setState({ phase: "empty" });
@@ -738,9 +790,20 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
     void api
       .appealSummary(d.id)
       .then((res) => {
-        if (res.summary)
-          setSummary({ phase: "loaded", summary: res.summary, source: res.based_on_document ?? null });
+        const conditions = res.conditions ?? [];
+        const reasons = res.reasons ?? [];
+        // A summary can be dropped for contradicting the decision while the
+        // conditions read off the same order stay perfectly good.
+        if (res.summary || conditions.length || reasons.length)
+          setSummary({
+            phase: "loaded",
+            summary: res.summary ?? null,
+            source: res.based_on_document ?? null,
+            conditions,
+            reasons,
+          });
         else setSummary({ phase: "empty" });
+        if (res.decision_label) setOutcome({ label: res.decision_label, kind: res.outcome ?? null });
       })
       .catch(() => setSummary({ phase: "failed" }));
   };
@@ -755,6 +818,36 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
         Appeal <span className="count">{appealRef(d)}</span>
       </h4>
 
+      {/* What it came to, stated the way the Decision section states the
+          council's — "Modified on appeal" is the register's word for "something
+          changed" and told the reader nothing about whether they can build. */}
+      <div className="decision-lines">
+        {outcome.label ? (
+          <p className="decision-line">
+            <span className={outcomeClass(outcome.kind === "granted" ? "granted" : outcome.label)}>
+              {outcome.label}
+            </span>
+            {d.appeal_decision_date && (
+              <span className="hint"> · {fmtDate(d.appeal_decision_date)}</span>
+            )}
+          </p>
+        ) : d.appeal_decision_date ? (
+          /* Decided, but the register's code does not say what was decided.
+             The date is a fact; the outcome is on the case file. */
+          <p className="decision-line">
+            Decided by An Coimisiún Pleanála
+            <span className="hint"> · {fmtDate(d.appeal_decision_date)}</span>
+          </p>
+        ) : (
+          <p className="decision-line">
+            <span className="hint">
+              With An Coimisiún Pleanála
+              {d.appeal_lodged_date ? ` · lodged ${fmtDate(d.appeal_lodged_date)}` : ""}
+            </span>
+          </p>
+        )}
+      </div>
+
       {(summary.phase === "idle" || summary.phase === "loading") && (
         <div className="appeal-summary-skeleton" aria-hidden="true">
           <span /><span /><span />
@@ -764,15 +857,57 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
         <p className="list-note">Couldn't generate a summary just now — try again shortly.</p>
       )}
       {summary.phase === "empty" && (
-        <p className="list-note">Not enough on the case file yet to summarise.</p>
+        <p className="list-note">
+          {outcome.label
+            ? /* Either the case record was too thin to summarise, or a summary
+                 was written and thrown away for disagreeing with the decision
+                 above. Both come to the same thing for the reader, and neither
+                 is "the file is empty" — the decision line is the answer, and
+                 the case file has the reasoning. */
+              "No plain-English summary for this one — the decision above is the Commission's own, and the case file below has its reasoning."
+            : "Not enough on the case file yet to summarise."}
+        </p>
       )}
-      {summary.phase === "loaded" && (
+      {summary.phase === "loaded" && summary.summary && (
         /* The star marks it as model-written, in the same place as every other
            AI line in the sheet. It used to say so in a footer underneath,
            which took a line to repeat what the mark says at a glance. */
-        <p className="ai-summary">
-          <span className="ai-mark">✦</span> {summary.summary}
-        </p>
+        <AiParagraphs text={summary.summary} className="ai-summary" />
+      )}
+      {/* A grant on appeal carries a schedule, and when the appeal overturned a
+          refusal that schedule is the list of changes that turned a no into a
+          yes — the most useful thing on the file and, until now, invisible.
+          Same shape as the conditions on a council grant. */}
+      {summary.phase === "loaded" && summary.conditions.length > 0 && (
+        <div className="condition-group">
+          <h4>
+            Conditions of the appeal decision{" "}
+            <span className="count">{summary.conditions.length}</span>
+          </h4>
+          <ul className="decision-list">
+            {summary.conditions.map((c, i) => (
+              <li key={i}>
+                <strong>{c.title || `Condition ${c.number ?? i + 1}`}</strong>
+                {c.text && <span className="cond-text"> — {c.text}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {summary.phase === "loaded" && summary.reasons.length > 0 && (
+        <div className="condition-group">
+          <h4>
+            Reasons for refusal on appeal <span className="count">{summary.reasons.length}</span>
+          </h4>
+          <ul className="decision-list">
+            {summary.reasons.map((r, i) => (
+              <li key={i}>{r.text}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {summary.phase === "loaded" && (summary.conditions.length > 0 || summary.reasons.length > 0) && (
+        <p className="list-note">AI-extracted from "{summary.source ?? "the appeal order"}".</p>
       )}
 
       {/* Held open at the height of a case record — four documents is the usual
@@ -1082,10 +1217,14 @@ function DecisionSection({
             <span className={outcomeClass(decision)}>{titleCase(decision)}</span>
             {decisionDate && <span className="hint"> · {fmtDate(decisionDate)}</span>}
           </p>
-          {d.appeal_decision && (
+          {/* Only where the register's code actually names an outcome. It
+              printed "Modified on appeal" otherwise, which reads as a decision
+              and is not one — the Appeal section below states it properly,
+              from the Commission's own wording. */}
+          {appealOutcome(d.appeal_decision).label && (
             <p className="decision-line">
-              <span className={outcomeClass(d.appeal_decision)}>
-                {titleCase(d.appeal_decision)}
+              <span className={outcomeClass(appealOutcome(d.appeal_decision).label ?? "")}>
+                {appealOutcome(d.appeal_decision).label}
               </span>
               <span className="hint"> on appeal</span>
               {d.appeal_decision_date && <span className="hint"> · {fmtDate(d.appeal_decision_date)}</span>}
