@@ -214,6 +214,19 @@ const IDOCS_HOST = {
   wicklow: "https://WicklowCoCo.ePlanning.ie/idocswebDPSS",
 };
 
+/**
+ * The id in .../AppFileRefDetails/{id}/0.
+ *
+ * It used to be read as `(\d+)`, which is right for Kildare and Wicklow and
+ * wrong for Meath: every Meath application before about 2020 carries its
+ * electoral-area prefix in the reference — RA171525, AA170842, LB..., KA...,
+ * NA..., TA... — so the match failed and the whole pre-2020 Meath register
+ * came back with no documents at all, and a sheet saying "use the portal link
+ * above" above no link. The listing accepts the lettered id perfectly well;
+ * only this regex did not.
+ */
+const EPLANNING_ID_RE = /AppFileRefDetails\/([^/?#]+)/i;
+
 function scannedFilesUrl(authorityId, sourceUrl, reference) {
   if (authorityId === "south-dublin" && reference) {
     return `https://planning.southdublin.ie/Home/Documents?regref=${encodeURIComponent(reference)}`;
@@ -225,7 +238,7 @@ function scannedFilesUrl(authorityId, sourceUrl, reference) {
   }
   const idocs = IDOCS_HOST[authorityId];
   if (!idocs || !sourceUrl) return null;
-  const m = sourceUrl.match(/AppFileRefDetails\/(\d+)/i);
+  const m = sourceUrl.match(EPLANNING_ID_RE);
   return m
     ? `${idocs}/listFiles.aspx?catalog=planning&id=${m[1]}`
     : null;
@@ -1064,7 +1077,7 @@ function parseEplanningRelated(html, selfId) {
     if (/<th[\s>]/i.test(body)) continue;
     const cells = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((c) => c[1]);
     if (cells.length < 8) continue;
-    const eplanningId = cells[0].match(/AppFileRefDetails\/(\d+)/i)?.[1];
+    const eplanningId = cells[0].match(EPLANNING_ID_RE)?.[1];
     if (!eplanningId || eplanningId === selfId || seen.has(eplanningId)) continue;
     seen.add(eplanningId);
     const text = (i) => decodeEntities(stripTags(cells[i] ?? "")).trim() || null;
@@ -1094,7 +1107,7 @@ function expandDecisionCode(code) {
 
 async function fetchEplanningRelated(sourceUrl) {
   if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return [];
-  const selfId = sourceUrl.match(/AppFileRefDetails\/(\d+)/i)?.[1] ?? null;
+  const selfId = sourceUrl.match(EPLANNING_ID_RE)?.[1] ?? null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
@@ -2982,6 +2995,25 @@ export default async function handler(req, res) {
   // What the council has asked for before it will decide. Its own endpoint, so
   // the request itself renders without waiting on the model — the same shape
   // as the refusal line and the condition highlights.
+/**
+ * Why a scanned document could not be turned into a summary.
+ *
+ * Silence was the old answer to all of these, and silence on a decision reads
+ * as "there were no conditions" — the most expensive thing this app can imply.
+ * The commonest cause on Meath is a file scanned before the councils moved to
+ * PDF: the decision order is there, we fetch it successfully, and it is a DjVu,
+ * which the model cannot read and no converter here can turn into one.
+ */
+const readableReason = (doc) => {
+  if (!doc) return "unavailable";
+  if (doc === "too_large") return "too_large";
+  const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
+  if (isPdf) return null;
+  return /djvu/i.test(doc.contentType) || /\.djvu$/i.test(doc.filename ?? "")
+    ? "djvu"
+    : "unreadable_format";
+};
+
   const fim = route.match(/^\/api\/applications\/(\d+)\/further-info-summary$/);
   if (fim) {
     const app = BUNDLE.applications.find((a) => a.id === Number(fim[1]));
@@ -3032,9 +3064,8 @@ export default async function handler(req, res) {
     if (index < 0) return send(res, 200, empty);
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000);
     const source_document = files[index].title;
-    if (!doc || doc === "too_large") return send(res, 200, { ...empty, source_document });
-    const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
-    if (!isPdf) return send(res, 200, { ...empty, source_document });
+    const unreadable = readableReason(doc);
+    if (unreadable) return send(res, 200, { ...empty, source_document, reason: unreadable });
     const raw = await callClaude(
       FURTHER_INFO_PROMPT,
       [
@@ -3197,13 +3228,13 @@ export default async function handler(req, res) {
       });
     }
     const empty = { supported: true, summary: null, conditions: [], reasons: [], source_document: null };
-    if (!files || index < 0) return send(res, 200, empty);
+    if (!files || index < 0) return send(res, 200, { ...empty, reason: "not_found" });
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000, trace);
-    if (!doc || doc === "too_large") return send(res, 200, { ...empty, source_document: files[index].title });
-    const isPdf = /pdf/i.test(doc.contentType) || /\.pdf$/i.test(doc.filename ?? "");
-    const extract = isPdf ? await extractDecisionDocument(doc.body.toString("base64"), app.decision) : null;
     const source_document = files[index].title;
-    if (!extract) return send(res, 200, { ...empty, source_document });
+    const unreadable = readableReason(doc);
+    if (unreadable) return send(res, 200, { ...empty, source_document, reason: unreadable });
+    const extract = await extractDecisionDocument(doc.body.toString("base64"), app.decision);
+    if (!extract) return send(res, 200, { ...empty, source_document, reason: "unavailable" });
     const result = { ...extract, source_document };
     DECISION_SUMMARY_CACHE.set(app.id, result);
     await aiCachePut(AI_CACHE_KINDS.DECISION, app.authority_id, app.planning_reference, result);
@@ -3325,7 +3356,7 @@ export default async function handler(req, res) {
         received_date: r.received,
         status: match?.status ?? mapLiveStatus(r.statusText, expandDecisionCode(r.decisionCode)),
         eplanning_url: app.source_url.replace(
-          /AppFileRefDetails\/\d+(\/\d*)?.*/i,
+          /AppFileRefDetails\/[^/?#]+(\/\d*)?.*/i,
           `AppFileRefDetails/${r.eplanningId}/0`
         ),
       };

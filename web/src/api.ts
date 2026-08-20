@@ -141,6 +141,14 @@ export interface DecisionConditions {
   further_info?: boolean;
 }
 
+/** Why a scanned council document produced nothing to read. */
+export type DocumentReason =
+  | "not_found"
+  | "too_large"
+  | "djvu"
+  | "unreadable_format"
+  | "unavailable";
+
 export interface ZoningInfo {
   zone: string;
   general: string | null;
@@ -407,7 +415,12 @@ export const api = {
       T.reading
     ),
   furtherInfoSummary: (id: number) =>
-    getJson<{ supported: boolean; summary: string | null }>(
+    getJson<{
+      supported: boolean;
+      summary: string | null;
+      source_document?: string | null;
+      reason?: DocumentReason;
+    }>(
       `/api/applications/${id}/further-info-summary`,
       T.reading
     ),
@@ -441,6 +454,9 @@ export const api = {
       source_document?: string | null;
       conditions?: Array<{ number: number | null; title: string; text: string }>;
       reasons?: Array<{ number: number | null; text: string }>;
+      /** Why there is nothing to show — never absent conditions, always a fact
+       *  about the document. "djvu" is much the commonest on the older files. */
+      reason?: DocumentReason;
     }>(`/api/applications/${id}/decision-summary`, T.reading),
   mapGeoJson: (p: URLSearchParams) =>
     getJson<PointFeatureCollection>(`/api/map/applications?${p}`, T.bundle),
