@@ -24,6 +24,12 @@ import { decisionStage, isFurtherInfoRequest, realDecision } from "./_conditions
 import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached, versionedKind } from "./_ai/store.mjs";
 import { descriptionKey } from "./_ai/descriptions.mjs";
 import { idfOver, queryHouseNumbers, relevanceScore } from "./_search/relevance.mjs";
+import {
+  ANCHOR_RE,
+  decodeEntities,
+  parseFileListHtml,
+  stripTags,
+} from "./_documents/listing.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/planning.json"), "utf8"));
@@ -237,19 +243,7 @@ function abpCaseUrl(reference) {
 }
 
 // --- An Coimisiún Pleanála case-page parsing (mirrors server/src/abp.ts) ---
-// decodeEntities below is shared with the document-listing parser further
-// down; it is not ABP-specific.
 const ABP_STRIP = (h) => h.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-function decodeEntities(s) {
-  return s
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ");
-}
 const abpClean = (h) => decodeEntities(ABP_STRIP(h));
 
 function abpPushPair(out, seen, rawLabel, rawValue) {
@@ -350,132 +344,6 @@ async function fetchAppealCase(caseUrl, trace) {
   } finally {
     clearTimeout(timer);
   }
-}
-
-/**
- * Tolerant anchor-scrape of a council file-listing page; [] means "fall back
- * to deep link". Listing pages like Kildare's iDocs GridView label every link
- * "View" and keep the document name in sibling cells of the same table row,
- * so single-link rows use the row's remaining text as the title.
- */
-const ANCHOR_RE = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-const DOC_HREF_RE =
-  /\.(pdf|tiff?|jpe?g|png|doc|docx)([?#]|$)|getfile|getdocument|viewdocument|download|openfile|docid=|fileid=/i;
-const GENERIC_LABEL_RE = /^(view|open|download|show|file|document|link)?$/i;
-const DATE_RE = /\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\b/;
-
-/**
- * Cell text from a council listing: tags out, entities decoded, whitespace
- * collapsed. Mirrors stripTags() in server/src/documents.ts.
- *
- * The decode is what stops an empty iDocs cell reading as content. Kildare
- * writes an unused comment column as `<td>&nbsp;</td>`, which stripping alone
- * left as the literal string "&nbsp;" — truthy, so every document with no
- * comment came out as "Application Form - Part A — &nbsp;". Decoding turns it
- * into a space that the collapse then removes, and the empty cell is falsy
- * again. It also fixes titles like "Plans &amp; Particulars" along the way.
- *
- * Tags are stripped before decoding, so "&lt;b&gt;" becomes the text "<b>"
- * rather than markup — and it is rendered as text, never as HTML.
- */
-const stripTags = (h) =>
-  decodeEntities(h.replace(/<[^>]*>/g, " "))
-    .replace(/\s+/g, " ")
-    .trim();
-
-function resolveDocHref(href, baseUrl) {
-  const trimmed = href.trim();
-  if (!trimmed || trimmed.startsWith("#") || trimmed.toLowerCase().startsWith("javascript:")) return null;
-  if (!DOC_HREF_RE.test(trimmed)) return null;
-  try {
-    return new URL(trimmed, baseUrl).toString();
-  } catch {
-    return null;
-  }
-}
-
-// PublicAccess embeds Date_Received as US-format "MM/DD/YYYY hh:mm:ss".
-function publicAccessDate(v) {
-  const m = String(v ?? "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  return m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : null;
-}
-
-function parsePublicAccessModel(html, baseUrl) {
-  const candidates = [
-    html.match(/var\s+model\s*=\s*(\{.*?\})\s*;?\s*$/m)?.[1],
-    html.match(/var\s+model\s*=\s*(\{.*\})\s*;?\s*$/m)?.[1],
-  ];
-  for (const raw of candidates) {
-    if (!raw) continue;
-    try {
-      const model = JSON.parse(raw);
-      if (!Array.isArray(model.Rows)) continue;
-      const base = new URL(baseUrl);
-      const appRoot = base.pathname.split("/")[1];
-      return model.Rows.filter((r) => r.Guid).map((r) => {
-        const docType = String(r.Doc_Type ?? "").trim() || "Document";
-        const date = publicAccessDate(r.Date_Received);
-        return {
-          title: date ? `${docType} — ${date}` : docType,
-          url: `${base.origin}/${appRoot}/Document/ViewDocument?id=${r.Guid}`,
-        };
-      });
-    } catch {
-      // fall through to the next candidate / anchor-based passes
-    }
-  }
-  return [];
-}
-
-function parseFileListHtml(html, baseUrl) {
-  const files = [];
-  const seen = new Set();
-  const push = (url, title, fallback) => {
-    if (seen.has(url)) return;
-    seen.add(url);
-    files.push({ title: title || fallback, url });
-  };
-
-  // NEC PublicAccess (Dublin City) serves the list with no anchors at all —
-  // the rows are embedded as `var model = {...}` JSON and drawn client-side.
-  const modelFiles = parsePublicAccessModel(html, baseUrl);
-  if (modelFiles.length) return modelFiles;
-
-  const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-  const cellRe = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
-  let row;
-  while ((row = rowRe.exec(html)) !== null) {
-    const rowHtml = row[1];
-    const anchors = [...rowHtml.matchAll(ANCHOR_RE)]
-      .map((a) => ({ url: resolveDocHref(a[1], baseUrl), label: stripTags(a[2]) }))
-      .filter((a) => a.url !== null);
-    if (anchors.length !== 1) continue;
-    const { url, label } = anchors[0];
-    const cells = [...rowHtml.matchAll(cellRe)].map((c) => stripTags(c[1]));
-    const docType = cells[0] ?? "";
-    const comment = cells[1] ?? "";
-    const title = comment && comment !== docType
-      ? `${docType} — ${comment}`
-      : docType;
-    const filename = decodeURIComponent(url.split("/").pop() ?? "Document");
-    // Some listings (South Dublin) put extra detail after the link text in
-    // the same cell — prefer the fuller cell over the bare anchor label.
-    const fullerCell = cells.find(
-      (c) => c.length > label.length && c.toLowerCase().includes(label.toLowerCase())
-    );
-    let displayTitle = GENERIC_LABEL_RE.test(label) ? title : fullerCell ?? label ?? title;
-    const dateInRow = cells.map((c) => c.match(DATE_RE)?.[1]).find(Boolean);
-    if (dateInRow && !displayTitle.includes(dateInRow)) displayTitle = `${displayTitle} — ${dateInRow}`;
-    push(url, displayTitle, filename);
-  }
-
-  let m;
-  while ((m = ANCHOR_RE.exec(html)) !== null) {
-    const url = resolveDocHref(m[1], baseUrl);
-    if (!url) continue;
-    push(url, stripTags(m[2]), decodeURIComponent(url.split("/").pop() ?? "Document"));
-  }
-  return files;
 }
 
 const UA_HEADERS = {
@@ -1758,7 +1626,14 @@ function presentDocument(rawType, filename) {
   if (!contentType || /octet-stream/i.test(contentType)) {
     contentType = (ext && EXT_CONTENT_TYPE[ext]) || contentType || "application/octet-stream";
   }
-  const inlineable = /^application\/pdf$/i.test(contentType) || /^image\//i.test(contentType);
+  // DjVu is a scanning format from the 1990s that the iDocs councils still
+  // hold their older files in, and it arrives labelled "image/x.djvu" — which
+  // passes for an image and is not one any browser can draw. Told to display
+  // it inline, the tab opened empty. Sent as a download it at least says what
+  // it is, and the council's own viewer (linked under the list) renders it.
+  const djvu = /djvu/i.test(contentType) || ext === "djvu";
+  const inlineable =
+    !djvu && (/^application\/pdf$/i.test(contentType) || /^image\//i.test(contentType));
   return { contentType, disposition: inlineable ? "inline" : "attachment" };
 }
 function filenameFromDisposition(disposition) {

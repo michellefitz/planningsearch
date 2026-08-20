@@ -362,7 +362,15 @@ export const api = {
       supported: boolean;
       direct?: boolean;
       list_url: string | null;
-      files: Array<{ title: string; url: string }> | null;
+      /** `size` is what the council's listing prints for the document, when
+       *  it prints one, and `viewer_only` marks the older scans we cannot
+       *  hand over — both used to route a click that could not work. */
+      files: Array<{
+        title: string;
+        url: string;
+        size?: number;
+        viewer_only?: boolean;
+      }> | null;
       objection_count: number | null;
     }>(`/api/applications/${id}/files`, T.portal),
   enrich: (id: number) =>

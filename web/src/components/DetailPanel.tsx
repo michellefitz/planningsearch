@@ -1082,12 +1082,18 @@ function DecisionSection({
   );
 }
 
+/** The ceiling on a serverless response body — matches the API's own cap. */
+const MAX_PROXY_BYTES = 4_000_000;
+
+const fmtBytes = (n: number) =>
+  n >= 1024 ** 2 ? `${Math.round(n / 1024 ** 2)} MB` : `${Math.round(n / 1024)} KB`;
+
 type FilesState =
   | { phase: "idle" }
   | { phase: "loading" }
   | {
       phase: "loaded";
-      files: Array<{ title: string; url: string }>;
+      files: Array<{ title: string; url: string; size?: number; viewer_only?: boolean }>;
       objections: number;
       direct: boolean;
     }
@@ -1148,6 +1154,20 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
 
   loadRef.current = load;
 
+  // Every document on the file being one we cannot carry is a fact about the
+  // file, not about each row of it. Two reasons put a document out of reach —
+  // an old DjVu scan, or sheer size — and the note names whichever accounts
+  // for most of them; the megabytes stay on the row they belong to.
+  const divertedToCouncil = (f: { size?: number; viewer_only?: boolean }) =>
+    Boolean(f.viewer_only) || (typeof f.size === "number" && f.size > MAX_PROXY_BYTES);
+  const allAtCouncil =
+    state.phase === "loaded" &&
+    state.files.length > 1 &&
+    state.files.every(divertedToCouncil);
+  const mostlyDjvu =
+    state.phase === "loaded" &&
+    state.files.filter((f) => f.viewer_only).length * 2 >= state.files.length;
+
   return (
     <div className="scanned-files" ref={rootRef}>
       {/* Idle and loading look the same now: the list starts fetching as this
@@ -1187,22 +1207,59 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
           objection{state.objections === 1 ? "" : "s"} on file
         </p>
       )}
+      {/* When every document on the file is one of the old scans, saying so
+          once is better than saying it fifteen times down the side of the
+          list. A modern file with one oversized drawing keeps the per-row
+          note, which is where it belongs. */}
+      {state.phase === "loaded" && allAtCouncil && (
+        <p className="list-note">
+          {mostlyDjvu
+            ? "These were scanned in DjVu, a format browsers can't display."
+            : "These are larger than can be passed through here."}{" "}
+          Each one opens on {d.authority_short_name}'s own viewer.
+        </p>
+      )}
       {state.phase === "loaded" && (
         <ul className="doc-list">
-          {state.files.map((f, i) => (
-            <li key={f.url}>
-              {/* direct=true (Agile): stable download URLs, link straight out.
-                  Otherwise (Kildare iDocs): session-bound URLs, proxied
-                  through our API so each click is self-contained. */}
-              <a
-                href={state.direct ? f.url : `/api/applications/${d.id}/files/${i}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {f.title}
-              </a>
-            </li>
-          ))}
+          {state.files.map((f, i) => {
+            // Nearly a third of the documents on a busy Kildare file are over
+            // the four-megabyte ceiling a serverless response can carry — one
+            // photo montage is nineteen. Clicking those used to load a page
+            // saying so; the listing prints the size, so it can be said before
+            // the click instead of after it.
+            const tooBig = typeof f.size === "number" && f.size > MAX_PROXY_BYTES;
+            // Older applications were scanned to DjVu, which no browser draws
+            // and which cannot be converted on our side. The council's own
+            // viewer renders it, so that is where the link goes.
+            const onlyAtCouncil = (tooBig || f.viewer_only) && Boolean(d.scanned_files_url);
+            return (
+              <li key={f.url}>
+                {/* direct=true (Agile): stable download URLs, link straight
+                    out. Otherwise (iDocs): session-bound URLs, proxied through
+                    our API so each click is self-contained. A file we cannot
+                    carry goes to the council's own viewer, which can. */}
+                <a
+                  href={
+                    onlyAtCouncil
+                      ? d.scanned_files_url!
+                      : state.direct
+                        ? f.url
+                        : `/api/applications/${d.id}/files/${i}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {f.title}
+                </a>
+                {onlyAtCouncil && (tooBig || !allAtCouncil) && (
+                  <span className="hint doc-size">
+                    {tooBig ? ` · ${fmtBytes(f.size!)}` : ""} · opens on{" "}
+                    {d.authority_short_name}'s viewer
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {d.scanned_files_url && (
