@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   api,
   fmtDate,
@@ -6,6 +6,7 @@ import {
   type ConditionHighlight,
   type ConditionItem,
   type DecisionConditions,
+  type DocumentReason,
   type Meta,
   type ZoningInfo,
 } from "../api";
@@ -465,11 +466,84 @@ type SummaryState =
   | { phase: "empty" }
   | { phase: "failed" };
 
+/**
+ * What to say when the council's own document defeats us.
+ *
+ * Never "there are no conditions": we do not know that, and on a decision it
+ * is the one wrong thing that costs money. Each of these says what stopped us
+ * and where the answer is instead.
+ */
+function unreadableNote(
+  reason: DocumentReason | null,
+  document: string | null,
+  council: string
+): ReactNode {
+  const named = document ? <> — <em>{document}</em></> : null;
+  switch (reason) {
+    case "djvu":
+      return (
+        <>
+          The decision order on this file{named} was scanned in DjVu, which can't be read here.
+          Open it on {council}'s viewer below to see the conditions.
+        </>
+      );
+    case "too_large":
+      return (
+        <>
+          The decision order{named} is too large to read here. It is on {council}'s viewer below.
+        </>
+      );
+    case "not_found":
+      return <>No decision order on the council's file list — the documents below are all of it.</>;
+    case "unreadable_format":
+      return (
+        <>
+          The decision order{named} isn't in a format that can be read here. Open it on {council}'s
+          viewer below.
+        </>
+      );
+    default:
+      return (
+        <>
+          Couldn't read the decision order just now. This does <strong>not</strong> mean there are
+          no conditions — they are on {council}'s viewer below.
+        </>
+      );
+  }
+}
+
+/** The same, for the further-information request rather than the decision. */
+function unreadableRequestNote(
+  reason: DocumentReason,
+  document: string | null,
+  council: string
+): ReactNode {
+  const named = document ? <> — <em>{document}</em></> : null;
+  if (reason === "djvu")
+    return (
+      <>
+        The request letter{named} was scanned in DjVu, which can't be read here. Open it on{" "}
+        {council}'s viewer below to see what was asked for.
+      </>
+    );
+  if (reason === "too_large")
+    return (
+      <>
+        The request letter{named} is too large to read here. It is on {council}'s viewer below.
+      </>
+    );
+  return (
+    <>
+      Couldn't read the request letter{named} just now — it is on {council}'s viewer below.
+    </>
+  );
+}
+
 type DecisionOrderState =
   | { phase: "idle" }
   | { phase: "loading" }
   | { phase: "failed" }
-  | { phase: "empty" }
+  | { phase: "empty"; reason: DocumentReason | null; document: string | null }
   | {
       phase: "loaded";
       summary: string | null;
@@ -506,7 +580,12 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
           reasons,
           source: res.source_document ?? null,
         });
-      else setState({ phase: "empty" });
+      else
+        setState({
+          phase: "empty",
+          reason: res.reason ?? null,
+          document: res.source_document ?? null,
+        });
     } catch {
       setState({ phase: "failed" });
     }
@@ -541,8 +620,8 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
         </>
       )}
       {state.phase === "empty" && (
-        <p className="list-note">
-          Couldn't find a readable decision order — see the documents below.
+        <p className="section-note section-note-warn">
+          {unreadableNote(state.reason, state.document, d.authority_short_name)}
         </p>
       )}
       {state.phase === "loaded" && (
@@ -848,12 +927,14 @@ function FurtherInfoSection({
   conditionsLoading,
   askedSummary,
   askedLoading,
+  askedReason,
 }: {
   detail: AppDetail;
   conditions: DecisionConditions | null;
   conditionsLoading: boolean;
   askedSummary: string | null;
   askedLoading: boolean;
+  askedReason: { reason: DocumentReason | null; document: string | null } | null;
 }) {
   // The portal's decision_date is when the request issued only while the file
   // is actually at that stage; on a decided application it is the decision's
@@ -861,18 +942,38 @@ function FurtherInfoSection({
   // on 15 Jul 2022.
   const requested =
     d.further_info_requested_date ?? (conditions?.further_info ? conditions.decision_date : null);
+  /**
+   * Dated rows rather than a sentence.
+   *
+   * This used to read "Meath asked the applicant for more, and has it" — which
+   * says in nine words what "Received · 24 Mar 2020" says exactly, directly
+   * under a timeline that had already given both dates. A list also leaves
+   * room for the second round these files often have: an application can go
+   * out for further information twice, and the register holds one date each
+   * today, so the shape is here even where the data is not yet.
+   */
+  const rounds: Array<{ label: string; date: string | null }> = [
+    ...(requested ? [{ label: "Requested", date: requested }] : []),
+    ...(d.further_info_received_date
+      ? [{ label: "Received", date: d.further_info_received_date }]
+      : []),
+  ];
   return (
     <section aria-labelledby="further-info-h" aria-busy={conditionsLoading || undefined}>
-      <h3 id="further-info-h">Further information requested</h3>
-      <p className="decision-line">
-        {d.further_info_received_date
-          ? `${d.authority_short_name} asked the applicant for more, and has it`
-          : `${d.authority_short_name} has asked the applicant for more before deciding`}
-        {requested && <span className="hint"> · asked {fmtDate(requested)}</span>}
-        {d.further_info_received_date && (
-          <span className="hint"> · answered {fmtDate(d.further_info_received_date)}</span>
+      <h3 id="further-info-h">Further information</h3>
+      <div className="decision-lines">
+        {rounds.map((r) => (
+          <p className="decision-line" key={`${r.label}-${r.date}`}>
+            {r.label}
+            {r.date && <span className="hint"> · {fmtDate(r.date)}</span>}
+          </p>
+        ))}
+        {!d.further_info_received_date && (
+          <p className="decision-line">
+            <span className="hint">Awaiting the applicant's response</span>
+          </p>
         )}
-      </p>
+      </div>
       {askedSummary ? (
         <p className="ai-summary">
           <span className="ai-mark">✦</span> {askedSummary}
@@ -912,8 +1013,14 @@ function FurtherInfoSection({
           letter itself is in the documents section below. */}
       {!conditions && !askedLoading && !askedSummary && (
         <p className="section-note">
-          {d.authority_short_name} publishes the request as a letter on the file rather than as
-          structured text — look for the further-information request in the documents below.
+          {askedReason?.reason && askedReason.reason !== "not_found" ? (
+            unreadableRequestNote(askedReason.reason, askedReason.document, d.authority_short_name)
+          ) : (
+            <>
+              {d.authority_short_name} publishes the request as a letter on the file rather than as
+              structured text — look for it in the documents below.
+            </>
+          )}
         </p>
       )}
     </section>
@@ -1213,10 +1320,19 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
           note, which is where it belongs. */}
       {state.phase === "loaded" && allAtCouncil && (
         <p className="list-note">
-          {mostlyDjvu
-            ? "These were scanned in DjVu, a format browsers can't display."
-            : "These are larger than can be passed through here."}{" "}
-          Each one opens on {d.authority_short_name}'s own viewer.
+          {mostlyDjvu ? (
+            <>
+              These were scanned in DjVu, a format browsers can't display. Open them on{" "}
+              {d.authority_short_name}'s own viewer below and use the <strong>JPEG</strong> link
+              beside each one — the <strong>View</strong> link there serves the DjVu itself and
+              will come up blank.
+            </>
+          ) : (
+            <>
+              These are larger than can be passed through here. Each one opens on{" "}
+              {d.authority_short_name}'s own viewer below.
+            </>
+          )}
         </p>
       )}
       {state.phase === "loaded" && (
@@ -1262,17 +1378,29 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
           })}
         </ul>
       )}
-      {d.scanned_files_url && (
-        <a
-          className="link-btn viewer-link"
-          href={d.scanned_files_url}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open the council's file viewer ↗
-        </a>
-      )}
     </div>
+  );
+}
+
+/**
+ * The way in to the council's own documents, which is not conditional on
+ * anything of ours working.
+ *
+ * It used to sit inside the file list, so a council we hold no listing for —
+ * every Meath application with a lettered reference, until the regex above was
+ * fixed — got a sheet that said "use the portal link above" over no link at
+ * all, and a failed fetch took the link down with it. The list is a
+ * convenience; this is the source, and it is always here.
+ */
+function DocumentSource({ detail: d }: { detail: AppDetail }) {
+  const href = d.scanned_files_url ?? d.portal_url;
+  if (!href) return null;
+  return (
+    <a className="link-btn viewer-link" href={href} target="_blank" rel="noopener noreferrer">
+      {d.scanned_files_url
+        ? `Open ${d.authority_short_name}'s file viewer ↗`
+        : `Open this application on ${d.authority_short_name}'s portal ↗`}
+    </a>
   );
 }
 
@@ -1456,6 +1584,13 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const [refusalLoading, setRefusalLoading] = useState(false);
   const [askedSummary, setAskedSummary] = useState<string | null>(null);
   const [askedLoading, setAskedLoading] = useState(false);
+  /* Why there is no summary, when there is none — the scanned letter can be
+     absent, oversized, or a DjVu the model cannot read, and each of those is
+     something different from "nothing was asked for". */
+  const [askedReason, setAskedReason] = useState<{
+    reason: DocumentReason | null;
+    document: string | null;
+  } | null>(null);
   const [highlights, setHighlights] = useState<ConditionHighlight[] | null>(null);
   const [highlightsLoading, setHighlightsLoading] = useState(false);
   const [enrich, setEnrich] = useState<{
@@ -1553,6 +1688,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     setRefusalLoading(false);
     setAskedSummary(null);
     setAskedLoading(false);
+    setAskedReason(null);
     setHighlights(null);
     setHighlightsLoading(false);
     setEnrich(null);
@@ -1645,7 +1781,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
       api
         .furtherInfoSummary(d.id)
         .then((r) => {
-          if (!cancelled) setAskedSummary(r.summary ?? null);
+          if (cancelled) return;
+          setAskedSummary(r.summary ?? null);
+          if (!r.summary)
+            setAskedReason({ reason: r.reason ?? null, document: r.source_document ?? null });
         })
         .catch(() => {})
         .finally(() => {
@@ -2002,6 +2141,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           conditionsLoading={conditionsLoading}
           askedSummary={askedSummary}
           askedLoading={askedLoading}
+          askedReason={askedReason}
         />
       )}
 
@@ -2115,11 +2255,12 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         )}
         {d.documents.length === 0 && !d.scanned_files_url && !d.files_supported && (
           <p className="list-note">
-            The drawings, forms, reports and decision orders are held on the council's own portal
-            — use the portal link above.
+            We don't hold a document list for this application. The drawings, forms, reports and
+            decision orders are on {d.authority_name}'s own file.
           </p>
         )}
         <ScannedFiles detail={d} />
+        <DocumentSource detail={d} />
       </section>
 
       <PropertyContext

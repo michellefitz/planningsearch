@@ -184,6 +184,34 @@ describe("deriveScannedFilesUrl", () => {
     );
   });
 
+  /**
+   * Every Meath application before about 2020 carries its electoral-area
+   * prefix in the reference. Read as digits only, the id never matched, and
+   * the entire pre-2020 Meath register came back with no documents — and a
+   * documents section telling the reader to use a portal link that was not
+   * there. RA171525 is Roestown, Dunshaughlin: 26 documents on the council's
+   * listing, none of which reached the sheet.
+   */
+  it("maps a Meath reference that carries an electoral-area prefix", () => {
+    for (const ref of ["RA171525", "AA170842", "LB180231", "KA160907", "NA190014", "TA171102"]) {
+      expect(
+        deriveScannedFilesUrl("meath", `http://www.eplanning.ie/MeathCC/AppFileRefDetails/${ref}/0`)
+      ).toBe(`https://idocswebdpss.meathcoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id=${ref}`);
+    }
+  });
+
+  it("still maps the all-numeric references Meath moved to", () => {
+    expect(
+      deriveScannedFilesUrl("meath", "http://www.eplanning.ie/MeathCC/AppFileRefDetails/22407/0")
+    ).toBe("https://idocswebdpss.meathcoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id=22407");
+  });
+
+  it("takes the id and not the segment after it", () => {
+    expect(
+      deriveScannedFilesUrl("wicklow", "https://www.eplanning.ie/WicklowCC/AppFileRefDetails/2660717/0")
+    ).toContain("id=2660717");
+  });
+
   it("returns null for other authorities and unknown URL shapes", () => {
     expect(deriveScannedFilesUrl("dublin-city", "https://planning.agileapplications.ie/dublincity/x/1")).toBeNull();
     expect(deriveScannedFilesUrl("fingal", null, "F25A/0101")).toBeNull();

@@ -27,6 +27,19 @@ const IDOCS_HOST: Record<string, string> = {
   wicklow: "https://WicklowCoCo.ePlanning.ie/idocswebDPSS",
 };
 
+/**
+ * The id in .../AppFileRefDetails/{id}/0.
+ *
+ * It used to be read as `(\d+)`, which is right for Kildare and Wicklow and
+ * wrong for Meath: every Meath application before about 2020 carries its
+ * electoral-area prefix in the reference — RA171525, AA170842, LB..., KA...,
+ * NA..., TA... — so the match failed and the whole pre-2020 Meath register
+ * came back with no documents at all, and a sheet saying "use the portal link
+ * above" above no link. The listing accepts the lettered id perfectly well;
+ * only this regex did not.
+ */
+const EPLANNING_ID_RE = /AppFileRefDetails\/([^/?#]+)/i;
+
 export function deriveScannedFilesUrl(
   authorityId: string,
   sourceUrl: string | null | undefined,
@@ -44,7 +57,7 @@ export function deriveScannedFilesUrl(
   if (!sourceUrl) return null;
   const idocs = IDOCS_HOST[authorityId];
   if (idocs) {
-    const m = sourceUrl.match(/AppFileRefDetails\/(\d+)/i);
+    const m = sourceUrl.match(EPLANNING_ID_RE);
     if (m) return `${idocs}/listFiles.aspx?catalog=planning&id=${m[1]}`;
   }
   return null;
@@ -324,7 +337,7 @@ export function parseEplanningRelated(html: string, selfId?: string | null): Epl
     if (/<th[\s>]/i.test(body)) continue; // header row
     const cells = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((c) => c[1]);
     if (cells.length < 8) continue;
-    const eplanningId = cells[0].match(/AppFileRefDetails\/(\d+)/i)?.[1];
+    const eplanningId = cells[0].match(EPLANNING_ID_RE)?.[1];
     if (!eplanningId || eplanningId === selfId || seen.has(eplanningId)) continue;
     seen.add(eplanningId);
     const text = (i: number): string | null => decodeEntities(stripTags(cells[i] ?? "")).trim() || null;
@@ -346,7 +359,7 @@ export function parseEplanningRelated(html: string, selfId?: string | null): Epl
 /** On-demand fetch of the "Related Applications" from an eplanning detail page. */
 export async function fetchEplanningRelated(sourceUrl: string): Promise<EplanningRelated[]> {
   if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return [];
-  const selfId = sourceUrl.match(/AppFileRefDetails\/(\d+)/i)?.[1] ?? null;
+  const selfId = sourceUrl.match(EPLANNING_ID_RE)?.[1] ?? null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {

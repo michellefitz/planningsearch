@@ -890,7 +890,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
         status: match?.status ?? normalizeStatus(r.statusText, expandDecisionCode(r.decisionCode)),
         // Keep the council slug from the source_url; only swap the id.
         eplanning_url: row.source_url!.replace(
-          /AppFileRefDetails\/\d+(\/\d*)?.*/i,
+          /AppFileRefDetails\/[^/?#]+(\/\d*)?.*/i,
           `AppFileRefDetails/${r.eplanningId}/0`
         ),
       };
