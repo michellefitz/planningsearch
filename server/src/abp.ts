@@ -109,11 +109,29 @@ const LABELLED_RE =
  * hunting for known labels keeps this resilient to the site's wording and
  * markup changing — whatever facts the page shows, we surface.
  */
+/**
+ * The Commission's own summary block.
+ *
+ * Its case pages lay each field out as a Foundation grid row — a `case-sub`
+ * paragraph in one cell and a `case-summary` paragraph in the next — so the
+ * label and value are cousins rather than siblings and none of the generic
+ * patterns above see them. Nothing did, which is how a case whose page reads
+ * "Decision: Grant Permissions with Conditions" came back with no fields at
+ * all, and a summary written from the inspector's report went unchallenged
+ * when it said the refusal stood.
+ *
+ * The gap between the two is bounded so a label cannot pair with a value from
+ * the row below it.
+ */
+const CASE_FIELD_RE =
+  /<p[^>]*class="[^"]*\bcase-sub\b[^"]*"[^>]*>([\s\S]*?)<\/p>[\s\S]{0,400}?<p[^>]*class="[^"]*\bcase-summary\b[^"]*"[^>]*>([\s\S]*?)<\/p>/gi;
+
 export function parseAppealCaseFields(html: string): AppealCaseField[] {
   const out: AppealCaseField[] = [];
   const seen = new Set<string>();
 
   for (const m of html.matchAll(DL_RE)) pushPair(out, seen, m[1], m[2]);
+  for (const m of html.matchAll(CASE_FIELD_RE)) pushPair(out, seen, m[1], m[2]);
   for (const m of html.matchAll(LABELLED_RE)) pushPair(out, seen, m[2], m[4]);
   for (const rowMatch of html.matchAll(ROW_RE)) {
     const cells = [...rowMatch[1].matchAll(CELL_RE)].map((c) => c[2]);

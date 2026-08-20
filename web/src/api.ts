@@ -141,6 +141,20 @@ export interface DecisionConditions {
   further_info?: boolean;
 }
 
+/**
+ * What an appeal came to. `null` where the register's code says only that
+ * something changed — see api/_conditions/appeal.mjs for why MODIFIED cannot
+ * be read as an outcome.
+ */
+export type AppealOutcome =
+  | "granted"
+  | "refused"
+  | "withdrawn"
+  | "dismissed"
+  | "invalid"
+  | "other"
+  | null;
+
 /** Why a scanned council document produced nothing to read. */
 export type DocumentReason =
   | "not_found"
@@ -432,6 +446,8 @@ export const api = {
       lodged_date?: string | null;
       decision?: string | null;
       decision_date?: string | null;
+      decision_label?: string | null;
+      outcome?: AppealOutcome;
       fields?: Array<{ label: string; value: string }> | null;
       documents?: Array<{ title: string; url: string }> | null;
     }>(`/api/applications/${id}/appeal`, T.portal),
@@ -440,6 +456,14 @@ export const api = {
       supported: boolean;
       summary?: string | null;
       based_on_document?: string | null;
+      /** The Commission's own wording, and what it resolves to. */
+      decision?: string | null;
+      decision_label?: string | null;
+      outcome?: AppealOutcome;
+      /** The schedule attached to a grant on appeal — what the applicant has
+       *  to build to, and often the changes that turned a refusal around. */
+      conditions?: Array<{ number: number | null; title: string; text: string }>;
+      reasons?: Array<{ number: number | null; text: string }>;
     }>(`/api/applications/${id}/appeal-summary`, T.reading),
   decisionSummary: (id: number) =>
     getJson<{

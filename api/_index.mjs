@@ -21,6 +21,7 @@ import {
   furtherInfoSummary,
 } from "./_conditions/further-info.mjs";
 import { decisionStage, isFurtherInfoRequest, realDecision } from "./_conditions/decision.mjs";
+import { appealOutcome, bestAppealDecision, contradictsOutcome } from "./_conditions/appeal.mjs";
 import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached, versionedKind } from "./_ai/store.mjs";
 import { descriptionKey } from "./_ai/descriptions.mjs";
 import { idfOver, queryHouseNumbers, relevanceScore } from "./_search/relevance.mjs";
@@ -279,9 +280,27 @@ const ABP_CELL_RE = /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi;
 const ABP_LABELLED_RE =
   /<(\w+)[^>]*class="[^"]*\b(?:label|term|key|field-name)\b[^"]*"[^>]*>([\s\S]*?)<\/\1>\s*<(\w+)[^>]*class="[^"]*\b(?:value|desc|detail|field-value)\b[^"]*"[^>]*>([\s\S]*?)<\/\3>/gi;
 
+/**
+ * The Commission's own summary block.
+ *
+ * Its case pages lay each field out as a Foundation grid row — a `case-sub`
+ * paragraph in one cell and a `case-summary` paragraph in the next — so the
+ * label and value are cousins rather than siblings and none of the generic
+ * patterns above see them. Nothing did, which is how a case whose page reads
+ * "Decision: Grant Permissions with Conditions" came back with no fields at
+ * all, and a summary written from the inspector's report went unchallenged
+ * when it said the refusal stood.
+ *
+ * The gap between the two is bounded so a label cannot pair with a value from
+ * the row below it.
+ */
+const ABP_CASE_FIELD_RE =
+  /<p[^>]*class="[^"]*\bcase-sub\b[^"]*"[^>]*>([\s\S]*?)<\/p>[\s\S]{0,400}?<p[^>]*class="[^"]*\bcase-summary\b[^"]*"[^>]*>([\s\S]*?)<\/p>/gi;
+
 function parseAppealCaseFields(html) {
   const out = [];
   const seen = new Set();
+  for (const m of html.matchAll(ABP_CASE_FIELD_RE)) abpPushPair(out, seen, m[1], m[2]);
   for (const m of html.matchAll(ABP_DL_RE)) abpPushPair(out, seen, m[1], m[2]);
   for (const m of html.matchAll(ABP_LABELLED_RE)) abpPushPair(out, seen, m[2], m[4]);
   for (const rowMatch of html.matchAll(ABP_ROW_RE)) {
@@ -1258,7 +1277,8 @@ const APPEAL_SUMMARY_PROMPT =
   "who appealed and what was at stake, then — if the appeal has been decided — what the Commission " +
   "decided and the main practical reasons. If it is not yet decided, say it is still under " +
   "consideration and what is being contested. Name real issues (overlooking neighbours, traffic, " +
-  "height and scale, drainage…), never policy or plan citations. " +
+  "height and scale, drainage…), never policy or plan citations. Break it into two or three short " +
+  "paragraphs separated by a blank line — a single block this long goes unread. " +
   "FORMAT: plain prose only — no Markdown, asterisks, bold, headings, bullet points, section labels " +
   "or a title. Do not restate the address as a heading; begin directly with the summary. " +
   "Use only what the material states — never invent details. " +
@@ -1330,6 +1350,70 @@ const ovClip = (v, max) => String(v ?? "").trim().slice(0, max);
 const ovNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 
 /**
+ * An appeal order, read the way a council decision order is.
+ *
+ * The Commission's order carries the same two things a council's does — what
+ * was decided, and the schedule the applicant is now bound by — and when an
+ * appeal overturns a refusal that schedule is the most useful thing on the
+ * file: it is the list of changes that turned a no into a yes. It was
+ * invisible here, because an appeal produced a paragraph of prose and nothing
+ * else.
+ *
+ * The recorded outcome is passed in and the model is told not to argue with
+ * it. That is belt; `contradictsOutcome` is braces.
+ */
+const APPEAL_EXTRACT_PROMPT =
+  "You read an order of An Coimisiún Pleanála — the national body that decides Irish planning " +
+  "appeals — and extract it as JSON for a public planning viewer. Return ONLY a JSON object, no " +
+  "prose and no Markdown fences, with exactly this shape:\n" +
+  '{"summary": string, "conditions": [{"number": number|null, "title": string, "text": string}], ' +
+  '"reasons": [{"number": number|null, "text": string}]}\n' +
+  "- summary: plain English for a regular person, as two or three short paragraphs separated by a " +
+  "blank line — who appealed and what was at stake, then the case each side made, then what the " +
+  "Commission decided and the real reasons: overlooking, traffic, height and scale, drainage, " +
+  "rural housing need. Never policy or plan citations. The paragraph breaks matter — this is the " +
+  "longest summary in the app and a single block of it goes unread.\n" +
+  "- conditions: every condition attached to a grant. number = its number; title = a short (max 8 " +
+  'words) plain-English label of what it controls ("Construction hours", "Materials and finishes"); ' +
+  "text = the condition wording, lightly trimmed.\n" +
+  "- reasons: every reason for refusal (number + wording).\n" +
+  "THE OUTCOME IS GIVEN TO YOU and is not yours to determine. The inspector's recommendation is " +
+  "not the decision — the Commission departs from it often — so if the document you are reading " +
+  "is a report rather than the order, do not report its recommendation as the outcome. Never write " +
+  "that a refusal stood when the outcome given says permission was granted, or the reverse.\n" +
+  "If granted, reasons is []. If refused, conditions is []. Use only what the document states.";
+
+const appealCacheKind = () => versionedKind(AI_CACHE_KINDS.APPEAL, APPEAL_EXTRACT_PROMPT);
+
+async function extractAppealOrder(pages, context) {
+  if (!pages?.length) return null;
+  const raw = await callClaude(
+    APPEAL_EXTRACT_PROMPT,
+    [...pages, { type: "text", text: `${context}\n\nExtract this appeal order as JSON.` }],
+    3000,
+    45000
+  );
+  const parsed = raw ? parseJsonLoose(raw) : null;
+  if (!parsed || typeof parsed !== "object") return null;
+  const summaryRaw = typeof parsed.summary === "string" ? parsed.summary : null;
+  const summary = summaryRaw ? isUsableSummary(sanitiseSummary(summaryRaw)) : null;
+  const conditions = Array.isArray(parsed.conditions)
+    ? parsed.conditions
+        .map((c) => ({ number: ovNum((c ?? {}).number), title: ovClip((c ?? {}).title, 80), text: ovClip((c ?? {}).text, 1200) }))
+        .filter((c) => c.title || c.text)
+        .slice(0, 40)
+    : [];
+  const reasons = Array.isArray(parsed.reasons)
+    ? parsed.reasons
+        .map((r) => ({ number: ovNum((r ?? {}).number), text: ovClip((r ?? {}).text, 1200) }))
+        .filter((r) => r.text)
+        .slice(0, 40)
+    : [];
+  if (!summary && !conditions.length && !reasons.length) return null;
+  return { summary, conditions, reasons };
+}
+
+/**
  * `pages` is what the model is given to look at: one PDF block for a modern
  * order, or one image block per page for an older scan that had to be decoded
  * out of DjVu first. Everything downstream is the same either way — the model
@@ -1399,13 +1483,50 @@ function findDecisionDocIndex(files, decision) {
   return best;
 }
 
-const DECISION_DOC_RE = /board\s*(order|direction)|inspector|decision|determination/i;
 const PDF_URL_RE = /\.pdf($|[?#])/i;
+
+/**
+ * Which document on an appeal file says what was decided.
+ *
+ * The inspector recommends and the Commission decides, and the two disagree
+ * often enough that the difference is the whole point of reading the right
+ * one. This used to take the first title matching any of order, direction,
+ * inspector or decision — and the Commission lists the inspector's report
+ * first, so the recommendation won every time. On case 322612 the inspector
+ * recommended refusal, the Commission granted with conditions, and the sheet
+ * told the reader the refusal had been upheld.
+ *
+ * Scored rather than first-matched, so the Order wins wherever it appears in
+ * the list. The Direction (the members' vote) comes next, and the inspector's
+ * report is a distant last: it is the fullest account of the case and the
+ * wrong account of the outcome.
+ */
+const APPEAL_DOC_SCORES = [
+  [/\border\b/i, 10],
+  [/\bdirection\b/i, 6],
+  [/\bdecision|determination\b/i, 5],
+  [/\binspector/i, 2],
+];
+
+function appealDocScore(title) {
+  const t = String(title ?? "");
+  for (const [re, score] of APPEAL_DOC_SCORES) if (re.test(t)) return score;
+  return 0;
+}
 
 function pickAppealDocument(documents) {
   const pdfs = (documents ?? []).filter((d) => PDF_URL_RE.test(d.url));
   if (!pdfs.length) return null;
-  return pdfs.find((d) => DECISION_DOC_RE.test(d.title)) ?? pdfs[0];
+  let best = null;
+  let bestScore = -1;
+  for (const doc of pdfs) {
+    const score = appealDocScore(doc.title);
+    if (score > bestScore) {
+      bestScore = score;
+      best = doc;
+    }
+  }
+  return best ?? pdfs[0];
 }
 
 async function fetchAppealDocumentBase64(url, maxBytes = 12_000_000, trace) {
@@ -3170,7 +3291,12 @@ const readableReason = (doc, content) => {
       reference: app.appeal_reference ?? null,
       status: app.appeal_status ?? null,
       lodged_date: app.appeal_lodged_date ?? null,
-      decision: app.appeal_decision ?? null,
+      // The Commission's own word for what it decided, where its case page
+      // gave us one — the register's code is coarser and, for MODIFIED,
+      // ambiguous enough that it must not be stated as an outcome.
+      decision: bestAppealDecision(details?.fields, app.appeal_decision),
+      decision_label: appealOutcome(bestAppealDecision(details?.fields, app.appeal_decision)).label,
+      outcome: appealOutcome(bestAppealDecision(details?.fields, app.appeal_decision)).kind,
       decision_date: app.appeal_decision_date ?? null,
       fields: details?.fields ?? null,
       documents: details?.documents ?? null,
@@ -3187,8 +3313,11 @@ const readableReason = (doc, content) => {
     if (!debug) {
       // An appeal PDF is the priciest read in the app — never repeat it for a
       // case the Commission has already decided.
+      // Versioned on the prompt: the summaries written before this change were
+      // read off the inspector's report and some of them say the opposite of
+      // what was decided. They must not survive it.
       const stored = await aiCacheGet(
-        AI_CACHE_KINDS.APPEAL,
+        appealCacheKind(),
         app.authority_id,
         app.planning_reference
       );
@@ -3200,13 +3329,20 @@ const readableReason = (doc, content) => {
 
     const trace = debug ? [] : undefined;
     const details = await fetchAppealCase(caseUrl, trace);
+    // The Commission's own wording where its case page gave us one, the
+    // council's register code otherwise — and the outcome stated first, so it
+    // frames everything the model reads rather than competing with it.
+    const decisionText = bestAppealDecision(details?.fields, app.appeal_decision);
+    const outcome = appealOutcome(decisionText);
     const context = [
+      outcome.kind
+        ? `THE COMMISSION'S DECISION: ${decisionText} (${outcome.label})${app.appeal_decision_date ? ` on ${app.appeal_decision_date}` : ""}. This is the outcome. Do not contradict it.`
+        : decisionText
+          ? `An Coimisiún Pleanála decision: ${decisionText}${app.appeal_decision_date ? ` on ${app.appeal_decision_date}` : ""}`
+          : null,
       app.description ? `Development: ${app.description}` : null,
       `Council decision: ${app.decision ?? "unknown"}`,
       app.appeal_status ? `Appeal status: ${app.appeal_status}` : null,
-      app.appeal_decision
-        ? `An Coimisiún Pleanála decision: ${app.appeal_decision}${app.appeal_decision_date ? ` on ${app.appeal_decision_date}` : ""}`
-        : null,
       ...(details?.fields ?? []).map((f) => `${f.label}: ${f.value}`),
     ]
       .filter(Boolean)
@@ -3244,14 +3380,61 @@ const readableReason = (doc, content) => {
       }
       return send(res, 200, { supported: true, summary: null, based_on_document: null });
     }
-    const summary = await summariseAppeal(context, pdf);
-    if (debug) return send(res, 200, { case_url: caseUrl, based_on_document: pdf ? doc?.title : null, summary, trace });
-    if (!summary) return send(res, 200, { supported: true, summary: null, based_on_document: null });
-    const result = { summary, based_on_document: pdf ? doc?.title ?? null : null };
+    /**
+     * With the order in hand, read it the way a council decision order is
+     * read: the narrative and the schedule of conditions in one pass. Without
+     * one, the old prose-only path still applies to whatever the case record
+     * carries.
+     */
+    const extracted = pdf
+      ? await extractAppealOrder(
+          [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf } }],
+          context
+        )
+      : null;
+    let summary = extracted?.summary ?? (await summariseAppeal(context, pdf));
+    let conditions = extracted?.conditions ?? [];
+    let reasons = extracted?.reasons ?? [];
+    /**
+     * The last line of defence, and the one that would have caught case
+     * 322612: a summary that says the opposite of the decision printed beside
+     * it is worse than no summary, because the reader has no way to know which
+     * half to believe. Dropped rather than shown.
+     */
+    const contradicted = contradictsOutcome(summary, outcome.kind);
+    if (contradicted) summary = null;
+    // Conditions belong to a grant and reasons to a refusal; anything else is
+    // the model having filled in a field it should have left empty.
+    if (outcome.kind === "granted") reasons = [];
+    if (outcome.kind === "refused") conditions = [];
+    if (debug)
+      return send(res, 200, {
+        case_url: caseUrl,
+        based_on_document: pdf ? doc?.title : null,
+        decision: decisionText,
+        outcome,
+        contradicted,
+        summary,
+        conditions,
+        reasons,
+        fields: details?.fields ?? [],
+        trace,
+      });
+    const result = {
+      summary,
+      based_on_document: summary && pdf ? doc?.title ?? null : null,
+      decision: decisionText,
+      decision_label: outcome.label,
+      outcome: outcome.kind,
+      conditions,
+      reasons,
+    };
+    if (!summary && !conditions.length && !reasons.length)
+      return send(res, 200, { supported: true, ...result });
     APPEAL_SUMMARY_CACHE.set(app.id, result);
     // Only once the Commission has decided: a live case still changes.
     if (app.appeal_decision) {
-      await aiCachePut(AI_CACHE_KINDS.APPEAL, app.authority_id, app.planning_reference, result);
+      await aiCachePut(appealCacheKind(), app.authority_id, app.planning_reference, result);
     }
     return send(res, 200, { supported: true, ...result });
   }

@@ -3858,6 +3858,15 @@ a.pill:hover {
   margin-top: 0.45rem;
   font-size: 0.78rem;
 }
+/* A summary long enough to have paragraphs — the appeal narratives. The gap is
+   the same measure the line height sets, so the breaks read as pauses rather
+   than as separate boxes. */
+.ai-summary p {
+  margin: 0;
+}
+.ai-summary p + p {
+  margin-top: 0.7rem;
+}
 
 /* Long planning descriptions clamp to ~6 lines until expanded */
 .detail-desc.clamped {
