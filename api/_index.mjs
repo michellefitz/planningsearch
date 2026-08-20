@@ -1386,6 +1386,8 @@ const APPEAL_EXTRACT_PROMPT =
   "If granted, reasons is []. If refused, conditions is []. Use only what the document states.";
 
 const appealCacheKind = () => versionedKind(AI_CACHE_KINDS.APPEAL, APPEAL_EXTRACT_PROMPT);
+const decisionCacheKind = () =>
+  versionedKind(AI_CACHE_KINDS.DECISION, DECISION_EXTRACT_PROMPT + HIGHLIGHTS_PROMPT);
 
 async function extractAppealOrder(pages, context) {
   if (!pages?.length) return null;
@@ -3526,8 +3528,11 @@ const readableReason = (doc, content) => {
       // A 4-page scanned order is ~8k input tokens and this fires
       // automatically on every eplanning refusal — by far the most expensive
       // thing a single page view can trigger.
+      // Versioned on both prompts that shape the stored payload — it now
+      // carries the notable conditions as well as the extract, and entries
+      // written before that must not keep being served without them.
       const stored = await aiCacheGet(
-        AI_CACHE_KINDS.DECISION,
+        decisionCacheKind(),
         app.authority_id,
         app.planning_reference
       );
@@ -3549,7 +3554,7 @@ const readableReason = (doc, content) => {
         trace,
       });
     }
-    const empty = { supported: true, summary: null, conditions: [], reasons: [], source_document: null };
+    const empty = { supported: true, summary: null, conditions: [], reasons: [], highlights: null, source_document: null };
     if (!files || index < 0) return send(res, 200, { ...empty, reason: "not_found" });
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000, trace);
     let source_document = files[index].title;
@@ -3569,9 +3574,30 @@ const readableReason = (doc, content) => {
     }
     const extract = await extractDecisionDocument(content, app.decision);
     if (!extract) return send(res, 200, { ...empty, source_document, reason: "unavailable" });
-    const result = { ...extract, source_document };
+    /**
+     * The same "notable conditions" the other four councils get.
+     *
+     * It was only ever built for the councils with a conditions API, because
+     * that is where the conditions came from — so Kildare, Meath and Wicklow
+     * showed a bare list and the other four showed the list with the ones that
+     * bind pulled out on top. Same app, different answer, for no reason the
+     * reader could see. The conditions have just been extracted from the
+     * order; they go through the same reader as everyone else's.
+     */
+    const highlights = extract.conditions.length
+      ? await conditionHighlights(
+          extract.conditions.map((c, i) => ({
+            code: "C",
+            order: c.number ?? i + 1,
+            title: c.title,
+            text: c.text,
+          })),
+          callClaude
+        )
+      : null;
+    const result = { ...extract, highlights, source_document };
     DECISION_SUMMARY_CACHE.set(app.id, result);
-    await aiCachePut(AI_CACHE_KINDS.DECISION, app.authority_id, app.planning_reference, result);
+    await aiCachePut(decisionCacheKind(), app.authority_id, app.planning_reference, result);
     return send(res, 200, { supported: true, ...result });
   }
 

@@ -479,6 +479,9 @@ export const api = {
       source_document?: string | null;
       conditions?: Array<{ number: number | null; title: string; text: string }>;
       reasons?: Array<{ number: number | null; text: string }>;
+      /** The same notable-conditions read the councils with a conditions API
+       *  get — these come from the order we just extracted instead. */
+      highlights?: ConditionHighlight[] | null;
       /** Why there is nothing to show — never absent conditions, always a fact
        *  about the document. "djvu" is much the commonest on the older files. */
       reason?: DocumentReason;

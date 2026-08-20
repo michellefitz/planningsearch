@@ -626,6 +626,7 @@ type DecisionOrderState =
       summary: string | null;
       conditions: Array<{ number: number | null; title: string; text: string }>;
       reasons: Array<{ number: number | null; text: string }>;
+      highlights: ConditionHighlight[] | null;
       source: string | null;
     };
 
@@ -655,6 +656,7 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
           summary: res.summary ?? null,
           conditions,
           reasons,
+          highlights: res.highlights ?? null,
           source: res.source_document ?? null,
         });
       else
@@ -721,6 +723,17 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
                 </ul>
               </div>
             )
+          )}
+          {/* The same box the councils with a conditions API get. It only ever
+              existed on those four because that is where conditions came from;
+              these are read out of the order instead, and there is no reason
+              the reader should be able to tell which. */}
+          {state.conditions.length > 0 && (
+            <ConditionHighlights
+              highlights={state.highlights}
+              loading={false}
+              total={state.conditions.length}
+            />
           )}
           {state.conditions.length > 0 && (
             <div className="condition-group">
