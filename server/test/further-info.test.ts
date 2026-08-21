@@ -5,6 +5,7 @@ import {
   RETURNED_POST_RE,
   findFurtherInfoDocIndex,
   furtherInfoItems,
+  titleDate,
   furtherInfoSummary,
   furtherInfoUserMsg,
   trimToSummary,
@@ -394,5 +395,97 @@ describe("findFurtherInfoDocIndex on a file list carrying returned post", () => 
     }
     // And does not fire on wording that merely contains one of the words.
     expect(RETURNED_POST_RE.test("F.I. Request Letter — Further Information")).toBe(false);
+  });
+});
+
+/**
+ * Dublin City PWSDZ4276/23 — Irish Glass Bottle & Fabrizia Sites, Poolbeg
+ * West. The further-information panel showed two dates and no summary.
+ *
+ * Dublin City names nothing "further information". Its request is filed as a
+ * "Decision Notice", which is also its name for the actual decision — the only
+ * thing separating them is the date. So the matcher now takes the register's
+ * own further_info_requested_date, which is a stronger signal than any
+ * council's vocabulary and works for all seven.
+ *
+ * Titles are the real ones, read live on 2026-08-21. The request is index 9
+ * here: text extracted from it is dated 04-Oct-2023, carries the form code
+ * NOT1adinfo, and reads "the application shall be declared to be withdrawn if
+ * the request for FURTHER INFORMATION is not complied with".
+ */
+describe("findFurtherInfoDocIndex on Dublin City", () => {
+  const DUBLIN_CITY = [
+    "Managers Order Published — 2024-01-02",
+    "Decision Notices — 2023-12-18",
+    "Departmental Report Published — 2023-12-18",
+    "Planner's Report Published — 2023-12-18",
+    "Additional Info Response Correspondence — 2023-11-24",
+    "Additional Info Response Maps/drawings — 2023-11-24",
+    "Managers Order Published — 2023-10-10",
+    "Managers Order Published — 2023-10-06",
+    "Managers Order Published — 2023-10-05",
+    "Decision Notices — 2023-10-04",
+    "Planner's Report Published — 2023-10-04",
+    "Comments on application — 2023-09-05",
+    "Site Notice — 2023-08-09",
+  ].map((title) => ({ title }));
+
+  const REQUESTED = "2023-10-03";
+
+  it("finds the request the council never labelled as one", () => {
+    expect(findFurtherInfoDocIndex(DUBLIN_CITY, REQUESTED)).toBe(9);
+  });
+
+  it("does not mistake the actual decision for the request", () => {
+    // "Decision Notices" is both. Only the date separates them.
+    const picked = findFurtherInfoDocIndex(DUBLIN_CITY, REQUESTED);
+    expect(DUBLIN_CITY[picked].title).toContain("2023-10-04");
+    expect(DUBLIN_CITY[picked].title).not.toContain("2023-12-18");
+  });
+
+  it("prefers the letter to the internal order filed days either side", () => {
+    // Three Managers Orders sit inside the same window.
+    expect(DUBLIN_CITY[findFurtherInfoDocIndex(DUBLIN_CITY, REQUESTED)].title).not.toMatch(
+      /Managers Order/
+    );
+  });
+
+  it("never takes a planner's report, dated the very same day", () => {
+    expect(DUBLIN_CITY[findFurtherInfoDocIndex(DUBLIN_CITY, REQUESTED)].title).not.toMatch(
+      /Report/i
+    );
+  });
+
+  it("claims nothing when the register gives no date to go on", () => {
+    // Without the date there is no way to tell this council's request from its
+    // decision, and guessing would put the wrong letter under the summary.
+    expect(findFurtherInfoDocIndex(DUBLIN_CITY, null)).toBe(-1);
+  });
+
+  it("ignores a document dated far from the request", () => {
+    const far = [{ title: "Decision Notices — 2023-12-18" }];
+    expect(findFurtherInfoDocIndex(far, REQUESTED)).toBe(-1);
+  });
+});
+
+describe("titleDate", () => {
+  it("reads the three ways councils write a date", () => {
+    expect(titleDate("Decision Notices — 2023-10-04")).toBe("2023-10-04");
+    expect(titleDate("Notification of Decision — 11/03/2026")).toBe("2026-03-11");
+    expect(titleDate("Notification of Decision — 10.06.2026")).toBe("2026-06-10");
+  });
+
+  it("reads day before month, as every Irish register writes it", () => {
+    expect(titleDate("F.I. Request Letter — 04/10/2023")).toBe("2023-10-04");
+  });
+
+  it("expands a two-digit year", () => {
+    expect(titleDate("F.I. Request Letter — 16/06/26")).toBe("2026-06-16");
+  });
+
+  it("returns null rather than guessing", () => {
+    expect(titleDate("F.I. Request Letter — Further Information")).toBeNull();
+    expect(titleDate("Managers Order — 45/13/2023")).toBeNull();
+    expect(titleDate(null)).toBeNull();
   });
 });

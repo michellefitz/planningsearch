@@ -87,6 +87,60 @@ export const RETURNED_POST_RE = /returned|gone[\s-]?away|undelivered|not\s+calle
 const INTERNAL_ORDER_RE = /chief executive|executive'?s? order|manager'?s? order|\border\b/i;
 
 /**
+ * The date a listing prints beside a document, as an ISO day.
+ *
+ * Councils write it three ways — Dublin City "2023-10-04", Kildare and Meath
+ * "10.06.2026", South Dublin "11/03/2026" — and day comes before month in all
+ * of the non-ISO ones. Returns null rather than guessing when it cannot tell.
+ */
+const ISO_DATE_RE = /\b(\d{4})-(\d{2})-(\d{2})\b/;
+const DMY_DATE_RE = /\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})\b/;
+
+export function titleDate(title) {
+  const t = String(title ?? "");
+  const iso = ISO_DATE_RE.exec(t);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = DMY_DATE_RE.exec(t);
+  if (!dmy) return null;
+  const day = Number(dmy[1]);
+  const month = Number(dmy[2]);
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+  const year = dmy[3].length === 2 ? 2000 + Number(dmy[3]) : Number(dmy[3]);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * How far a document's date may sit from the register's request date and still
+ * be the request. Dublin City's letter is dated the day after the register's
+ * date; a few days either way covers a council that stamps the order and posts
+ * the letter in different weeks, without reaching the decision months later.
+ */
+const REQUEST_DATE_WINDOW_DAYS = 10;
+
+function nearRequestDate(title, requestedDate) {
+  if (!requestedDate) return false;
+  const date = titleDate(title);
+  if (!date) return false;
+  const gap = Math.abs(Date.parse(`${date}T00:00:00Z`) - Date.parse(`${requestedDate}T00:00:00Z`));
+  return Number.isFinite(gap) && gap <= REQUEST_DATE_WINDOW_DAYS * 86_400_000;
+}
+
+/**
+ * A document that could be the letter to the applicant, by type rather than by
+ * the words "further information".
+ *
+ * Needed because Dublin City names nothing that way: its request is filed as a
+ * "Decision Notice", which is also its name for the actual decision. Only the
+ * date tells them apart, so this widens the candidates and the date narrows
+ * them again.
+ */
+const NOTICE_DOC_RE =
+  /decision\s+notice|notification|manager'?s?\s+order|chief\s+executive'?s?\s+order|\border\b|letter/i;
+/** An internal report is never the letter that went to the applicant, and
+ *  Dublin City files a Planner's Report on the same day as the request. */
+const INTERNAL_REPORT_RE = /\breports?\b|assessment|checklist|inspection/i;
+
+/**
  * Bumped when the rules above change which document gets read.
  *
  * The cached summary is keyed on the prompt, which is right while the prompt
@@ -98,16 +152,33 @@ const INTERNAL_ORDER_RE = /chief executive|executive'?s? order|manager'?s? order
  * 2 — returned post excluded, and the letter preferred to the order that
  *     authorised it.
  */
-export const FI_SELECTION_VERSION = 2;
+export const FI_SELECTION_VERSION = 3;
 
-export function findFurtherInfoDocIndex(files) {
+/**
+ * @param files    the council's document listing
+ * @param requestedDate  the register's further_info_requested_date, when it
+ *   has one. Much the strongest signal available: it is the council's own
+ *   record of when it asked, and every listing prints a date beside each
+ *   document. Title vocabulary alone cannot separate Dublin City's request
+ *   from Dublin City's decision — both are "Decision Notices".
+ */
+export function findFurtherInfoDocIndex(files, requestedDate = null) {
   let best = -1;
   let bestScore = 0;
   (files ?? []).forEach((f, i) => {
     const t = String(f?.title ?? "");
-    if (!FI_DOC_RE.test(t) || FI_NOT_REQUEST_RE.test(t) || FI_NOTICE_RE.test(t)) return;
+    const dated = nearRequestDate(t, requestedDate);
+    // Two ways in: the title says so, or the date says so and the title is at
+    // least the kind of document a council sends an applicant.
+    const named = FI_DOC_RE.test(t);
+    if (!named && !(dated && NOTICE_DOC_RE.test(t))) return;
+    if (FI_NOT_REQUEST_RE.test(t) || FI_NOTICE_RE.test(t)) return;
     if (RETURNED_POST_RE.test(t)) return;
+    // An internal report is not the letter, and Dublin City files a Planner's
+    // Report on the very same day as the request.
+    if (!named && INTERNAL_REPORT_RE.test(t)) return;
     let score = 1;
+    if (dated) score += 5;
     if (/request/i.test(t)) score += 3;
     if (/letter/i.test(t)) score += 1;
     // Names the thing itself, not the order authorising it. Enough to settle a
