@@ -3429,11 +3429,16 @@ const readableReason = (doc, content) => {
     if (stored !== undefined)
       return send(res, 200, {
         supported: true,
-        ...(await withDocumentIndex(app, stored, findFurtherInfoDocIndex)),
+        ...(await withDocumentIndex(app, stored, (fs) =>
+          findFurtherInfoDocIndex(fs, app.further_info_requested_date)
+        )),
       });
     if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
     const files = await fetchScannedFileList(listUrl);
-    const index = files ? findFurtherInfoDocIndex(files) : -1;
+    // The register's own record of when it asked — on Dublin City that is the
+    // only thing separating the request from the decision, since both are
+    // filed as "Decision Notices".
+    const index = files ? findFurtherInfoDocIndex(files, app.further_info_requested_date) : -1;
     const empty = { supported: true, summary: null, source_document: null, source_document_index: null };
     if (index < 0) return send(res, 200, empty);
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000);
