@@ -995,8 +995,8 @@ body {
   font-family: inherit;
   font-size: 0.9rem;
   color: var(--ink);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   background: var(--surface);
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
@@ -1025,7 +1025,7 @@ body {
   height: 1.3rem;
   padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--surface-2);
   color: var(--ink-2);
   cursor: pointer;
@@ -1037,10 +1037,10 @@ body {
   color: var(--ink);
 }
 
-/* Compact round buttons sit on the same row as the input. */
+/* Compact buttons sit on the same row as the input. */
 .search-bar .btn {
   flex: none;
-  border-radius: 999px;
+  border-radius: var(--r-md);
   padding: 0.45rem 0.9rem;
 }
 
@@ -1085,7 +1085,7 @@ body {
   font-size: 0.82rem;
   font-weight: 500;
   color: var(--ink);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-xs);
@@ -1136,7 +1136,7 @@ body {
   list-style: none;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-pop);
   transform-origin: top;
   transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease);
@@ -1214,12 +1214,12 @@ body {
   padding: 0.42rem 0.75rem;
   font: inherit;
   font-size: 0.8rem;
-  font-weight: 550;
+  font-weight: 500;
   line-height: 1;
   color: var(--ink-2);
   background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   cursor: pointer;
   transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
@@ -1241,11 +1241,11 @@ body {
   min-width: 1.15rem;
   height: 1.15rem;
   padding: 0 0.3rem;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--action);
   color: #fff;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1271,8 +1271,8 @@ body {
     width: min(23rem, calc(100vw - 2rem));
     background: var(--surface);
     border: 1px solid var(--line-strong);
-    border-radius: var(--r-md);
-    box-shadow: 0 14px 38px rgba(26, 29, 33, 0.18);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-pop);
     overflow: hidden;
   }
 
@@ -1303,6 +1303,7 @@ body {
 
   .filters-panel .sheet-foot .sheet-submit {
     flex: 1 1 auto;
+    border-radius: var(--r-md);
   }
 
   .foot-clear {
@@ -1356,11 +1357,11 @@ body {
   align-items: center;
   gap: 0.35rem;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   padding: 0.18rem 0.55rem;
   font-family: inherit;
   font-size: 0.72rem;
-  font-weight: 550;
+  font-weight: 500;
   color: var(--action);
   background: var(--action-tint);
   cursor: pointer;
@@ -1400,14 +1401,10 @@ body {
 }
 
 .filters-panel legend {
-  font-size: 0.64rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--ink-3);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink-2);
   padding: 0;
-  /* A touch more air under the label now that no hairline separates the
-     groups — the gap is what pairs a label with its control. */
   margin-bottom: 0.3rem;
 }
 
@@ -1421,15 +1418,15 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  border: 1px solid transparent;
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   padding: 0.22rem 0.62rem;
   font-size: 0.755rem;
   font-weight: 450;
   color: var(--ink-2);
-  background: var(--surface-2);
+  background: var(--surface);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
 .chip:hover {
@@ -1445,7 +1442,8 @@ body {
 .chip-on {
   background: var(--action-tint);
   color: var(--action);
-  font-weight: 550;
+  border-color: var(--action);
+  font-weight: 500;
 }
 
 .chip:focus-within {
@@ -1484,13 +1482,13 @@ body {
   justify-content: space-between;
   gap: 0.5rem;
   width: 100%;
-  padding: 0.36rem 0.7rem;
+  padding: 0.38rem 0.65rem;
   font-family: inherit;
   font-size: 0.79rem;
   color: var(--ink);
   background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
 }
@@ -1503,7 +1501,7 @@ body {
   border-color: var(--action);
   color: var(--action);
   background: var(--action-tint);
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .ms-trigger:focus-visible {
@@ -1535,9 +1533,9 @@ body {
   right: 0;
   padding: 0.3rem;
   background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-pop);
   transform-origin: top;
   transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease);
 }
@@ -1605,16 +1603,14 @@ body {
   justify-content: space-between;
   gap: 0.5rem;
   width: 100%;
-  padding: 0.4rem 0.6rem;
+  padding: 0.38rem 0.65rem;
   font: inherit;
   font-size: 0.8rem;
   color: var(--ink);
   text-align: left;
   background: var(--surface);
-  border: 1px solid var(--line-strong);
-  /* Matches the council/status/type triggers — this was the one rounded
-     rectangle among three pills, which made the group look mismatched. */
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   cursor: pointer;
 }
 
@@ -1626,7 +1622,7 @@ body {
   background: var(--action-tint);
   border-color: var(--action);
   color: var(--action);
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .dr-caret {
@@ -1901,11 +1897,10 @@ body {
   align-items: center;
   gap: 0.3rem;
   padding: 0.25rem 0.5rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   background: var(--surface);
-  /* Matches .vt-count beside it; the mobile block takes both down together. */
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: var(--ink-2);
   white-space: nowrap;
@@ -4061,7 +4056,8 @@ p.loading-line {
   padding: 3px;
   margin-bottom: 0.6rem;
   background: var(--surface-2);
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
 }
 
 /* Desktop shows the panel copy; the top-bar copy is a phone affordance. */
@@ -4091,7 +4087,7 @@ p.loading-line {
 .mode-tabs button {
   padding: 0.3rem 1.15rem;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: transparent;
   font-family: inherit;
   font-size: 0.84rem;
@@ -4107,7 +4103,7 @@ p.loading-line {
   background: var(--surface);
   color: var(--ink);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.09);
+  box-shadow: var(--shadow-xs);
 }
 .chat-wrap {
   display: flex;
