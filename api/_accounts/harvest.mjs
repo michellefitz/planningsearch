@@ -54,33 +54,67 @@ function ensureSchema() {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Priority order: (a) never-harvested apps, newest received first — newest
- * data is most valuable, and very old refs predate each council's agile
- * migration and simply won't resolve; (b) already-harvested apps that are not
- * yet decided, stalest fetch first (live apps change); (c) failed resolutions,
- * retried only once ~90 days stale.
+ * The window in which an undecided application's status actually changes.
+ *
+ * Sampled 200 of the 1,487 live agile applications against their portals: ten
+ * had already been decided and the register still said "pending" — a 5% error
+ * rate on exactly the applications people are most likely to be looking at.
+ * Every one of the ten had a decision due date within eleven days either side
+ * of that day. Nothing else in the queue moves like that.
+ */
+const DUE_PAST_MS = 45 * 86_400_000;
+const DUE_AHEAD_MS = 14 * 86_400_000;
+
+function decisionImminent(app, now) {
+  const due = Date.parse(`${app?.decision_due_date ?? ""}T00:00:00Z`);
+  if (Number.isNaN(due)) return false;
+  return due >= now - DUE_PAST_MS && due <= now + DUE_AHEAD_MS;
+}
+
+/**
+ * Priority order: (a) applications whose decision is due about now, whether or
+ * not they have been harvested before; (b) never-harvested apps, newest
+ * received first — newest data is most valuable, and very old refs predate
+ * each council's agile migration and simply won't resolve; (c) already-
+ * harvested apps that are not yet decided, stalest fetch first; (d) failed
+ * resolutions, retried only once ~90 days stale.
+ *
+ * (a) is new, and it is the whole point. The harvest is time-boxed to 200
+ * seconds at three requests a second, so it gets through a few hundred
+ * applications a night — and the never-harvested bucket was drained first, in
+ * full, before anything already harvested was refreshed. A backlog of old
+ * references that will never resolve could therefore starve the handful of
+ * applications that had just been decided, indefinitely. Sorting by staleness
+ * inside (c) does not help: an application decided yesterday is not stale, it
+ * is wrong, and those are different things.
  */
 export function buildHarvestQueue(apps, rows, now = Date.now()) {
   const byKey = new Map(rows.map((r) => [`${r.authority_id}|${r.planning_reference}`, r]));
+  const due = [];
   const fresh = [];
   const live = [];
   const retries = [];
   for (const app of apps) {
     const row = byKey.get(`${app.authority_id}|${app.planning_reference}`);
-    if (!row) {
-      fresh.push({ app, agile_id: null });
-    } else if (row.resolve_failed) {
+    if (row?.resolve_failed) {
       if (now - Date.parse(row.fetched_at) > RETRY_FAILED_AFTER_MS)
         retries.push({ app, agile_id: row.agile_id ?? null });
-    } else if (LIVE_STATUSES.has(String(app.status ?? "unknown"))) {
-      live.push({ app, agile_id: row.agile_id ?? null, fetched_at: row.fetched_at });
+      continue;
     }
+    const isLive = LIVE_STATUSES.has(String(app.status ?? "unknown"));
+    const item = { app, agile_id: row?.agile_id ?? null, fetched_at: row?.fetched_at ?? null };
+    if (isLive && decisionImminent(app, now)) due.push(item);
+    else if (!row) fresh.push(item);
+    else if (isLive) live.push(item);
   }
+  // Never-harvested first inside the due bucket, then stalest — a row with no
+  // fetch at all is the one most likely to be wrong.
+  due.sort((a, b) => String(a.fetched_at ?? "").localeCompare(String(b.fetched_at ?? "")));
   fresh.sort((a, b) =>
     String(b.app.received_date ?? "").localeCompare(String(a.app.received_date ?? ""))
   );
   live.sort((a, b) => String(a.fetched_at ?? "").localeCompare(String(b.fetched_at ?? "")));
-  return [...fresh, ...live, ...retries];
+  return [...due, ...fresh, ...live, ...retries];
 }
 
 async function harvestOne(ctx, item) {
