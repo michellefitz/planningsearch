@@ -110,8 +110,32 @@ export function submissionsDeadline(
  * dataset leaves the column empty, so it arrives with enrichment a moment
  * after the sheet has already painted.
  */
-function buildTimeline(d: AppDetail, submissionsBy?: string | null): TimelineStep[] {
+/**
+ * Statuses that end the file without a decision.
+ *
+ * A withdrawn or invalid application will never be decided, so the steps that
+ * lead to one are not "still to come" — they are never coming. Dublin City
+ * WEB2660/26 was withdrawn on 10 August and its timeline still read "Decision
+ * due 27 Aug" nine days later, with the submissions row above it open.
+ */
+const ENDED_WITHOUT_DECISION: Record<string, string> = {
+  withdrawn: "Withdrawn by the applicant",
+  invalid: "Rejected as invalid",
+};
+
+/**
+ * `liveStatus` is the portal's answer where enrichment has one, because the
+ * baked register lags it — sometimes by weeks. It is the same source the
+ * status badge and the submissions panel already read; the timeline was the
+ * one place still working from the stale copy alone.
+ */
+export function buildTimeline(
+  d: AppDetail,
+  submissionsBy?: string | null,
+  liveStatus?: string | null
+): TimelineStep[] {
   const decided = Boolean(d.decision_date);
+  const ended = decided ? null : ENDED_WITHOUT_DECISION[liveStatus ?? d.status] ?? null;
   const submissions = submissionsDeadline(d, submissionsBy)?.date ?? null;
   const steps: TimelineStep[] = [
     { label: "Received", date: d.received_date, state: d.received_date ? "done" : "future" },
@@ -126,26 +150,34 @@ function buildTimeline(d: AppDetail, submissionsBy?: string | null): TimelineSte
       steps.push({ label: "Further information received", date: d.further_info_received_date, state: "done" });
     }
   }
-  // The window for public submissions/observations closes before the decision.
+  // The window for public submissions/observations closes before the decision —
+  // and with the file, if it was withdrawn before the window ran out.
   if (submissions) {
     steps.push({
       label: "Submissions by",
       date: submissions,
-      state: decided || isPast(submissions) ? "done" : "current",
+      state: decided || ended || isPast(submissions) ? "done" : "current",
       statutory: true,
     });
   }
-  steps.push({
-    label: "Decision due",
-    date: d.decision_due_date,
-    state: decided ? "done" : "current",
-    statutory: true,
-  });
-  steps.push({
-    label: d.decision ? `Decided — ${d.decision}` : "Decision",
-    date: d.decision_date,
-    state: decided ? "done" : "future",
-  });
+  if (ended) {
+    // No date: the registers record that an application was withdrawn without
+    // recording when, and inventing one here would be the same class of error
+    // as the stale "Decision due" this replaces.
+    steps.push({ label: ended, date: null, state: "done" });
+  } else {
+    steps.push({
+      label: "Decision due",
+      date: d.decision_due_date,
+      state: decided ? "done" : "current",
+      statutory: true,
+    });
+    steps.push({
+      label: d.decision ? `Decided — ${d.decision}` : "Decision",
+      date: d.decision_date,
+      state: decided ? "done" : "future",
+    });
+  }
   // An Bord Pleanála appeal: lodged, then (once decided) the operative
   // outcome — it supersedes the council's decision above.
   if (d.appeal_lodged_date || d.appeal_reference || d.appeal_decision || d.appeal_status) {
@@ -2142,7 +2174,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   // weeks where it does not — see submissionsDeadline.
   const submissions = submissionsDeadline(d, enrich?.submissions_by_date);
   const submissionsBy = submissions?.date ?? null;
-  const timeline = buildTimeline(d, enrich?.submissions_by_date);
+  const timeline = buildTimeline(d, enrich?.submissions_by_date, liveStatus);
   /**
    * Whether the council asked this applicant for more, ever.
    *
