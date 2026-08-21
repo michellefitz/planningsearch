@@ -557,29 +557,69 @@ body {
 
 @media (min-width: 768px) {
   /* .view-toggle only exists to group the count and sort on a phone; lifting
-     its children into the same flex row lets the count take the middle. */
+     its children out lets them be placed individually here. */
   .panel-controls .view-toggle {
     display: contents;
   }
-  .panel-controls .filters-btn {
-    order: 1;
+
+  /**
+   * Two rows: what you are filtering by, then what came back.
+   *
+   * This was one wrapping flex row — Filters, then the count with
+   * `flex: 1; text-align: center`, then Sort, with the applied chips forced
+   * onto a line of their own. Two things were wrong with it. The count is the
+   * ANSWER to the search, and it floated in the middle of a row between two
+   * controls, shifting sideways whenever the sort label changed width. And
+   * Sort was grouped with the filters when what it orders is the list below.
+   *
+   * So the filters and the chips they produced are one row, and the count
+   * heads the list it counts with Sort at the other end of the same rule. The
+   * rule is the edge the panel never had: search and filters above it, results
+   * below. Gap is zero on purpose — the two cells' top borders have to meet to
+   * read as one line.
+   */
+  .panel-controls {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "filters chips"
+      "count   sort";
+    align-items: center;
+    gap: 0;
+    margin: 0.5rem 0 0;
   }
+  .panel-controls .filters-wrap {
+    grid-area: filters;
+  }
+  .panel-controls .applied-row {
+    grid-area: chips;
+    margin: 0 0 0 0.5rem;
+  }
+  /* A heading for the results, not a caption floating between two buttons. */
+  /* Both stretch rather than centre: the row's two items are different
+     heights — a line of text and a bordered control — and centring each in its
+     own cell put their top borders 5px apart, which reads as a broken rule
+     rather than one line. */
   .panel-controls .vt-count {
-    order: 2;
-    flex: 1 1 auto;
-    min-width: 0;
-    text-align: center;
+    grid-area: count;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    text-align: left;
     font-size: 0.8rem;
-    color: var(--ink-3);
+    font-weight: 550;
+    color: var(--ink);
+    border-top: 1px solid var(--line-strong);
+    margin-top: 0.6rem;
+    padding: 0.55rem 0;
   }
   .panel-controls .sort-inline {
-    order: 3;
-  }
-  /* Chips take the whole of the next line rather than pushing the row wider. */
-  .panel-controls .applied-row {
-    order: 4;
-    flex: 0 0 100%;
-    margin: 0.1rem 0 0;
+    grid-area: sort;
+    align-self: stretch;
+    justify-content: flex-end;
+    border-top: 1px solid var(--line-strong);
+    margin-top: 0.6rem;
+    padding: 0.55rem 0;
   }
 }
 
@@ -995,7 +1035,10 @@ body {
   font-family: inherit;
   font-size: 0.9rem;
   color: var(--ink);
-  border: 1px solid var(--line);
+  /* --line is 1px of #ebecf0 on white: technically a border, visually not one.
+     --line-strong is the token the system already has for an edge that has to
+     be seen, and the field is the first thing on the panel. */
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
   background: var(--surface);
   transition: border-color 120ms ease, box-shadow 120ms ease;
@@ -1213,12 +1256,14 @@ body {
   gap: 0.4rem;
   padding: 0.42rem 0.75rem;
   font: inherit;
-  font-size: 0.8rem;
+  /* Was 0.8rem, a size used nowhere else — .btn beside it is 0.82rem. The
+     mobile strip already normalises to one scale; this is desktop catching up. */
+  font-size: 0.82rem;
   font-weight: 500;
   line-height: 1;
   color: var(--ink-2);
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
   cursor: pointer;
   transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
@@ -1356,11 +1401,11 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--action) 22%, #fff);
   border-radius: var(--r-sm);
-  padding: 0.18rem 0.55rem;
+  padding: 0.24rem 0.55rem;
   font-family: inherit;
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 500;
   color: var(--action);
   background: var(--action-tint);
