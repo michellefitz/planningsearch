@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useReducer, useRef, useState, type CSSProperties } from "react";
 import {
   accountApi,
   fmtRadius,
@@ -10,6 +10,8 @@ import {
   type SavedList,
 } from "../accountApi";
 import type { PointFeatureCollection } from "../api";
+import { createUndoQueue, type UndoQueue } from "../undoQueue";
+import { RowMenu } from "./RowMenu";
 import { StatusBadge } from "./ResultsList";
 import { lazy, Suspense } from "react";
 const MapView = lazy(() => import("./MapView"));
@@ -66,6 +68,7 @@ function RegisterRow({
   onRefresh,
   index,
   updated,
+  onRemove,
 }: {
   s: SavedApp;
   lists: SavedList[];
@@ -73,6 +76,8 @@ function RegisterRow({
   onRefresh: () => Promise<Me>;
   index: number;
   updated?: boolean;
+  /** Hides the row now and deletes it when the undo window lapses. */
+  onRemove: (s: SavedApp) => void;
 }) {
   const [alertsOn, setAlertsOn] = useState(s.alerts_enabled);
   useEffect(() => {
@@ -143,49 +148,51 @@ function RegisterRow({
         >
           <BellIcon on={alertsOn} />
         </button>
-        {lists.length > 0 && (
-          <select
-            className="saved-list-select"
-            value=""
-            aria-label="Add to list"
-            onClick={(e) => e.stopPropagation()}
-            onChange={async (e) => {
-              e.stopPropagation();
-              const listId = Number(e.target.value);
-              if (!listId) return;
-              setBusy(true);
-              try {
-                await accountApi.addToList(listId, s.id);
-                await onRefresh();
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <option value="">List…</option>
-            {lists.map((l) => (
-              <option key={l.id} value={l.id}>{l.name}</option>
-            ))}
-          </select>
-        )}
-        <button
-          type="button"
-          className="saved-remove"
-          title="Remove from saved"
-          disabled={busy}
-          onClick={async (e) => {
-            e.stopPropagation();
-            setBusy(true);
-            try {
-              await accountApi.unsave(s.id);
-              await onRefresh();
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <XIcon />
-        </button>
+        {/* Filing and unsaving are occasional; they do not belong at the same
+            weight as the application on every row. See RowMenu. */}
+        <RowMenu label={`Actions for ${s.app?.address_text ?? s.planning_reference}`}>
+          {(close) => (
+            <>
+              {lists.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  role="menuitem"
+                  className="row-menu-item"
+                  disabled={busy}
+                  onClick={async () => {
+                    close();
+                    setBusy(true);
+                    try {
+                      await accountApi.addToList(l.id, s.id);
+                      await onRefresh();
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Add to {l.name}
+                </button>
+              ))}
+              {lists.length > 0 && <span className="row-menu-sep" />}
+              {/* Says what it removes it from. The old X did not, and the two
+                  things it could plausibly have meant — take out of this list,
+                  stop saving entirely — are not the same. */}
+              <button
+                type="button"
+                role="menuitem"
+                className="row-menu-item row-menu-danger"
+                disabled={busy}
+                onClick={() => {
+                  close();
+                  onRemove(s);
+                }}
+              >
+                Remove from saved
+              </button>
+            </>
+          )}
+        </RowMenu>
       </span>
     </div>
   );
@@ -299,6 +306,37 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
   const [mapList, setMapList] = useState<number | "all">("all");
   const [newListName, setNewListName] = useState("");
   const [creatingList, setCreatingList] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  // Bumped by the queue so a schedule or an undo re-renders the register.
+  const [, bumpRemovals] = useReducer((n: number) => n + 1, 0);
+
+  /**
+   * Removals wait out an undo window before they happen at all, so taking one
+   * back restores the save exactly as it was rather than re-creating it — see
+   * undoQueue.ts. The queue outlives re-renders but not the panel, so it is
+   * flushed on unmount.
+   */
+  const removalsRef = useRef<UndoQueue<SavedApp> | null>(null);
+  if (!removalsRef.current) {
+    removalsRef.current = createUndoQueue<SavedApp>({
+      commit: async (_key, save) => {
+        await accountApi.unsave(save.id);
+        await onRefresh();
+      },
+      onChange: bumpRemovals,
+      onError: (_key, save) =>
+        setRemoveError(
+          `Couldn't remove ${save.app?.address_text ?? save.planning_reference} — it's still saved.`
+        ),
+    });
+  }
+  const removals = removalsRef.current;
+  useEffect(() => () => void removals.flush(), [removals]);
+
+  const removeSave = (save: SavedApp) => {
+    setRemoveError(null);
+    removals.schedule(String(save.id), save);
+  };
 
   if (!me) return <div className="account-panel"><p className="account-muted">Loading your applications…</p></div>;
 
@@ -353,7 +391,13 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
     );
   }
 
-  const { saves, lists } = me;
+  // A row whose removal is still inside its undo window is gone from the
+  // register already — the whole point is that it disappears at once — but is
+  // not deleted, and comes back untouched if taken back.
+  const removing = new Set(removals.pending());
+  const { lists } = me;
+  const saves = removing.size ? me.saves.filter((s) => !removing.has(String(s.id))) : me.saves;
+  const justRemoved = removals.pending().map((k) => removals.peek(k)).filter(Boolean) as SavedApp[];
   const tracked = saves.length;
   const pending = saves.filter((s) => s.app && PENDING.has(s.app.status)).length;
   const decided = saves.filter((s) => s.app && DECIDED.has(s.app.status)).length;
@@ -422,7 +466,25 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
         )}
       </div>
 
-      {saves.length === 0 ? (
+      {/* One line per removal, while it can still be taken back. The row has
+          already gone from the register — that is what makes the removal feel
+          immediate — and nothing has actually been deleted yet, so undo puts
+          it back exactly as it was rather than re-creating it. */}
+      {justRemoved.map((save) => (
+        <p className="reg-undo" key={`undo-${save.id}`} role="status">
+          <span>Removed {save.app?.address_text ?? save.planning_reference}</span>
+          <button type="button" onClick={() => removals.undo(String(save.id))}>
+            Undo
+          </button>
+        </p>
+      ))}
+      {removeError && (
+        <p className="reg-undo reg-undo-error" role="alert">
+          {removeError}
+        </p>
+      )}
+
+      {saves.length === 0 && justRemoved.length === 0 ? (
         <div className="account-empty">
           <strong>Nothing saved yet</strong>
           <p>Star any application in Search and it'll live here — with alerts when it changes.</p>
@@ -442,6 +504,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                   onRefresh={onRefresh}
                   index={rowIndex++}
                   updated
+                  onRemove={removeSave}
                 />
               ))}
             </section>
@@ -534,6 +597,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                         onOpenApp={onOpenApp}
                         onRefresh={onRefresh}
                         index={rowIndex++}
+                        onRemove={removeSave}
                       />
                     ))
                   )}
@@ -557,6 +621,7 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
                       onOpenApp={onOpenApp}
                       onRefresh={onRefresh}
                       index={rowIndex++}
+                      onRemove={removeSave}
                     />
                   ))}
                 </section>
@@ -653,17 +718,38 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
               >
                 <BellIcon on={w.alerts_enabled} />
               </button>
-              <button
-                type="button"
-                className="watch-delete"
-                title="Stop watching this area"
-                onClick={async () => {
-                  await accountApi.deleteWatch(w.id);
-                  await onRefresh();
-                }}
-              >
-                <XIcon size={13} />
-              </button>
+              {/* Same reasoning as the saved rows: an X that permanently
+                  deletes must not look like an X that closes something. */}
+              <RowMenu label={`Actions for ${w.name}`}>
+                {(close) => (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="row-menu-item"
+                      onClick={() => {
+                        close();
+                        onViewWatch(w);
+                      }}
+                    >
+                      Show on the map and edit
+                    </button>
+                    <span className="row-menu-sep" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="row-menu-item row-menu-danger"
+                      onClick={async () => {
+                        close();
+                        await accountApi.deleteWatch(w.id);
+                        await onRefresh();
+                      }}
+                    >
+                      Stop watching this area
+                    </button>
+                  </>
+                )}
+              </RowMenu>
             </div>
           ))
         )}
