@@ -432,6 +432,13 @@ export const api = {
       `/api/applications/${id}/further-info-summary`,
       T.reading
     ),
+  /** Five-word labels for the conditions their council left untitled — see
+   *  api/_conditions/titles.mjs for why the councils differ so much. */
+  conditionTitles: (id: number) =>
+    getJson<{ supported: boolean; titles: Array<{ n: number; title: string }> | null }>(
+      `/api/applications/${id}/condition-titles`,
+      T.reading
+    ),
   conditionHighlights: (id: number) =>
     getJson<{ supported: boolean; highlights: ConditionHighlight[] | null }>(
       `/api/applications/${id}/condition-highlights`,
@@ -472,6 +479,9 @@ export const api = {
       source_document?: string | null;
       conditions?: Array<{ number: number | null; title: string; text: string }>;
       reasons?: Array<{ number: number | null; text: string }>;
+      /** The same notable-conditions read the councils with a conditions API
+       *  get — these come from the order we just extracted instead. */
+      highlights?: ConditionHighlight[] | null;
       /** Why there is nothing to show — never absent conditions, always a fact
        *  about the document. "djvu" is much the commonest on the older files. */
       reason?: DocumentReason;

@@ -410,10 +410,15 @@ function ConditionGroups({
   conditions,
   decision,
   superseded = false,
+  titles = null,
 }: {
   conditions: DecisionConditions;
   decision: string | null;
   superseded?: boolean;
+  /** Written labels, by condition number, for the ones their council left
+   *  untitled. Null until they arrive, and often for good — South Dublin
+   *  writes its own and never needs any. */
+  titles?: Map<number, string> | null;
 }) {
   const split = isSplitDecision(decision);
   const groups = conditionGroups(decision, superseded)
@@ -442,7 +447,11 @@ function ConditionGroups({
             // reason on an appealed Dublin City case arrives as "ACP Reason",
             // so the list read "ACP Reason 1…4" and had to be opened to learn
             // anything. Derive a label from the wording in that case.
-            const title = itemLabel(item, num);
+            // The written label wins where there is one: it says what the
+            // condition controls, which is the job. Everything else is the
+            // deterministic fallback — the council's own title where it wrote
+            // a real one, then a theme, then the opening words.
+            const title = titles?.get(num) ?? itemLabel(item, num);
             return (
               <details
                 key={`${g.code}-${item.order}-${i}`}
@@ -490,6 +499,34 @@ function AiParagraphs({ text, className }: { text: string; className: string }) 
         </p>
       ))}
     </div>
+  );
+}
+
+/**
+ * The two flags on a Commission case page worth repeating.
+ *
+ * EIAR and NIS are "No" on an ordinary house or mast and say nothing; on a
+ * 249-unit scheme they are "Yes", and that is a real fact about the
+ * development — it was large enough, or close enough to a protected site, to
+ * need a formal environmental assessment before it could be decided. Spelt
+ * out, because the acronyms are meaningless outside the profession.
+ */
+function EnvironmentalAssessment({ fields }: { fields: Array<{ label: string; value: string }> }) {
+  const yes = (label: string) =>
+    fields.some(
+      (f) => f.label.trim().toLowerCase() === label && /^\s*yes\b/i.test(f.value ?? "")
+    );
+  const eiar = yes("eiar");
+  const nis = yes("nis");
+  if (!eiar && !nis) return null;
+  return (
+    <p className="section-note">
+      {eiar && nis
+        ? "Assessed for environmental impact and for its effect on European conservation sites."
+        : eiar
+          ? "Large enough to need a formal environmental impact assessment."
+          : "Assessed for its effect on nearby European conservation sites."}
+    </p>
   );
 }
 
@@ -589,6 +626,7 @@ type DecisionOrderState =
       summary: string | null;
       conditions: Array<{ number: number | null; title: string; text: string }>;
       reasons: Array<{ number: number | null; text: string }>;
+      highlights: ConditionHighlight[] | null;
       source: string | null;
     };
 
@@ -618,6 +656,7 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
           summary: res.summary ?? null,
           conditions,
           reasons,
+          highlights: res.highlights ?? null,
           source: res.source_document ?? null,
         });
       else
@@ -684,6 +723,17 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
                 </ul>
               </div>
             )
+          )}
+          {/* The same box the councils with a conditions API get. It only ever
+              existed on those four because that is where conditions came from;
+              these are read out of the order instead, and there is no reason
+              the reader should be able to tell which. */}
+          {state.conditions.length > 0 && (
+            <ConditionHighlights
+              highlights={state.highlights}
+              loading={false}
+              total={state.conditions.length}
+            />
           )}
           {state.conditions.length > 0 && (
             <div className="condition-group">
@@ -894,19 +944,12 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
           </ul>
         </div>
       )}
-      {summary.phase === "loaded" && summary.reasons.length > 0 && (
-        <div className="condition-group">
-          <h4>
-            Reasons for refusal on appeal <span className="count">{summary.reasons.length}</span>
-          </h4>
-          <ul className="decision-list">
-            {summary.reasons.map((r, i) => (
-              <li key={i}>{r.text}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {summary.phase === "loaded" && (summary.conditions.length > 0 || summary.reasons.length > 0) && (
+      {/* The reasons for refusal are not listed under this. A refusal's reasons
+          are what the summary above has just said in English, and the council
+          side of the sheet made the same call for the same reason: the summary
+          is the readable version, and the order underneath is a click away.
+          Conditions are different — they are instructions, not explanation. */}
+      {summary.phase === "loaded" && summary.conditions.length > 0 && (
         <p className="list-note">AI-extracted from "{summary.source ?? "the appeal order"}".</p>
       )}
 
@@ -940,16 +983,13 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
       )}
       {state.phase === "loaded" && (
         <div className="appeal-details">
-          {state.fields.length > 0 && (
-            <dl className="facts">
-              {state.fields.map((f) => (
-                <Fragment key={f.label}>
-                  <dt>{f.label}</dt>
-                  <dd>{f.value}</dd>
-                </Fragment>
-              ))}
-            </dl>
-          )}
+          {/* The case page publishes the same six fields every time, and five
+              of them are already on this screen: the description at the top of
+              the sheet, the decision and its date on the line above, and the
+              case type is "Planning Appeal" on nearly all of them. Only the
+              environmental flags say anything the reader could not otherwise
+              know, and only when they say yes. */}
+          <EnvironmentalAssessment fields={state.fields} />
           {state.documents.length > 0 && (
             <>
               <p className="doc-list-label">Case documents</p>
@@ -1064,6 +1104,7 @@ function FurtherInfoSection({
   askedSummary,
   askedLoading,
   askedReason,
+  titles,
 }: {
   detail: AppDetail;
   conditions: DecisionConditions | null;
@@ -1071,6 +1112,7 @@ function FurtherInfoSection({
   askedSummary: string | null;
   askedLoading: boolean;
   askedReason: { reason: DocumentReason | null; document: string | null } | null;
+  titles: Map<number, string> | null;
 }) {
   // The portal's decision_date is when the request issued only while the file
   // is actually at that stage; on a decided application it is the decision's
@@ -1142,7 +1184,7 @@ function FurtherInfoSection({
         </>
       )}
       {conditions && conditions.items.length > 0 && (
-        <ConditionGroups conditions={conditions} decision={null} />
+        <ConditionGroups conditions={conditions} decision={null} titles={titles} />
       )}
       {/* Kildare, Wicklow and Meath publish no structured conditions — their
           request is a scanned letter, summarised above from the PDF. The
@@ -1171,6 +1213,7 @@ function DecisionSection({
   refusalSummary,
   refusalLoading,
   highlights,
+  titles,
   highlightsLoading,
 }: {
   detail: AppDetail;
@@ -1180,6 +1223,7 @@ function DecisionSection({
   refusalSummary: string | null;
   refusalLoading: boolean;
   highlights: ConditionHighlight[] | null;
+  titles: Map<number, string> | null;
   highlightsLoading: boolean;
 }) {
   const decision = conditions?.decision ?? d.decision;
@@ -1306,7 +1350,12 @@ function DecisionSection({
             loading={highlightsLoading}
             total={conditions.items.filter((i) => i.code === "C").length}
           />
-          <ConditionGroups conditions={conditions} decision={decision} superseded={superseded} />
+          <ConditionGroups
+            conditions={conditions}
+            decision={decision}
+            superseded={superseded}
+            titles={titles}
+          />
         </>
       )}
       {/* Three distinct outcomes, never collapsed into a blank space: the
@@ -1714,6 +1763,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     document: string | null;
   } | null>(null);
   const [highlights, setHighlights] = useState<ConditionHighlight[] | null>(null);
+  /* Labels for the conditions their council left untitled — DLR sends "C1",
+     Fingal sends the first seventy characters of the wording. Applied over the
+     deterministic label when they arrive, so no row is ever blank waiting. */
+  const [titles, setTitles] = useState<Map<number, string> | null>(null);
   const [highlightsLoading, setHighlightsLoading] = useState(false);
   const [enrich, setEnrich] = useState<{
     ai_summary: string | null;
@@ -1812,6 +1865,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     setAskedLoading(false);
     setAskedReason(null);
     setHighlights(null);
+    setTitles(null);
     setHighlightsLoading(false);
     setEnrich(null);
     setDescExpanded(false);
@@ -1982,6 +2036,15 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
                 .finally(() => {
                   if (!cancelled) setHighlightsLoading(false);
                 });
+              // Its own request: a failure here must leave the conditions and
+              // the highlights exactly as they were.
+              api
+                .conditionTitles(d.id)
+                .then((r) => {
+                  if (cancelled || !r.titles?.length) return;
+                  setTitles(new Map(r.titles.map((t) => [t.n, t.title])));
+                })
+                .catch(() => {});
             }
           });
         })
@@ -2264,6 +2327,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           askedSummary={askedSummary}
           askedLoading={askedLoading}
           askedReason={askedReason}
+          titles={titles}
         />
       )}
 
@@ -2275,6 +2339,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         refusalSummary={refusalSummary}
         refusalLoading={refusalLoading}
         highlights={highlights}
+        titles={titles}
         highlightsLoading={highlightsLoading}
       />
 

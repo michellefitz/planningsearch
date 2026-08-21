@@ -57,11 +57,81 @@ const THEMES = [
  * Titles that carry no information — the item's own words tell the reader
  * nothing the group heading and number have not already said. "ACP Reason",
  * "Reason", "Condition 3", a bare number, or an empty string.
+ *
+ * Also the portals' internal codes. Dún Laoghaire-Rathdown titles its
+ * conditions "C1" … "C18" and its first schedule "FS", so a decision rendered
+ * as a column of C1, C2, C3, C4 — every row needing to be opened to learn
+ * anything at all. Three letters and a number cannot be a title; a genuine
+ * short one ("Bins", "Trees") is longer than that.
  */
+const CODE_TITLE_RE = /^[A-Za-z]{1,3}\s?\d{0,3}$/;
+const BARE_NUMBER_RE = /^\d+\s*[.)]?$/;
+
 export function isGenericTitle(title) {
   const t = String(title ?? "").trim();
   if (!t) return true;
+  if (BARE_NUMBER_RE.test(t) || CODE_TITLE_RE.test(t)) return true;
   return /^(?:acp\s+|abp\s+|board\s+)?(?:reasons?|conditions?|notes?|informatives?|directives?|prescriptions?)\b[\s:.\-]*\d*$/i.test(t);
+}
+
+/**
+ * A "title" that is just the condition read back.
+ *
+ * Fingal and Dublin City fill the title field with the opening of the wording,
+ * cut at about seventy characters — so the collapsed row showed a sentence
+ * broken mid-word, and opening it showed the same sentence again, whole. It is
+ * not a title, it is the text with a haircut.
+ *
+ * Compared after the numbering and whitespace either side writes differently:
+ * Fingal's title carries a leading "1.\t" that its own text does not.
+ */
+const stripLead = (s) =>
+  String(s ?? "")
+    // Leading numbering, and the stray punctuation left when a portal writes
+    // "6.\t. The following…" — Fingal does, and the orphaned full stop was
+    // enough to stop the echo being recognised.
+    .replace(/^[\s\u00a0]*\d*\s*[.)]*[\s\u00a0]*/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+/**
+ * A title long enough to be a sentence is not a title.
+ *
+ * The portals that paste the wording cut it at about seventy characters, so
+ * what arrives is a clause ending mid-word — "…Further Information (Please
+ * inse". Not every one of those starts the same way as its own text, so the
+ * echo test alone misses them. Fifty-six characters is past every genuine
+ * title seen on the four councils, the longest being South Dublin's "SDCC
+ * Development Contributions Scheme 2026 – 2028." at forty-nine.
+ */
+const MAX_TITLE_CHARS = 56;
+
+export function echoesText(title, text) {
+  const a = stripLead(title);
+  const b = stripLead(text);
+  if (!a || !b) return false;
+  const overlap = Math.min(a.length, b.length, 24);
+  if (overlap < 12) return false;
+  return a.slice(0, overlap) === b.slice(0, overlap);
+}
+
+/**
+ * The opening of the condition, cut at a word.
+ *
+ * The last resort, for wording that raises no theme we recognise — most house
+ * conditions do not. Short enough to read as a label rather than a sentence,
+ * and never broken mid-word, which is the specific ugliness this replaces.
+ */
+export function snippetFrom(text, words = 6) {
+  const clean = String(text ?? "")
+    .replace(/^[\s\u00a0]*\d*\s*[.)]*[\s\u00a0]*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!clean) return null;
+  const parts = clean.split(" ");
+  const cut = parts.slice(0, words).join(" ").replace(/[,;:.\-]+$/, "");
+  return parts.length > words ? `${cut}…` : cut;
 }
 
 /** Up to two themes the text actually raises, in THEMES order. */
@@ -95,9 +165,15 @@ function joinThemes(themes) {
  */
 export function itemLabel(item, fallbackNumber) {
   const title = String(item?.title ?? "").trim();
-  if (!isGenericTitle(title)) return title;
+  const usable =
+    !isGenericTitle(title) && !echoesText(title, item?.text) && title.length <= MAX_TITLE_CHARS;
+  if (usable) return title;
   const derived = joinThemes(themesFor(item?.text));
   if (derived) return derived;
+  // The opening words beat "C1 1", which is what a code plus a number used to
+  // produce once the code was recognised as no title at all.
+  const snippet = snippetFrom(item?.text);
+  if (snippet) return snippet;
   const base = title || String(item?.code_label ?? "").trim() || "Item";
   const n = item?.order || fallbackNumber;
   return n ? `${base} ${n}` : base;

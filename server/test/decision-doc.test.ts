@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findDecisionDocIndex } from "../src/api.js";
+import { findConditionsScheduleIndex, findDecisionDocIndex } from "../src/api.js";
 
 describe("findDecisionDocIndex", () => {
   it("picks the council refusal order, not the appeal or a Part V order (Kildare 211277)", () => {
@@ -43,5 +43,44 @@ describe("findDecisionDocIndex", () => {
     expect(files[findDecisionDocIndex(files, "GRANT PERMISSION")].title).toBe(
       "Notification of Decision to Grant Permission"
     );
+  });
+});
+
+/**
+ * Kildare issues a decision in two documents, and only the second one has the
+ * conditions in it. Ard Rossa, Ballygoran, Maynooth rendered as "Conditions of
+ * grant 1 — Subject to 6 conditions set out in the schedule attached.
+ * [Schedule not provided in document]": the reader was told there were six and
+ * shown none of them, and the schedule was sitting in the same file list.
+ */
+describe("findConditionsScheduleIndex", () => {
+  const KILDARE = [
+    { title: "Application - Cover Letter — 19/12/2019 - Drawing Schedule" },
+    { title: "Chief Executives Order — DO27762" },
+    { title: "Notification of Decision Letters — 18/02/2020" },
+    { title: "Schedule of Conditions — 18/02/2020" },
+    { title: "Schedule of Conditions" },
+  ];
+
+  it("finds the schedule that goes with the decision", () => {
+    const decision = findDecisionDocIndex(KILDARE, "CONDITIONAL");
+    expect(KILDARE[decision].title).toBe("Notification of Decision Letters — 18/02/2020");
+    const schedule = findConditionsScheduleIndex(KILDARE, decision);
+    // The dated one — the undated duplicate is a working copy filed later.
+    expect(KILDARE[schedule].title).toBe("Schedule of Conditions — 18/02/2020");
+  });
+
+  it("is not fooled by a schedule of drawings", () => {
+    expect(findConditionsScheduleIndex([KILDARE[0]], -1)).toBe(-1);
+  });
+
+  it("never returns the document already being read", () => {
+    const files = [{ title: "Schedule of Conditions — 18/02/2020" }];
+    expect(findConditionsScheduleIndex(files, 0)).toBe(-1);
+  });
+
+  it("says there is none where the council keeps them in the order itself", () => {
+    const files = [{ title: "Notification of Decision to Grant Permission" }];
+    expect(findConditionsScheduleIndex(files, 0)).toBe(-1);
   });
 });

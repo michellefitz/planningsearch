@@ -174,6 +174,38 @@ const NON_DECISION_DOC_RE =
  * Returns -1 when no council decision order is present, so the box shows its
  * empty state rather than summarising the wrong document.
  */
+/**
+ * The schedule the decision letter refers to but does not contain.
+ *
+ * Kildare issues the decision in two parts: a "Notification of Decision
+ * Letters" saying permission is granted "subject to 6 conditions set out in
+ * the schedule attached", and a separate "Schedule of Conditions" holding the
+ * six. Reading only the first produced a conditions list of exactly one item
+ * whose text was the sentence promising the other document.
+ */
+const SCHEDULE_DOC_RE = /schedule of conditions|conditions? schedule/i;
+
+export function findConditionsScheduleIndex(
+  files: Array<{ title: string }>,
+  decisionIndex: number
+): number {
+  let best = -1;
+  let bestScore = 0;
+  (files ?? []).forEach((f, i) => {
+    if (i === decisionIndex) return;
+    const t = String(f?.title ?? "");
+    if (!SCHEDULE_DOC_RE.test(t) || APPEAL_DOC_RE.test(t)) return;
+    // A dated schedule is the one issued with the decision; an undated
+    // duplicate is usually a working copy filed later.
+    const score = /\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}/.test(t) ? 2 : 1;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  });
+  return best;
+}
+
 export function findDecisionDocIndex(
   files: Array<{ title: string }>,
   decision?: string | null
