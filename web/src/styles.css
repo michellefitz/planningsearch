@@ -3560,9 +3560,6 @@ a.ov-pop-sub {
 .refusal-summary .decision-list {
   color: #9f1239;
 }
-.cond-text {
-  color: var(--ink-2);
-}
 .on-demand .ai-summary {
   margin: 0 0 0.85rem;
 }

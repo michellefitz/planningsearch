@@ -26,6 +26,7 @@ import { decisionStage, isFurtherInfoRequest, realDecision } from "./_conditions
 import { appealOutcome, bestAppealDecision, contradictsOutcome } from "./_conditions/appeal.mjs";
 import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached, versionedKind } from "./_ai/store.mjs";
 import { descriptionKey } from "./_ai/descriptions.mjs";
+import { closeTruncatedJson } from "./_ai/json.mjs";
 import { idfOver, queryHouseNumbers, relevanceScore } from "./_search/relevance.mjs";
 import {
   ANCHOR_RE,
@@ -1342,10 +1343,19 @@ const DECISION_EXTRACT_PROMPT =
 function parseJsonLoose(raw) {
   const cleaned = raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
   const start = cleaned.indexOf("{");
+  if (start < 0) return null;
   const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
+  if (end > start) {
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      // Falls through: a complete-looking object can still be truncated
+      // inside, when the cut landed after some inner "}".
+    }
+  }
+  // Cut off mid-write. Salvage every element that finished.
   try {
-    return JSON.parse(cleaned.slice(start, end + 1));
+    return JSON.parse(closeTruncatedJson(cleaned.slice(start)));
   } catch {
     return null;
   }
@@ -1396,8 +1406,8 @@ async function extractAppealOrder(pages, context) {
   const raw = await callClaude(
     APPEAL_EXTRACT_PROMPT,
     [...pages, { type: "text", text: `${context}\n\nExtract this appeal order as JSON.` }],
-    3000,
-    45000
+    4000,
+    60000
   );
   const parsed = raw ? parseJsonLoose(raw) : null;
   if (!parsed || typeof parsed !== "object") return null;
@@ -1431,7 +1441,7 @@ async function extractDecisionDocument(pages, decision) {
     ...pages,
     { type: "text", text: `Recorded decision: ${decision ?? "unknown"}. Extract the decision order as JSON.` },
   ];
-  const raw = await callClaude(DECISION_EXTRACT_PROMPT, content, 2000, 30000);
+  const raw = await callClaude(DECISION_EXTRACT_PROMPT, content, 4000, 60000);
   const parsed = raw ? parseJsonLoose(raw) : null;
   if (!parsed || typeof parsed !== "object") return null;
   const summaryRaw = typeof parsed.summary === "string" ? parsed.summary : null;

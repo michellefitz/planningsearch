@@ -665,6 +665,50 @@ function DocumentRef({
   );
 }
 
+/**
+ * Conditions read out of a document, in the same collapsed rows the councils
+ * with a conditions API get.
+ *
+ * These were a bullet list with every word of every condition inline. On a
+ * 206-hectare solar farm that is fifteen conditions running to several
+ * screens — one of them covering a 35-year operational life, decommissioning
+ * and a restoration bond — and the reader had to scroll past all of it. The
+ * titles are already written and good; only the wording needs to start shut.
+ *
+ * `anchored` because the notable-conditions box jumps to a condition by id,
+ * and an application can carry two of these lists — the council's and the
+ * Commission's, both numbered from one. Only the list the highlights belong to
+ * claims the ids.
+ */
+function ExtractedConditions({
+  conditions,
+  anchored = false,
+}: {
+  conditions: Array<{ number: number | null; title: string; text: string }>;
+  anchored?: boolean;
+}) {
+  return (
+    <>
+      {conditions.map((c, i) => {
+        const num = c.number ?? i + 1;
+        return (
+          <details
+            key={`${num}-${i}`}
+            className="condition"
+            id={anchored ? conditionAnchor(num) : undefined}
+          >
+            <summary>
+              <span className="condition-num">{num}</span>
+              {c.title || `Condition ${num}`}
+            </summary>
+            {c.text && <p className="condition-text">{c.text}</p>}
+          </details>
+        );
+      })}
+    </>
+  );
+}
+
 /** One or two documents, named and linked, in a sentence. */
 function SourceDocuments({
   detail: d,
@@ -896,14 +940,12 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
                 loading={false}
                 total={state.conditions.length}
               />
-              <ul className="decision-list">
-                {state.conditions.map((c, i) => (
-                  <li key={i}>
-                    <strong>{c.title || `Condition ${c.number ?? i + 1}`}</strong>
-                    {c.text && <span className="cond-text"> — {c.text}</span>}
-                  </li>
-                ))}
-              </ul>
+              {/* Anchored, so the notable conditions above jump into the list
+                  the way they do on the councils with a conditions API. They
+                  never could here: this was a <ul> with no ids, so every
+                  highlight on a Kildare, Meath or Wicklow decision was a
+                  button that did nothing. */}
+              <ExtractedConditions conditions={state.conditions} anchored />
             </div>
           )}
           {/* Which document this came from is the useful half and stays; the
@@ -1093,14 +1135,9 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
             Conditions of the appeal decision{" "}
             <span className="count">{summary.conditions.length}</span>
           </h4>
-          <ul className="decision-list">
-            {summary.conditions.map((c, i) => (
-              <li key={i}>
-                <strong>{c.title || `Condition ${c.number ?? i + 1}`}</strong>
-                {c.text && <span className="cond-text"> — {c.text}</span>}
-              </li>
-            ))}
-          </ul>
+          {/* Not anchored: the notable-conditions box belongs to the council's
+              schedule above, and both lists number from one. */}
+          <ExtractedConditions conditions={summary.conditions} />
         </div>
       )}
       {/* The reasons for refusal are not listed under this. A refusal's reasons
