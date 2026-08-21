@@ -59,14 +59,22 @@ export const HIGHLIGHTS_PROMPT =
   "requires something to be omitted, reduced, relocated, screened, retained or obscured, then " +
   "that requirement is notable and you must pull it out even though the condition around it is " +
   "routine. Quote the actual figure or material.\n\n" +
+  "A clock time is not one of those figures. The hours during which building work may be carried " +
+  "out are on a third of all permissions in the same standard form, and listing them tells the " +
+  "reader nothing about how this permission differs from what was applied for. Never report the " +
+  "working hours, whatever times they name and however precisely, and whether the condition " +
+  "calls them site hours, working hours, construction hours or hours of operation during " +
+  "construction.\n\n" +
   "That does not make every approval notable. Drainage, surface-water and SuDS conditions almost " +
   "always require details to be submitted and agreed before work starts — that is the standard " +
   "form, not a constraint on the design, so say nothing about them unless the condition itself " +
   "names a figure, a material or something that must be moved or left out.\n\n" +
   "Notable also covers: permission granted for less than was applied for; a window that must be " +
-  "obscured or removed; restrictions on use, occupancy or opening hours beyond the standard " +
-  "form; anything that must be submitted to and agreed with the council before work starts where " +
-  "the outcome could change the design; and a permission that expires unusually early.\n\n" +
+  "obscured or removed; restrictions on use or occupancy beyond the standard form; limits on the " +
+  "hours the FINISHED development may operate — a shop's or a creche's opening hours, which bind " +
+  "whoever lives with it afterwards, and which are not the same thing as the hours the builders " +
+  "may work; anything that must be submitted to and agreed with the council before work starts " +
+  "where the outcome could change the design; and a permission that expires unusually early.\n\n" +
   "DEVELOPMENT CONTRIBUTIONS: say nothing at all about money the developer must pay. The total " +
   "is stated separately and exactly, above this list; a point about it here would duplicate " +
   "that.\n\n" +
@@ -118,6 +126,46 @@ export function isGrounded(point, conditionText) {
  * Tolerant parse of the model's reply, then hard validation. The model is
  * asked for bare JSON but sometimes fences it or adds a line of prose.
  */
+/**
+ * Working hours are never notable, whatever the model decides.
+ *
+ * The prompt has always listed them among the stock conditions to stay quiet
+ * about, and two later instructions overrode it: the rule that a condition
+ * naming a figure must be pulled out even when the condition around it is
+ * routine — and a working-hours condition is nothing but figures — and
+ * "restrictions on … opening hours", which means the hours a finished shop or
+ * creche may operate and reads close enough to catch this. Dublin City
+ * 2893/21 surfaced "Site works only Monday–Friday 7am–6pm" as one of three
+ * notable conditions on a twelve-condition grant.
+ *
+ * Both instructions are now narrowed, and this is the backstop: the same shape
+ * as contradictsOutcome on an appeal summary, because a wrong highlight is
+ * seen by everyone who opens the page and a prompt is not a guarantee.
+ *
+ * Matched on the point the model wrote rather than on the condition text: a
+ * condition can mention working hours in passing while its substance is
+ * something else entirely, and it is what we would print that has to be wrong.
+ */
+/** Words for the act of building, as the model tends to phrase it. */
+const WORK_ACTIVITY_RE =
+  /\b(?:site\s+works?|building\s+works?|construction|demolition|works?\s+on\s+site|work(?:ing)?\s+hours?|site\s+hours?|hours?\s+of\s+work(?:ing)?)\b/i;
+/** A clock time in any of the shapes a council writes one. */
+const CLOCK_RE = /\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b|\b\d{1,2}:\d{2}\b/i;
+const HOURS_WORD_RE = /\bhours?\b/i;
+/** The hours a finished development may operate are a real restriction on
+ *  whoever lives beside it — never confuse the two. */
+const OPERATING_HOURS_RE =
+  /\b(?:open(?:ing)?|trading|business|operating|delivery|deliveries|customers?)\b[^.]{0,40}\bhours?\b/i;
+
+export function isWorkingHours(point) {
+  const t = String(point ?? "");
+  if (OPERATING_HOURS_RE.test(t)) return false;
+  if (!WORK_ACTIVITY_RE.test(t)) return false;
+  // The activity alone is not enough — "a construction traffic management plan"
+  // is about something else. It has to be about when.
+  return HOURS_WORD_RE.test(t) || CLOCK_RE.test(t);
+}
+
 export function parseHighlights(raw, items) {
   if (!raw) return null;
   const match = String(raw).match(/\{[\s\S]*\}/);
@@ -141,6 +189,7 @@ export function parseHighlights(raw, items) {
     const cond = byNumber.get(n);
     if (!cond || seen.has(n)) continue;
     if (!isGrounded(point, cond.text)) continue;
+    if (isWorkingHours(point)) continue;
     seen.add(n);
     out.push({ n, point });
     if (out.length === 6) break;
