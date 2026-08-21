@@ -247,7 +247,7 @@ export function isRefusalDecision(decision: string | null | undefined): boolean 
  * setting out why permission *was* given. Labelling it "Reasons for refusal"
  * on a grant told readers an application had been refused when it hadn't.
  */
-function conditionGroups(decision: string | null | undefined, superseded = false) {
+export function conditionGroups(decision: string | null | undefined, superseded = false) {
   return [
     {
       code: "R",
@@ -366,6 +366,52 @@ function ConditionHighlights({
   );
 }
 
+/**
+ * Which prescription codes belong to which section of the sheet.
+ *
+ * The conditions endpoint returns one flat list for the whole application, and
+ * both sections were handed all of it. Dublin City PWSDZ3074/23 is a grant
+ * with sixteen conditions and no further-information items at all — its
+ * "Further information" section exists only because the register carries a
+ * requested date — so all sixteen binding conditions rendered underneath it,
+ * headed "Conditions of this decision". Anything in the payload that is not
+ * about the request now stays out of that section, and the request items stay
+ * out of the decision.
+ */
+export const FURTHER_INFO_CODES = ["D"] as const;
+/**
+ * Everything the decision itself carries. "N" sits here rather than with the
+ * request: Dublin City files the two halves of a split *decision* as an
+ * Informative and a Note, which is why splitHalf reads them.
+ */
+export const DECISION_CODES = ["R", "C", "I", "N"] as const;
+
+/**
+ * Which section owns the "Informative" items — the one code the councils do
+ * not agree on.
+ *
+ * Dublin City uses "I" for the two halves of a split decision. DLR uses it for
+ * the further-information request itself: D20A/0569 carries a single
+ * Informative whose text is three numbered asks — "The applicant is requested,
+ * therefore, to submit revised proposals which address these concerns" — and
+ * no Directive at all. Filed under the decision, that request appeared a
+ * second time as "Clarifications & informatives", saying the same thing as the
+ * Further information section directly above it.
+ *
+ * So it is routed by what the application is, not by the code: a split
+ * decision keeps its halves (that is what they are), and otherwise an
+ * application that went out for further information owns its Informatives.
+ */
+export function sectionCodes(
+  decision: string | null | undefined,
+  hasFurtherInfo: boolean
+): { furtherInfo: readonly string[]; decision: readonly string[] } {
+  const requestOwnsInformatives = hasFurtherInfo && !isSplitDecision(decision);
+  return requestOwnsInformatives
+    ? { furtherInfo: ["D", "I"], decision: ["R", "C", "N"] }
+    : { furtherInfo: FURTHER_INFO_CODES, decision: DECISION_CODES };
+}
+
 /** The full conditions / reasons, grouped and collapsible. */
 /**
  * On a split decision Dublin City files the two halves as an "Informative" and
@@ -411,6 +457,9 @@ function ConditionGroups({
   decision,
   superseded = false,
   titles = null,
+  only,
+  mergeAs,
+  highlights = null,
 }: {
   conditions: DecisionConditions;
   decision: string | null;
@@ -419,16 +468,31 @@ function ConditionGroups({
    *  untitled. Null until they arrive, and often for good — South Dublin
    *  writes its own and never needs any. */
   titles?: Map<number, string> | null;
+  /** The codes this section owns. Required, because the payload covers the
+   *  whole application and every caller renders one part of it. */
+  only: readonly string[];
+  /** Render everything this section owns as one group under this heading.
+   *  The request is one thing to a reader, however many codes the council
+   *  split it across — DLR files it as a single Informative, Dublin City as
+   *  Directives plus the reasoning behind them. */
+  mergeAs?: { label: string; blurb: string | null };
+  /** The notable-conditions box, rendered under the "Conditions of this
+   *  decision" heading it summarises rather than above the whole stack. */
+  highlights?: ReactNode;
 }) {
   const split = isSplitDecision(decision);
-  const groups = conditionGroups(decision, superseded)
-    .map((g) => {
-      const items = conditions.items.filter((i) => i.code === g.code);
-      // Only where the wording settles it; otherwise the ordinary label stands.
-      const half = split && (g.code === "I" || g.code === "N") ? splitHalf(items) : null;
-      return { ...g, items, ...(half ?? {}) };
-    })
-    .filter((g) => g.items.length > 0);
+  const mine = conditions.items.filter((i) => only.includes(i.code));
+  const groups = mergeAs
+    ? [{ code: "_merged", ...mergeAs, items: mine }].filter((g) => g.items.length > 0)
+    : conditionGroups(decision, superseded)
+        .filter((g) => only.includes(g.code))
+        .map((g) => {
+          const items = conditions.items.filter((i) => i.code === g.code);
+          // Only where the wording settles it; otherwise the ordinary label stands.
+          const half = split && (g.code === "I" || g.code === "N") ? splitHalf(items) : null;
+          return { ...g, items, ...(half ?? {}) };
+        })
+        .filter((g) => g.items.length > 0);
 
   return (
     <>
@@ -441,6 +505,11 @@ function ConditionGroups({
               reads as though the council imposed something. Say what the
               group actually is before the reader opens any of it. */}
           {g.blurb && <p className="condition-blurb">{g.blurb}</p>}
+          {/* Under the heading it belongs to. It used to sit above the whole
+              stack, where it read as a summary of the decision rather than of
+              this list — and on a decision that also carries reasons and
+              notes it was separated from the conditions it links into. */}
+          {g.code === "C" && highlights}
           {g.items.map((item, i) => {
             const num = item.order || i + 1;
             // Portals often give a prescription no title of its own — every
@@ -724,22 +793,25 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
               </div>
             )
           )}
-          {/* The same box the councils with a conditions API get. It only ever
-              existed on those four because that is where conditions came from;
-              these are read out of the order instead, and there is no reason
-              the reader should be able to tell which. */}
-          {state.conditions.length > 0 && (
-            <ConditionHighlights
-              highlights={state.highlights}
-              loading={false}
-              total={state.conditions.length}
-            />
-          )}
           {state.conditions.length > 0 && (
             <div className="condition-group">
+              {/* Same heading and same blurb as the councils with a conditions
+                  API — the reader should not be able to tell that these came
+                  out of a scanned order rather than a portal. */}
               <h4>
-                Conditions of grant <span className="count">{state.conditions.length}</span>
+                Conditions of this decision{" "}
+                <span className="count">{state.conditions.length}</span>
               </h4>
+              <p className="condition-blurb">
+                Binding — the permission only stands if these are met.
+              </p>
+              {/* The same box the councils with a conditions API get, under the
+                  same heading, for the same reason. */}
+              <ConditionHighlights
+                highlights={state.highlights}
+                loading={false}
+                total={state.conditions.length}
+              />
               <ul className="decision-list">
                 {state.conditions.map((c, i) => (
                   <li key={i}>
@@ -1105,6 +1177,7 @@ function FurtherInfoSection({
   askedLoading,
   askedReason,
   titles,
+  only,
 }: {
   detail: AppDetail;
   conditions: DecisionConditions | null;
@@ -1113,6 +1186,7 @@ function FurtherInfoSection({
   askedLoading: boolean;
   askedReason: { reason: DocumentReason | null; document: string | null } | null;
   titles: Map<number, string> | null;
+  only: readonly string[];
 }) {
   // The portal's decision_date is when the request issued only while the file
   // is actually at that stage; on a decided application it is the decision's
@@ -1183,8 +1257,17 @@ function FurtherInfoSection({
           </div>
         </>
       )}
-      {conditions && conditions.items.length > 0 && (
-        <ConditionGroups conditions={conditions} decision={null} titles={titles} />
+      {conditions && conditions.items.some((i) => only.includes(i.code)) && (
+        <ConditionGroups
+          conditions={conditions}
+          decision={null}
+          titles={titles}
+          only={only}
+          // One heading, however the council split it: DLR files the whole
+          // request as a single Informative, Dublin City as Directives with
+          // the reasoning beside them.
+          mergeAs={{ label: "What the council asked for", blurb: null }}
+        />
       )}
       {/* Kildare, Wicklow and Meath publish no structured conditions — their
           request is a scanned letter, summarised above from the PDF. The
@@ -1194,10 +1277,12 @@ function FurtherInfoSection({
           {askedReason?.reason && askedReason.reason !== "not_found" ? (
             unreadableRequestNote(askedReason.reason, askedReason.document, d.authority_short_name)
           ) : (
-            <>
-              {d.authority_short_name} publishes the request as a letter on the file rather than as
-              structured text — look for it in the documents below.
-            </>
+            /* This used to say the council "publishes the request as a letter
+               rather than as structured text", which is a claim about the
+               council and is false for South Dublin — its conditions endpoint
+               simply answers nothing until a decision issues. What is true
+               everywhere is that the letter is on the file. */
+            <>The request itself is on the file — look for it in the documents below.</>
           )}
         </p>
       )}
@@ -1215,6 +1300,7 @@ function DecisionSection({
   highlights,
   titles,
   highlightsLoading,
+  only,
 }: {
   detail: AppDetail;
   conditions: DecisionConditions | null;
@@ -1225,6 +1311,7 @@ function DecisionSection({
   highlights: ConditionHighlight[] | null;
   titles: Map<number, string> | null;
   highlightsLoading: boolean;
+  only: readonly string[];
 }) {
   const decision = conditions?.decision ?? d.decision;
   const decisionDate = conditions?.decision_date ?? d.decision_date;
@@ -1344,19 +1431,20 @@ function DecisionSection({
         </>
       )}
       {conditions && conditions.items.length > 0 && (
-        <>
-          <ConditionHighlights
-            highlights={highlights}
-            loading={highlightsLoading}
-            total={conditions.items.filter((i) => i.code === "C").length}
-          />
-          <ConditionGroups
-            conditions={conditions}
-            decision={decision}
-            superseded={superseded}
-            titles={titles}
-          />
-        </>
+        <ConditionGroups
+          conditions={conditions}
+          decision={decision}
+          superseded={superseded}
+          titles={titles}
+          only={only}
+          highlights={
+            <ConditionHighlights
+              highlights={highlights}
+              loading={highlightsLoading}
+              total={conditions.items.filter((i) => i.code === "C").length}
+            />
+          }
+        />
       )}
       {/* Three distinct outcomes, never collapsed into a blank space: the
           council recorded none, or we couldn't reach the council at all. */}
@@ -1553,6 +1641,11 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
   );
 }
 
+/** The council's own page for this application, resolved server-side where the
+ *  register's URL is only a search. */
+const portalHref = (d: AppDetail) =>
+  d.portal_resolver ? `/api/applications/${d.id}/portal` : d.portal_url;
+
 /**
  * The way in to the council's own documents, which is not conditional on
  * anything of ours working.
@@ -1564,7 +1657,16 @@ function ScannedFiles({ detail: d }: { detail: AppDetail }) {
  * convenience; this is the source, and it is always here.
  */
 function DocumentSource({ detail: d }: { detail: AppDetail }) {
-  const href = d.scanned_files_url ?? d.portal_url;
+  /**
+   * The agile councils' `portal_url` is a keyword search, not the
+   * application — planning.agileapplications.ie needs its own internal id
+   * (Dublin City WEB2100/26 is application-details/175534), which only the
+   * portal API can give us. The button at the top of the sheet has always
+   * gone through the resolver that fetches it; this link did not, so the way
+   * into the documents landed on a search page that does not find the
+   * application it was built from.
+   */
+  const href = d.scanned_files_url ?? (d.portal_resolver ? portalHref(d) : d.portal_url);
   if (!href) return null;
   return (
     <a className="link-btn viewer-link" href={href} target="_blank" rel="noopener noreferrer">
@@ -1852,6 +1954,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     Boolean(conditions?.items.some((i) => i.code === "D")) ||
     d.status === "further_info" ||
     Boolean(d.further_info_requested_date);
+  // Who owns the "Informative" items — see sectionCodes.
+  const codes = sectionCodes(conditions?.decision ?? d.decision, hasFurtherInfo);
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
   const isLongDesc = (description ?? "").length > 400;
   const hasConditionsSource = AGILE_CONDITION_AUTHORITIES.has(d.authority_id);
@@ -2267,7 +2371,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           {d.portal_url && (
             <a
               className="btn btn-primary"
-              href={d.portal_resolver ? `/api/applications/${d.id}/portal` : d.portal_url}
+              href={portalHref(d) ?? undefined}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -2328,6 +2432,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           askedLoading={askedLoading}
           askedReason={askedReason}
           titles={titles}
+          only={codes.furtherInfo}
         />
       )}
 
@@ -2341,6 +2446,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         highlights={highlights}
         titles={titles}
         highlightsLoading={highlightsLoading}
+        only={codes.decision}
       />
 
       <section aria-labelledby="desc-h">
@@ -2431,7 +2537,11 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
                 </li>
               ) : (
                 <li key={doc.id}>
-                  <a href={doc.source_url ?? d.portal_url ?? "#"} target="_blank" rel="noopener noreferrer">
+                  <a
+                    href={doc.source_url ?? portalHref(d) ?? "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     {doc.title}
                   </a>{" "}
                   {doc.page_count != null && <span className="hint">({doc.page_count} pages)</span>}
