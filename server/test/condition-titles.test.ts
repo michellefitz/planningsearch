@@ -4,6 +4,7 @@ import {
   isDecisionSchedule,
   isGenericTitle,
   itemLabel,
+  scheduleConditionCount,
   snippetFrom,
 } from "../../api/_conditions/labels.mjs";
 import {
@@ -228,5 +229,89 @@ describe("titlesUserMsg markers", () => {
   it("tells the model what the marker means", () => {
     expect(TITLES_PROMPT).toContain("--- CONDITION #7 ---");
     expect(TITLES_PROMPT).toMatch(/never use one of their numbers as an n/i);
+  });
+});
+
+describe("counting the conditions inside a schedule", () => {
+  /** The real six, abbreviated — numbering and REASON lines as DLR writes them. */
+  const SIX = `First Schedule
+Reasons and Considerations
+
+The development is considered to be in accordance with the proper planning and sustainable development of the area subject to (6) conditions.
+
+Second Schedule
+Conditions
+
+1. The development shall be carried out in its entirety in accordance with the plans lodged.
+REASON: To ensure that the development shall be in accordance with the permission.
+
+2. The roof area of the extensions shall not be used as a balcony or roof terrace.
+REASON: In the interests of residential amenity.
+
+3. The entire dwelling shall be used as a single dwelling unit.
+REASON: To prevent unauthorised development.
+
+4. The proposed garden studio shall be used solely for uses incidental to the dwelling.
+REASON: In the interests of residential amenity.
+
+5. The disposal of surface water shall be in accordance with the requirements as follows:
+
+(a) The surface water shall be infiltrated locally, to a soakaway designed to BRE Digest 365.
+
+(b) Any changes to the parking areas shall be constructed in accordance with the GDSDS.
+REASON: In the interest of public health.
+
+6. The applicants shall prevent any mud or debris being carried onto the public road.
+REASON: In the interest of orderly development.`;
+
+  it("counts the conditions, not the rows the council filed them in", () => {
+    // The heading said "Conditions of this decision 1" on a permission
+    // carrying six, because DLR files all six as a single item.
+    expect(scheduleConditionCount(SIX)).toBe(6);
+  });
+
+  it("is not fooled by sub-points or the REASON under each condition", () => {
+    // Condition 5 carries (a) and (b), and every condition carries a REASON —
+    // counting matches rather than reading the highest number gets this wrong.
+    expect(SIX.match(/REASON:/g)).toHaveLength(6);
+    expect(scheduleConditionCount(SIX)).toBe(6);
+  });
+
+  it("ignores numbering above the conditions heading", () => {
+    const withNumberedReasons = `First Schedule
+Reasons and Considerations
+
+1. The site is zoned Objective A.
+2. The development accords with the plan.
+3. It would not injure residential amenity.
+
+Second Schedule
+Conditions
+
+1. The development shall be carried out in accordance with the plans lodged.
+
+2. The roof area shall not be used as a balcony.`;
+    expect(scheduleConditionCount(withNumberedReasons)).toBe(2);
+  });
+
+  it("says nothing about anything that is not a schedule", () => {
+    expect(scheduleConditionCount(DLR_REQUEST)).toBeNull();
+    expect(scheduleConditionCount("The development shall be carried out as lodged.")).toBeNull();
+    expect(scheduleConditionCount(null)).toBeNull();
+  });
+
+  it("never claims a count it could not read", () => {
+    // A schedule whose conditions are not numbered falls back to the row
+    // count, which is what the list already showed.
+    const unnumbered = `First Schedule
+Reasons and Considerations
+
+The development is acceptable.
+
+Second Schedule
+Conditions
+
+The development shall be carried out in accordance with the plans lodged.`;
+    expect(scheduleConditionCount(unnumbered)).toBeNull();
   });
 });

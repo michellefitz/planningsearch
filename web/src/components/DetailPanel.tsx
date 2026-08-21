@@ -16,7 +16,7 @@ import { XIcon } from "./icons";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "../statusStyle";
 import SaveStar from "./SaveStar";
-import { itemLabel } from "../../../api/_conditions/labels.mjs";
+import { itemLabel, scheduleConditionCount } from "../../../api/_conditions/labels.mjs";
 import { realDecision } from "../../../api/_conditions/decision.mjs";
 import { appealOutcome } from "../../../api/_conditions/appeal.mjs";
 import { developmentContribution } from "../../../api/_conditions/contribution.mjs";
@@ -293,6 +293,19 @@ const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fin
 const conditionAnchor = (n: number) => `condition-${n}`;
 
 /**
+ * What the heading counts: conditions, not rows.
+ *
+ * DLR files an entire decision as one item — all six of D20A/0569's conditions
+ * are inside it — so counting rows said "Conditions of this decision 1" on a
+ * permission carrying six. Where a row is a schedule, its own numbering is
+ * what counts; where the number cannot be read out of it, the row counts as
+ * one, which is the old behaviour and never overstates.
+ */
+function groupCount(items: ConditionItem[]): number {
+  return items.reduce((n, i) => n + (scheduleConditionCount(i.text) ?? 1), 0);
+}
+
+/**
  * The point of the whole feature: a permission can be granted and still not
  * allow what was drawn. These are the conditions that bind — a narrower
  * entrance, a window that has to be obscured, a dormer dropped below the
@@ -500,7 +513,7 @@ function ConditionGroups({
       {groups.map((g) => (
         <div key={g.code} className="condition-group">
           <h4>
-            {g.label} <span className="count">{g.items.length}</span>
+            {g.label} <span className="count">{groupCount(g.items)}</span>
           </h4>
           {/* These headings are planning jargon, and "Notes" in particular
               reads as though the council imposed something. Say what the
@@ -1556,7 +1569,9 @@ function DecisionSection({
             <ConditionHighlights
               highlights={highlights}
               loading={highlightsLoading}
-              total={conditions.items.filter((i) => i.code === "C").length}
+              // Conditions, not rows — the "other N are standard wording" line
+              // is about the decision, and DLR keeps all of its in one row.
+              total={groupCount(conditions.items.filter((i) => i.code === "C"))}
             />
           }
         />

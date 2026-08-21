@@ -186,6 +186,39 @@ export function isDecisionSchedule(text) {
   return SCHEDULE_HEADING_RE.test(String(text ?? ""));
 }
 
+/**
+ * How many conditions a decision schedule actually holds.
+ *
+ * The heading counts what the council attached, not how many rows we managed
+ * to split it into — DLR files all six of D20A/0569's conditions as one item,
+ * so "Conditions of this decision 1" told the reader there was one condition
+ * on a permission carrying six.
+ *
+ * Read as the highest number that opens a line in the schedule's own list,
+ * rather than by counting matches: sub-points ("(a)", "(b)") and the "REASON:"
+ * lines under each condition break a naive count, and a numbered list that
+ * restarts would inflate one.
+ */
+const NUMBERED_LINE_RE = /^[ \t]*(\d{1,2})\.[ \t]+\S/gm;
+/** The heading the conditions themselves sit under, on a line of its own. */
+const CONDITIONS_HEADING_RE = /^[ \t]*conditions[ \t]*$/im;
+
+export function scheduleConditionCount(text) {
+  const whole = String(text ?? "");
+  if (!isDecisionSchedule(whole)) return null;
+  // Only the part under the conditions heading — the reasons above it are
+  // numbered too on some councils, and they are not conditions.
+  const at = whole.search(CONDITIONS_HEADING_RE);
+  const body = at >= 0 ? whole.slice(at) : whole;
+  let highest = 0;
+  for (const m of body.matchAll(NUMBERED_LINE_RE)) {
+    highest = Math.max(highest, Number(m[1]));
+  }
+  // One is what the list already says, and a schedule of sixty is a parse that
+  // has run away rather than a decision.
+  return highest > 1 && highest <= 60 ? highest : null;
+}
+
 export function itemLabel(item, fallbackNumber) {
   // Before the council's own title: DLR's is its planner's initials, and the
   // deterministic fallbacks below would take the opening words instead — "First

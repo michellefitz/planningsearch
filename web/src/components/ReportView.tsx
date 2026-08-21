@@ -247,9 +247,19 @@ export default function ReportView({
                       {precMapUrl && i < 8 && <span className="rp-num">{i + 1}</span>}
                       <span className="rp-ref">
                         {p.planning_reference}
-                        {p.source_url && (
+                        {(p.id != null || p.source_url) && (
                           <a
-                            href={p.source_url}
+                            /* The agile councils' source_url is a keyword
+                               search that does not find its own application —
+                               the portal needs its internal id, which only the
+                               resolver can fetch. It falls back to source_url
+                               for the councils whose register URL is already a
+                               deep link, so this is right for all seven. */
+                            href={
+                              p.id != null
+                                ? `/api/applications/${p.id}/portal`
+                                : (p.source_url as string)
+                            }
                             target="_blank"
                             rel="noopener noreferrer"
                             title="View on the council's planning register"
