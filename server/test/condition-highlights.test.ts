@@ -3,7 +3,9 @@ import {
   conditionHighlights,
   conditionItems,
   conditionsUserMsg,
+  HIGHLIGHTS_PROMPT,
   isGrounded,
+  isWorkingHours,
   parseHighlights,
 } from "../../api/_conditions/highlights.mjs";
 
@@ -195,5 +197,113 @@ describe("conditionHighlights", () => {
       JSON.stringify({ highlights: [{ n: 5, point: "Entrance capped at 3.5m." }] })
     );
     expect(out).toEqual([{ n: 5, point: "Entrance capped at 3.5m." }]);
+  });
+});
+
+/**
+ * Dublin City 2893/21, Rear of 6 Grantham Street — a twelve-condition grant
+ * that surfaced "Site works only Monday–Friday 7am–6pm, Saturday 8am–2pm" as
+ * one of its three notable conditions.
+ *
+ * Construction hours are on about a third of all permissions in the same
+ * standard form. They say nothing about how a permission differs from what was
+ * applied for, which is the whole job of that box, and they take a slot from
+ * something that does. The prompt has always said so; two later instructions
+ * overrode it — the rule that a condition naming a figure must be pulled out
+ * even when the condition around it is routine (a working-hours condition is
+ * nothing but figures), and "restrictions on … opening hours", which means the
+ * hours a finished shop may trade.
+ */
+describe("isWorkingHours", () => {
+  it("catches the phrasings the model actually produced", () => {
+    for (const point of [
+      "Site works only Monday–Friday 7am–6pm, Saturday 8am–2pm; no work Sundays or public holidays.",
+      "Construction hours limited to 08:00-18:00 on weekdays.",
+      "Building works shall only be carried out between the hours of 7am and 6pm.",
+      "Hours of work restricted to weekdays.",
+      "Site hours 8am to 7pm Monday to Friday.",
+    ]) {
+      expect(isWorkingHours(point)).toBe(true);
+    }
+  });
+
+  it("never touches the hours a finished development may operate", () => {
+    // A shop's or creche's trading hours bind whoever lives beside it. That is
+    // a real restriction and a different thing entirely.
+    for (const point of [
+      "Opening hours limited to 07:00-23:00.",
+      "Delivery hours restricted to 8am-6pm.",
+      "Trading hours may not extend beyond 10pm.",
+    ]) {
+      expect(isWorkingHours(point)).toBe(false);
+    }
+  });
+
+  it("needs the condition to be about when, not just about building", () => {
+    for (const point of [
+      "A construction traffic management plan must be agreed before work starts.",
+      "Demolition must be completed within six months.",
+    ]) {
+      expect(isWorkingHours(point)).toBe(false);
+    }
+  });
+
+  it("leaves genuinely notable conditions alone", () => {
+    for (const point of [
+      "Render finish must be self-finish in a suitable colour and shall not require painting.",
+      "No extensions, garages, stores or offices may be built without separate planning permission.",
+      "The dormer window must be set back 1.5m from the ridge.",
+      "Obscure glazing required to the side window at first floor.",
+    ]) {
+      expect(isWorkingHours(point)).toBe(false);
+    }
+  });
+});
+
+describe("parseHighlights drops working hours whatever the model says", () => {
+  const items = [
+    {
+      code: "C",
+      order: 7,
+      text: "7. a) The site and building works required to implement the development shall only be carried out between the hours of:\n\nMondays to Fridays - 7.00am to 6.00pm\n\nSaturday - 8.00 a.m. to 2.00pm\n\nSundays and Public Holidays - No activity on site.",
+    },
+    {
+      code: "C",
+      order: 4,
+      text: "4. Prior to the commencement of development above ground level, details of the materials, colours and textures of all external finishes including samples, shall be submitted to and agreed in writing by the Planning Authority. Any proposed render finish to be self-finish in a suitable colour and shall not require painting.",
+    },
+  ];
+
+  it("removes the hours point and keeps the rest", () => {
+    const raw = JSON.stringify({
+      highlights: [
+        { n: 7, point: "Site works only Monday–Friday 7am–6pm, Saturday 8am–2pm; no work Sundays." },
+        { n: 4, point: "Render finish must be self-finish in a colour that does not require painting." },
+      ],
+    });
+    const out = parseHighlights(raw, conditionItems(items));
+    expect(out?.map((h) => h.n)).toEqual([4]);
+  });
+
+  it("returns an empty list rather than a wrong one", () => {
+    // [] is "nothing here binds you"; null is "we couldn't read them". A
+    // decision whose only candidate was the working hours must say the former.
+    const raw = JSON.stringify({
+      highlights: [{ n: 7, point: "Construction hours are 7am to 6pm Monday to Friday." }],
+    });
+    expect(parseHighlights(raw, conditionItems(items))).toEqual([]);
+  });
+});
+
+describe("the prompt no longer contradicts itself about hours", () => {
+  it("says a clock time is not the kind of figure that makes a condition notable", () => {
+    expect(HIGHLIGHTS_PROMPT).toMatch(/clock time is not one of those figures/i);
+  });
+
+  it("distinguishes a finished development's hours from the builders'", () => {
+    // The old wording was a bare "restrictions on use, occupancy or opening
+    // hours", which reads close enough to working hours to catch them.
+    expect(HIGHLIGHTS_PROMPT).not.toMatch(/use, occupancy or opening hours/i);
+    expect(HIGHLIGHTS_PROMPT).toMatch(/FINISHED development may operate/);
   });
 });
