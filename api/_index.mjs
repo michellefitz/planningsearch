@@ -3297,11 +3297,31 @@ const readableReason = (doc, content) => {
       // record of what the planner was worried about, and that is worth
       // reading on a decided application too — often more so.
       const asked = furtherInfoItems(conditions?.items ?? []);
-      if (!asked.length) return send(res, 200, { supported: true, summary: null });
-      const summary = await aiCached(cacheKind, app.authority_id, app.planning_reference, () =>
-        furtherInfoSummary(asked, callClaude)
-      );
-      return send(res, 200, { supported: true, summary });
+      if (asked.length) {
+        const summary = await aiCached(cacheKind, app.authority_id, app.planning_reference, () =>
+          furtherInfoSummary(asked, callClaude)
+        );
+        return send(res, 200, { supported: true, summary });
+      }
+      /**
+       * No structured request — which is not the same as no request.
+       *
+       * South Dublin's conditions endpoint answers only once a decision has
+       * issued, so on SD26B/0100W — asked for more in April, answered in July,
+       * still undecided — there was nothing to read and the sheet said the
+       * council "publishes the request as a letter on the file", which is the
+       * note written for Kildare, Meath and Wicklow. The letter is genuinely
+       * there ("Notification of Decision ADDITIONAL INFORMATION"), so read it
+       * the same way those councils' letters are read rather than giving up
+       * on a council that simply has not filed the structured version yet.
+       *
+       * Only where a file listing exists: Dublin City, Fingal and DLR are
+       * served by the portal's JSON document API instead, and they publish the
+       * structured items anyway, so they fall through to a null summary.
+       */
+      if (!scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference)) {
+        return send(res, 200, { supported: true, summary: null });
+      }
     }
 
     /**

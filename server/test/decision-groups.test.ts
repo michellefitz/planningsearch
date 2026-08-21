@@ -6,6 +6,7 @@ import {
   DECISION_CODES,
   FURTHER_INFO_CODES,
   isRefusalDecision,
+  sectionCodes,
 } from "../../web/src/components/DetailPanel.js";
 
 describe("isRefusalDecision", () => {
@@ -97,5 +98,60 @@ describe("which section owns which prescription code", () => {
     // a split decision as an Informative and a Note.
     expect(DECISION_CODES).toContain("I");
     expect(DECISION_CODES).toContain("N");
+  });
+});
+
+describe("who owns the Informative items", () => {
+  /**
+   * The councils do not agree on what "I" means, so it cannot be routed by
+   * code. Sampled the 40 most recent DLR applications that went out for
+   * further information: 20 carry an "I" item, only 1 carries a "D", and all
+   * 20 of those "I" texts are the request itself — "The applicant is
+   * requested to submit revised proposals which address these concerns"
+   * (D20A/0569), "RECOMMENDATION … request the following FURTHER INFORMATION"
+   * (D26A/0318/WEB). The same sample on Dublin City found no "I" items at all
+   * on a further-information application; Dublin City uses the code for the
+   * two halves of a split decision.
+   */
+  it("gives a further-information application's informatives to the request", () => {
+    const codes = sectionCodes("GRANT PERMISSION", true);
+    expect(codes.furtherInfo).toContain("I");
+    expect(codes.decision).not.toContain("I");
+    // The request is one thing; the decision's own conditions are another.
+    expect(codes.furtherInfo).not.toContain("C");
+    expect(codes.decision).toContain("C");
+  });
+
+  it("leaves a split decision's halves where they belong", () => {
+    // Dublin City files the refused half and the granted half as an
+    // Informative and a Note. Those are the decision, not a request — even on
+    // an application that also went out for further information.
+    const codes = sectionCodes("GRANT PERMISSION FOR RETENTION AND REFUSE PERMISSION", true);
+    expect(codes.decision).toContain("I");
+    expect(codes.decision).toContain("N");
+    expect(codes.furtherInfo).not.toContain("I");
+  });
+
+  it("keeps informatives with the decision when nothing was ever asked for", () => {
+    const codes = sectionCodes("GRANT PERMISSION", false);
+    expect(codes.decision).toContain("I");
+    expect(codes.furtherInfo).toEqual(["D"]);
+  });
+
+  it("never lets a code land in both sections", () => {
+    for (const [decision, fi] of [
+      ["GRANT PERMISSION", true],
+      ["GRANT PERMISSION", false],
+      ["REFUSE PERMISSION", true],
+      ["GRANT PERMISSION FOR RETENTION AND REFUSE PERMISSION", true],
+      [null, true],
+    ] as Array<[string | null, boolean]>) {
+      const codes = sectionCodes(decision, fi);
+      const both = codes.furtherInfo.filter((c) => codes.decision.includes(c));
+      expect(both).toEqual([]);
+      expect([...codes.furtherInfo, ...codes.decision].sort()).toEqual(
+        conditionGroups(decision).map((g) => g.code).sort()
+      );
+    }
   });
 });

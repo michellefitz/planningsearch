@@ -274,3 +274,51 @@ describe("cleanSummary", () => {
     expect(out).toContain("Move the extension off the boundary.");
   });
 });
+
+/**
+ * South Dublin's request letter, and why we now look for one at all.
+ *
+ * South Dublin is an agile council, so the request is meant to arrive as
+ * structured "D" items — but its conditions endpoint answers nothing until a
+ * decision issues. SD26B/0100W was asked for more in April 2026 and answered
+ * in July, and was still undecided in August: no conditions, so no summary,
+ * and the sheet fell back to a note written for the eplanning councils. The
+ * letter is on the file the whole time, under South Dublin's own name for it.
+ *
+ * Titles are the real ones from SD26B/0100W's file list, read live on
+ * 2026-08-21.
+ */
+describe("findFurtherInfoDocIndex on South Dublin", () => {
+  const SOUTH_DUBLIN = [
+    { title: "Acknowledgement / Validation Letter — 11/03/2026" },
+    { title: "Application Form - Part A — 11/03/2026" },
+    { title: "Drawings - General — 11/03/2026" },
+    { title: "Newspaper Notice — 11/03/2026" },
+    { title: "Site Notice — 11/03/2026" },
+    { title: "Site Notice Site Inspection Sheet — 19/03/2026" },
+    { title: "Chief Executives Order ADDITIONAL INFORMATION — 27/04/2026" },
+    { title: "Notification of Decision ADDITIONAL INFORMATION — 27/04/2026" },
+    { title: "Notification of Decision ADDITIONAL INFORMATION — 28/04/2026" },
+    { title: "F.I. Receipt Ack. Letter — 14/07/2026" },
+    { title: "F.I. Received Doc. Ground Floor Plans (FI Code 18633) — 14/07/2026" },
+    { title: "F.I. Received Doc. Cover Letter — 14/07/2026" },
+    { title: "Chief Executives Order Chief Executives Order — 23/07/2026" },
+    { title: "Notification of Decision Notification of Decision — 23/07/2026" },
+  ];
+
+  it("finds the request under South Dublin's own name for it", () => {
+    // Not "F.I. Request Letter" — South Dublin issues it as a Notification of
+    // Decision stamped ADDITIONAL INFORMATION.
+    expect(findFurtherInfoDocIndex(SOUTH_DUBLIN)).toBe(8);
+  });
+
+  it("does not mistake the applicant's answers for the request", () => {
+    const picked = findFurtherInfoDocIndex(SOUTH_DUBLIN);
+    expect(SOUTH_DUBLIN[picked].title).not.toMatch(/Received|Receipt/i);
+  });
+
+  it("does not mistake the actual decision for the request", () => {
+    const picked = findFurtherInfoDocIndex(SOUTH_DUBLIN);
+    expect(SOUTH_DUBLIN[picked].title).toMatch(/ADDITIONAL INFORMATION/);
+  });
+});
