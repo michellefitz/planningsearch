@@ -9,6 +9,7 @@ import {
   type DocumentReason,
   type Meta,
   type ZoningInfo,
+  type SourceDocument,
 } from "../api";
 import PropertyMedia, { GMAPS_KEY, MapLinks } from "./PropertyMedia";
 import { XIcon } from "./icons";
@@ -607,9 +608,70 @@ type AppealConditions = {
 type SummaryState =
   | { phase: "idle" }
   | { phase: "loading" }
-  | ({ phase: "loaded"; summary: string | null; source: string | null } & AppealConditions)
+  | ({
+      phase: "loaded";
+      summary: string | null;
+      source: string | null;
+      source_url: string | null;
+    } & AppealConditions)
   | ({ phase: "empty" } & Partial<AppealConditions>)
   | { phase: "failed" };
+
+/**
+ * A council document named, and linked to.
+ *
+ * Every place the sheet says where a summary came from — "AI-extracted from
+ * X", "couldn't read X" — used to print the title and stop, leaving the reader
+ * to find X themselves in a list that runs to a hundred entries on Kildare.
+ * The document proxy takes the file's position in that list, so naming it and
+ * linking to it are the same thing, and the fallbacks stay honest: no index,
+ * no link, same words.
+ */
+function DocumentRef({
+  detail: d,
+  document,
+  href,
+}: {
+  detail: AppDetail;
+  document: { title: string; index?: number | null } | null;
+  /** For a document that is not in the council's file list at all — the
+   *  Commission publishes its orders on its own site. */
+  href?: string | null;
+}) {
+  if (!document?.title) return null;
+  const to =
+    href ??
+    (document.index != null && document.index >= 0
+      ? `/api/applications/${d.id}/files/${document.index}`
+      : null);
+  if (!to) return <em>{document.title}</em>;
+  return (
+    <a className="doc-ref" href={to} target="_blank" rel="noopener noreferrer">
+      {document.title}
+    </a>
+  );
+}
+
+/** One or two documents, named and linked, in a sentence. */
+function SourceDocuments({
+  detail: d,
+  documents,
+}: {
+  detail: AppDetail;
+  documents: SourceDocument[];
+}) {
+  if (!documents.length) return <>the decision order</>;
+  return (
+    <>
+      {documents.map((doc, i) => (
+        <Fragment key={`${doc.title}-${doc.index}`}>
+          {i > 0 && (i === documents.length - 1 ? " and " : ", ")}
+          <DocumentRef detail={d} document={doc} />
+        </Fragment>
+      ))}
+    </>
+  );
+}
 
 /**
  * What to say when the council's own document defeats us.
@@ -620,10 +682,10 @@ type SummaryState =
  */
 function unreadableNote(
   reason: DocumentReason | null,
-  document: string | null,
+  document: ReactNode,
   council: string
 ): ReactNode {
-  const named = document ? <> — <em>{document}</em></> : null;
+  const named = document ? <> — {document}</> : null;
   switch (reason) {
     case "djvu":
       // These are decoded now — reaching this means the decode itself failed,
@@ -662,10 +724,10 @@ function unreadableNote(
 /** The same, for the further-information request rather than the decision. */
 function unreadableRequestNote(
   reason: DocumentReason,
-  document: string | null,
+  document: ReactNode,
   council: string
 ): ReactNode {
-  const named = document ? <> — <em>{document}</em></> : null;
+  const named = document ? <> — {document}</> : null;
   if (reason === "djvu")
     return (
       <>
@@ -689,14 +751,14 @@ type DecisionOrderState =
   | { phase: "idle" }
   | { phase: "loading" }
   | { phase: "failed" }
-  | { phase: "empty"; reason: DocumentReason | null; document: string | null }
+  | { phase: "empty"; reason: DocumentReason | null; documents: SourceDocument[] }
   | {
       phase: "loaded";
       summary: string | null;
       conditions: Array<{ number: number | null; title: string; text: string }>;
       reasons: Array<{ number: number | null; text: string }>;
       highlights: ConditionHighlight[] | null;
-      source: string | null;
+      documents: SourceDocument[];
     };
 
 /**
@@ -719,6 +781,14 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
       const res = await api.decisionSummary(d.id);
       const conditions = res.conditions ?? [];
       const reasons = res.reasons ?? [];
+      // Older cached answers carry the title alone; the server fills the index
+      // back in where it can, and where it cannot the title still prints.
+      const documents: SourceDocument[] =
+        res.source_documents?.length
+          ? res.source_documents
+          : res.source_document
+            ? [{ title: res.source_document, index: -1 }]
+            : [];
       if (res.summary || conditions.length || reasons.length)
         setState({
           phase: "loaded",
@@ -726,14 +796,9 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
           conditions,
           reasons,
           highlights: res.highlights ?? null,
-          source: res.source_document ?? null,
+          documents,
         });
-      else
-        setState({
-          phase: "empty",
-          reason: res.reason ?? null,
-          document: res.source_document ?? null,
-        });
+      else setState({ phase: "empty", reason: res.reason ?? null, documents });
     } catch {
       setState({ phase: "failed" });
     }
@@ -769,7 +834,13 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
       )}
       {state.phase === "empty" && (
         <p className="section-note section-note-warn">
-          {unreadableNote(state.reason, state.document, d.authority_short_name)}
+          {unreadableNote(
+            state.reason,
+            state.documents.length ? (
+              <SourceDocuments detail={d} documents={state.documents} />
+            ) : null,
+            d.authority_short_name
+          )}
         </p>
       )}
       {state.phase === "loaded" && (
@@ -823,9 +894,11 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
             </div>
           )}
           {/* Which document this came from is the useful half and stays; the
-              "verify before relying on it" half is said once, in the footer. */}
+              "verify before relying on it" half is said once, in the footer.
+              Named and linked, so "read it yourself" is one tap rather than a
+              hunt through the file list. */}
           <p className="list-note">
-            AI-extracted from "{state.source ?? "the decision order"}".
+            AI-extracted from <SourceDocuments detail={d} documents={state.documents} />.
           </p>
         </>
       )}
@@ -921,6 +994,7 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
             phase: "loaded",
             summary: res.summary ?? null,
             source: res.based_on_document ?? null,
+            source_url: res.based_on_document_url ?? null,
             conditions,
             reasons,
           });
@@ -1022,7 +1096,28 @@ function AppealBlock({ detail: d }: { detail: AppDetail }) {
           is the readable version, and the order underneath is a click away.
           Conditions are different — they are instructions, not explanation. */}
       {summary.phase === "loaded" && summary.conditions.length > 0 && (
-        <p className="list-note">AI-extracted from "{summary.source ?? "the appeal order"}".</p>
+        <p className="list-note">
+          AI-extracted from{" "}
+          {summary.source ? (
+            <DocumentRef
+              detail={d}
+              document={{ title: summary.source }}
+              // The Commission's orders are ordinary PDFs on its own site, so
+              // this is a plain URL. Where the summary was cached before the
+              // URL travelled with it, the case page's own document list —
+              // already loaded above — carries the same title.
+              href={
+                summary.source_url ??
+                (state.phase === "loaded"
+                  ? state.documents.find((doc) => doc.title === summary.source)?.url ?? null
+                  : null)
+              }
+            />
+          ) : (
+            "the appeal order"
+          )}
+          .
+        </p>
       )}
 
       {/* Held open at the height of a case record — four documents is the usual
@@ -1184,7 +1279,7 @@ function FurtherInfoSection({
   conditionsLoading: boolean;
   askedSummary: string | null;
   askedLoading: boolean;
-  askedReason: { reason: DocumentReason | null; document: string | null } | null;
+  askedReason: { reason: DocumentReason | null; document: SourceDocument | null } | null;
   titles: Map<number, string> | null;
   only: readonly string[];
 }) {
@@ -1210,6 +1305,7 @@ function FurtherInfoSection({
       ? [{ label: "Received", date: d.further_info_received_date }]
       : []),
   ];
+  const letter = askedReason?.document ?? null;
   return (
     <section aria-labelledby="further-info-h" aria-busy={conditionsLoading || undefined}>
       <h3 id="further-info-h">Further information</h3>
@@ -1270,12 +1366,31 @@ function FurtherInfoSection({
         />
       )}
       {/* Kildare, Wicklow and Meath publish no structured conditions — their
-          request is a scanned letter, summarised above from the PDF. The
-          letter itself is in the documents section below. */}
+          request is a scanned letter, summarised above from the PDF. So, some
+          of the time, does South Dublin, whose conditions endpoint says
+          nothing until a decision issues. Either way the letter is named and
+          linked rather than described. */}
+      {askedSummary && letter && (
+        <p className="list-note">
+          AI-extracted from <DocumentRef detail={d} document={letter} />.
+        </p>
+      )}
       {!conditions && !askedLoading && !askedSummary && (
         <p className="section-note">
           {askedReason?.reason && askedReason.reason !== "not_found" ? (
-            unreadableRequestNote(askedReason.reason, askedReason.document, d.authority_short_name)
+            unreadableRequestNote(
+              askedReason.reason,
+              letter ? <DocumentRef detail={d} document={letter} /> : null,
+              d.authority_short_name
+            )
+          ) : letter ? (
+            /* "Look for it in the documents below" made the reader go hunting
+               through a list that runs to a hundred entries on Kildare, for a
+               file we had already identified. */
+            <>
+              The request itself is on the file:{" "}
+              <DocumentRef detail={d} document={letter} />.
+            </>
           ) : (
             /* This used to say the council "publishes the request as a letter
                rather than as structured text", which is a claim about the
@@ -1860,9 +1975,11 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   /* Why there is no summary, when there is none — the scanned letter can be
      absent, oversized, or a DjVu the model cannot read, and each of those is
      something different from "nothing was asked for". */
+  /** Which letter the request was read out of, so the section can link to it
+   *  whether or not the summary worked. */
   const [askedReason, setAskedReason] = useState<{
     reason: DocumentReason | null;
-    document: string | null;
+    document: SourceDocument | null;
   } | null>(null);
   const [highlights, setHighlights] = useState<ConditionHighlight[] | null>(null);
   /* Labels for the conditions their council left untitled — DLR sends "C1",
@@ -1954,6 +2071,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     Boolean(conditions?.items.some((i) => i.code === "D")) ||
     d.status === "further_info" ||
     Boolean(d.further_info_requested_date);
+  const askedForMore =
+    d.status === "further_info" || Boolean(d.further_info_requested_date);
   // Who owns the "Informative" items — see sectionCodes.
   const codes = sectionCodes(conditions?.decision ?? d.decision, hasFurtherInfo);
   // ~65 chars per line at the sheet's width — beyond ~6 lines, clamp.
@@ -2052,19 +2171,35 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           if (!cancelled) setRefusalLoading(false);
         });
     }
-    // Councils with no conditions endpoint carry the request as a scanned
-    // letter instead, read on the same endpoint — so the fetch is driven by
-    // the status here rather than by anything in a conditions payload that
-    // will never arrive.
-    if (!hasConditionsSource && (d.status === "further_info" || d.further_info_requested_date)) {
+    /**
+     * The register says an application went out for further information, so
+     * ask — whoever the council is.
+     *
+     * This used to be gated on the council having no conditions endpoint, on
+     * the reasoning that the others would carry the request as "D" items in
+     * the conditions payload. South Dublin has the endpoint and it answers
+     * nothing until a decision issues, so on SD26B/0100W — asked in April,
+     * answered in July, still undecided in August — the conditions arrived
+     * null, the fetch below returned early on an empty payload, and this one
+     * never ran because the council was in the wrong set. The request was read
+     * by neither path. The server decides where to read it from; the sheet's
+     * job is only to ask.
+     */
+    if (askedForMore) {
       setAskedLoading(true);
       api
         .furtherInfoSummary(d.id)
         .then((r) => {
           if (cancelled) return;
           setAskedSummary(r.summary ?? null);
-          if (!r.summary)
-            setAskedReason({ reason: r.reason ?? null, document: r.source_document ?? null });
+          // Recorded even when the summary worked: the section names the
+          // letter it was read from, and that name is a link.
+          setAskedReason({
+            reason: r.summary ? null : r.reason ?? null,
+            document: r.source_document
+              ? { title: r.source_document, index: r.source_document_index ?? -1 }
+              : null,
+          });
         })
         .catch(() => {})
         .finally(() => {
@@ -2111,9 +2246,12 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             // request is already here, as D/I items — several thousand words
             // of planning prose on a house extension — so summarise what is
             // actually being asked for.
+            // Only when the register gave no date to go on — otherwise the
+            // fetch above has already asked for exactly this.
             if (
-              res.conditions.further_info ||
-              res.conditions.items.some((i) => i.code === "D" || i.code === "I")
+              !askedForMore &&
+              (res.conditions.further_info ||
+                res.conditions.items.some((i) => i.code === "D" || i.code === "I"))
             ) {
               setAskedLoading(true);
               api
@@ -2162,7 +2300,15 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     return () => {
       cancelled = true;
     };
-  }, [d.id, d.ai_summary, d.applicant_name, d.agent_name, d.decision, hasConditionsSource]);
+  }, [
+    d.id,
+    d.ai_summary,
+    d.applicant_name,
+    d.agent_name,
+    d.decision,
+    hasConditionsSource,
+    askedForMore,
+  ]);
 
   const aiSummary = d.ai_summary ?? enrich?.ai_summary ?? null;
   const applicant = d.applicant_name ?? enrich?.applicant_name ?? null;

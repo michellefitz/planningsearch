@@ -163,6 +163,18 @@ export type DocumentReason =
   | "unreadable_format"
   | "unavailable";
 
+/**
+ * A council document a summary was read out of.
+ *
+ * `index` is its position in that application's file list, which is what the
+ * document proxy takes — /api/applications/:id/files/:index — so naming a
+ * document and linking to it are the same thing.
+ */
+export interface SourceDocument {
+  title: string;
+  index: number;
+}
+
 export interface ZoningInfo {
   zone: string;
   general: string | null;
@@ -427,6 +439,9 @@ export const api = {
       supported: boolean;
       summary: string | null;
       source_document?: string | null;
+      /** Its position in the council's file list, so the sheet can link to the
+       *  letter through the document proxy rather than describing where it is. */
+      source_document_index?: number | null;
       reason?: DocumentReason;
     }>(
       `/api/applications/${id}/further-info-summary`,
@@ -463,6 +478,9 @@ export const api = {
       supported: boolean;
       summary?: string | null;
       based_on_document?: string | null;
+      /** The Commission publishes its orders on its own site, so this is a
+       *  plain URL rather than an index into a council file list. */
+      based_on_document_url?: string | null;
       /** The Commission's own wording, and what it resolves to. */
       decision?: string | null;
       decision_label?: string | null;
@@ -477,6 +495,10 @@ export const api = {
       supported: boolean;
       summary?: string | null;
       source_document?: string | null;
+      /** Each document this was read out of, with its position in the file
+       *  list. More than one where the council keeps the conditions in a
+       *  schedule of their own. */
+      source_documents?: SourceDocument[];
       conditions?: Array<{ number: number | null; title: string; text: string }>;
       reasons?: Array<{ number: number | null; text: string }>;
       /** The same notable-conditions read the councils with a conditions API
