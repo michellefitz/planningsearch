@@ -4327,9 +4327,27 @@ p.loading-line {
 /* Mobile register: address leads, status and figures share the second line,
    actions always visible (no hover on touch). */
 @media (max-width: 767px) {
-  .reg-row { grid-template-columns: minmax(0, 1fr) max-content; grid-template-areas: "main actions" "status meta"; row-gap: 7px; padding: 11px 4px; }
+  /* Three columns, so the actions are sized by themselves.
+     It used to be two — "main actions" over "status meta" — and a two-column
+     grid sizes each column by the widest thing in it. The widest thing in
+     column two was not the bell and the ⋯, it was the reference and the date
+     on the line below, which is far wider. So the actions sat at the LEFT edge
+     of a column wide enough for "2660804 · received 15 Jul 2026", landing them
+     in the middle of the row with a hand's width of dead space to their right,
+     while the address was squeezed into what was left.
+     Now the address spans the first two columns and only the actions occupy
+     the third, so they sit hard right and the address gets the room back. */
+  .reg-row {
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-areas:
+      "main   main   actions"
+      "status meta   meta";
+    row-gap: 7px;
+    column-gap: 10px;
+    padding: 11px 4px;
+  }
   .reg-main { grid-area: main; }
-  .reg-actions { grid-area: actions; opacity: 1; }
+  .reg-actions { grid-area: actions; opacity: 1; align-self: start; }
   .reg-status { grid-area: status; }
   .reg-meta { grid-area: meta; justify-self: end; }
   .reg-address { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
