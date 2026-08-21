@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 // The helpers live with the UI that renders them; the suite lives here.
-import { bcmsNoticeUrl, isRefusalDecision } from "../../web/src/components/DetailPanel.js";
+import {
+  bcmsNoticeUrl,
+  conditionGroups,
+  DECISION_CODES,
+  FURTHER_INFO_CODES,
+  isRefusalDecision,
+} from "../../web/src/components/DetailPanel.js";
 
 describe("isRefusalDecision", () => {
   it("does not read a grant as a refusal", () => {
@@ -45,5 +51,51 @@ describe("bcmsNoticeUrl", () => {
   it("points at the same resource the ingest reads, so the row is really there", async () => {
     const { BCMS_RESOURCE_ID } = await import("../src/ingest/bcms.js");
     expect(bcmsNoticeUrl("CN0143257DR")).toContain(BCMS_RESOURCE_ID);
+  });
+});
+
+describe("which section owns which prescription code", () => {
+  // The bug: Dublin City PWSDZ3074/23 is a grant with sixteen conditions and
+  // no further-information items at all — its "Further information" section
+  // exists only because the register carries a requested date. Both sections
+  // were handed the whole conditions payload, so all sixteen binding
+  // conditions rendered under "Further information", headed "Conditions of
+  // this decision".
+  const CODES = conditionGroups(null).map((g) => g.code);
+
+  it("gives every code exactly one home", () => {
+    const owned = [...FURTHER_INFO_CODES, ...DECISION_CODES];
+    expect([...owned].sort()).toEqual([...CODES].sort());
+    expect(new Set(owned).size).toBe(owned.length);
+  });
+
+  it("keeps the decision's own conditions out of the further-information section", () => {
+    expect(FURTHER_INFO_CODES).not.toContain("C");
+    expect(FURTHER_INFO_CODES).not.toContain("R");
+    expect(FURTHER_INFO_CODES).not.toContain("N");
+  });
+
+  it("renders nothing under further information for a conditions-only payload", () => {
+    const items = Array.from({ length: 16 }, (_, i) => ({ code: "C", order: i + 1 }));
+    const shown = conditionGroups(null)
+      .filter((g) => FURTHER_INFO_CODES.includes(g.code as "D"))
+      .filter((g) => items.some((i) => i.code === g.code));
+    expect(shown).toEqual([]);
+  });
+
+  it("still shows the request where the council actually filed one", () => {
+    const items = [{ code: "D", order: 1 }, { code: "C", order: 1 }];
+    const shown = conditionGroups(null)
+      .filter((g) => FURTHER_INFO_CODES.includes(g.code as "D"))
+      .filter((g) => items.some((i) => i.code === g.code));
+    expect(shown.map((g) => g.code)).toEqual(["D"]);
+  });
+
+  it("leaves the request out of the decision section", () => {
+    expect(DECISION_CODES).not.toContain("D");
+    // "I" and "N" stay with the decision: Dublin City files the two halves of
+    // a split decision as an Informative and a Note.
+    expect(DECISION_CODES).toContain("I");
+    expect(DECISION_CODES).toContain("N");
   });
 });

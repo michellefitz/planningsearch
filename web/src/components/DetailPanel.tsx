@@ -247,7 +247,7 @@ export function isRefusalDecision(decision: string | null | undefined): boolean 
  * setting out why permission *was* given. Labelling it "Reasons for refusal"
  * on a grant told readers an application had been refused when it hadn't.
  */
-function conditionGroups(decision: string | null | undefined, superseded = false) {
+export function conditionGroups(decision: string | null | undefined, superseded = false) {
   return [
     {
       code: "R",
@@ -366,6 +366,26 @@ function ConditionHighlights({
   );
 }
 
+/**
+ * Which prescription codes belong to which section of the sheet.
+ *
+ * The conditions endpoint returns one flat list for the whole application, and
+ * both sections were handed all of it. Dublin City PWSDZ3074/23 is a grant
+ * with sixteen conditions and no further-information items at all — its
+ * "Further information" section exists only because the register carries a
+ * requested date — so all sixteen binding conditions rendered underneath it,
+ * headed "Conditions of this decision". Anything in the payload that is not
+ * about the request now stays out of that section, and the request items stay
+ * out of the decision.
+ */
+export const FURTHER_INFO_CODES = ["D"] as const;
+/**
+ * Everything the decision itself carries. "I" and "N" sit here rather than
+ * with the request: Dublin City files the two halves of a split *decision* as
+ * an Informative and a Note, which is why splitHalf reads them.
+ */
+export const DECISION_CODES = ["R", "C", "I", "N"] as const;
+
 /** The full conditions / reasons, grouped and collapsible. */
 /**
  * On a split decision Dublin City files the two halves as an "Informative" and
@@ -411,6 +431,8 @@ function ConditionGroups({
   decision,
   superseded = false,
   titles = null,
+  only,
+  highlights = null,
 }: {
   conditions: DecisionConditions;
   decision: string | null;
@@ -419,9 +441,16 @@ function ConditionGroups({
    *  untitled. Null until they arrive, and often for good — South Dublin
    *  writes its own and never needs any. */
   titles?: Map<number, string> | null;
+  /** The codes this section owns. Required, because the payload covers the
+   *  whole application and every caller renders one part of it. */
+  only: readonly string[];
+  /** The notable-conditions box, rendered under the "Conditions of this
+   *  decision" heading it summarises rather than above the whole stack. */
+  highlights?: ReactNode;
 }) {
   const split = isSplitDecision(decision);
   const groups = conditionGroups(decision, superseded)
+    .filter((g) => only.includes(g.code))
     .map((g) => {
       const items = conditions.items.filter((i) => i.code === g.code);
       // Only where the wording settles it; otherwise the ordinary label stands.
@@ -441,6 +470,11 @@ function ConditionGroups({
               reads as though the council imposed something. Say what the
               group actually is before the reader opens any of it. */}
           {g.blurb && <p className="condition-blurb">{g.blurb}</p>}
+          {/* Under the heading it belongs to. It used to sit above the whole
+              stack, where it read as a summary of the decision rather than of
+              this list — and on a decision that also carries reasons and
+              notes it was separated from the conditions it links into. */}
+          {g.code === "C" && highlights}
           {g.items.map((item, i) => {
             const num = item.order || i + 1;
             // Portals often give a prescription no title of its own — every
@@ -724,22 +758,25 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
               </div>
             )
           )}
-          {/* The same box the councils with a conditions API get. It only ever
-              existed on those four because that is where conditions came from;
-              these are read out of the order instead, and there is no reason
-              the reader should be able to tell which. */}
-          {state.conditions.length > 0 && (
-            <ConditionHighlights
-              highlights={state.highlights}
-              loading={false}
-              total={state.conditions.length}
-            />
-          )}
           {state.conditions.length > 0 && (
             <div className="condition-group">
+              {/* Same heading and same blurb as the councils with a conditions
+                  API — the reader should not be able to tell that these came
+                  out of a scanned order rather than a portal. */}
               <h4>
-                Conditions of grant <span className="count">{state.conditions.length}</span>
+                Conditions of this decision{" "}
+                <span className="count">{state.conditions.length}</span>
               </h4>
+              <p className="condition-blurb">
+                Binding — the permission only stands if these are met.
+              </p>
+              {/* The same box the councils with a conditions API get, under the
+                  same heading, for the same reason. */}
+              <ConditionHighlights
+                highlights={state.highlights}
+                loading={false}
+                total={state.conditions.length}
+              />
               <ul className="decision-list">
                 {state.conditions.map((c, i) => (
                   <li key={i}>
@@ -1183,8 +1220,13 @@ function FurtherInfoSection({
           </div>
         </>
       )}
-      {conditions && conditions.items.length > 0 && (
-        <ConditionGroups conditions={conditions} decision={null} titles={titles} />
+      {conditions && conditions.items.some((i) => FURTHER_INFO_CODES.includes(i.code as "D")) && (
+        <ConditionGroups
+          conditions={conditions}
+          decision={null}
+          titles={titles}
+          only={FURTHER_INFO_CODES}
+        />
       )}
       {/* Kildare, Wicklow and Meath publish no structured conditions — their
           request is a scanned letter, summarised above from the PDF. The
@@ -1344,19 +1386,20 @@ function DecisionSection({
         </>
       )}
       {conditions && conditions.items.length > 0 && (
-        <>
-          <ConditionHighlights
-            highlights={highlights}
-            loading={highlightsLoading}
-            total={conditions.items.filter((i) => i.code === "C").length}
-          />
-          <ConditionGroups
-            conditions={conditions}
-            decision={decision}
-            superseded={superseded}
-            titles={titles}
-          />
-        </>
+        <ConditionGroups
+          conditions={conditions}
+          decision={decision}
+          superseded={superseded}
+          titles={titles}
+          only={DECISION_CODES}
+          highlights={
+            <ConditionHighlights
+              highlights={highlights}
+              loading={highlightsLoading}
+              total={conditions.items.filter((i) => i.code === "C").length}
+            />
+          }
+        />
       )}
       {/* Three distinct outcomes, never collapsed into a blank space: the
           council recorded none, or we couldn't reach the council at all. */}
