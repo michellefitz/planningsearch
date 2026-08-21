@@ -93,6 +93,56 @@ const COMPOUND_SCENARIOS: Scenario[] = [
       !!d.appeal_decision &&
       /refus/i.test(d.appeal_decision),
   },
+  /**
+   * The shape almost every recent bug had, and the one the grid could not
+   * reach: an application that went out for further information.
+   *
+   * It is not the same as the "further information" status — that is the
+   * council still waiting. A *decided* application that was asked for more
+   * renders a Further information section as well as a Decision, and that
+   * pairing is where the faults were: Dublin City rendered the whole decision
+   * under Further information (#53), DLR repeated the request as
+   * "Clarifications & informatives" (#53), South Dublin showed no request at
+   * all (#54), and Meath read a letter that had come back undelivered (#58).
+   *
+   * The register's date is the signal and there is no query filter for it, so
+   * it is matched on the detail. Sorted by decision rather than by receipt:
+   * newest-first returns applications too recent to have been through the
+   * cycle, and the grid came back empty on six councils out of seven.
+   */
+  {
+    id: "decided_after_fi",
+    label: "Decided after further information",
+    color: "#7c3aed",
+    letter: "FI+",
+    group: "compound",
+    searchParams: (authorityId: string) =>
+      new URLSearchParams({
+        status: "granted",
+        authority: authorityId,
+        sort: "decision",
+        limit: "40",
+      }),
+    match: (d) => !!d.further_info_requested_date && !!d.decision,
+  },
+  {
+    id: "fi_awaiting_response",
+    label: "Further information requested, undecided",
+    color: "#7c3aed",
+    letter: "FI?",
+    group: "compound",
+    searchParams: (authorityId: string) =>
+      new URLSearchParams({
+        status: "further_info",
+        authority: authorityId,
+        sort: "received",
+        limit: String(MAX_EXAMPLES),
+      }),
+    // South Dublin's conditions endpoint answers nothing until a decision
+    // issues, so this column is where a council that publishes the request
+    // only as a letter shows up.
+    match: (d) => !!d.further_info_requested_date && !d.decision,
+  },
   {
     id: "appealed_pending",
     label: "Under appeal (pending)",
