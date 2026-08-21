@@ -3282,16 +3282,6 @@ a.ov-pop-sub {
   font-size: 0.78rem;
   color: var(--ink-2);
 }
-.watch-delete {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--ink-2);
-  padding: 0.3rem;
-}
-.watch-delete:hover {
-  color: #b91c1c;
-}
 
 .legend-item {
   display: inline-flex;
@@ -4333,9 +4323,6 @@ p.loading-line {
 .saved-bell { border: 0; background: none; cursor: pointer; font-size: 14px; padding: 4px; border-radius: 4px; color: var(--ink-3); transition: color 120ms ease, background 120ms ease; }
 .saved-bell:hover { color: var(--ink); background: var(--surface-2); }
 .saved-bell-on { color: var(--action); }
-.saved-list-select { padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; font-family: inherit; color: var(--ink-2); background: var(--surface); cursor: pointer; min-width: 0; max-width: 90px; }
-.saved-remove { border: 0; background: none; cursor: pointer; font-size: 12px; padding: 4px 6px; border-radius: 4px; color: var(--ink-3); transition: color 120ms ease, background 120ms ease; display: inline-flex; align-items: center; }
-.saved-remove:hover { color: #dc2626; background: #fef2f2; }
 
 /* Mobile register: address leads, status and figures share the second line,
    actions always visible (no hover on touch). */
@@ -5519,3 +5506,107 @@ p.loading-line {
   color: var(--action);
   white-space: nowrap;
 }
+
+/* ---- Row actions behind a menu ----------------------------------------
+   Every saved row carried a bell, a full "List…" select and an X at the same
+   weight as the application itself. On desktop they at least waited for a
+   hover; on a phone — where the register is actually read — they were pinned
+   visible, so a control used occasionally had permanent equal billing with the
+   thing it acts on. The bell stays: it is a state indicator as much as a
+   control. Everything else moved in here. */
+.row-menu { position: relative; display: inline-flex; }
+
+.row-menu-btn {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.row-menu-btn:hover,
+.row-menu-btn-open {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.row-menu-pop {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: 0 6px 20px rgb(23 25 30 / 0.13);
+}
+
+.row-menu-item {
+  text-align: left;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.row-menu-item:hover:not(:disabled) { background: var(--surface-2); }
+.row-menu-item:disabled { color: var(--ink-3); cursor: default; }
+
+/* The destructive one reads as destructive — the old X read as a dismiss. */
+.row-menu-danger { color: #b91c1c; }
+.row-menu-danger:hover:not(:disabled) { background: #fef2f2; }
+
+.row-menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--line);
+}
+
+/* ---- Undo ------------------------------------------------------------
+   A confirm dialog would fix the accidental delete and cost everyone else a
+   click. This does the opposite: the row goes at once, and the delete does not
+   happen until the window lapses. */
+.reg-undo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 6px 0;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.reg-undo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.reg-undo button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--action);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+}
+
+.reg-undo button:hover { text-decoration: underline; }
+
+.reg-undo-error { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
