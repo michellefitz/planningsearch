@@ -104,9 +104,12 @@ function parsePublicAccessModel(html, baseUrl) {
       const appRoot = base.pathname.split("/")[1];
       return model.Rows.filter((r) => r.Guid).map((r) => {
         const docType = String(r.Doc_Type ?? "").trim() || "Document";
+        const ref2 = String(r.Doc_Ref2 ?? "").trim();
+        const qualifier = ref2 && ref2.toLowerCase() !== docType.toLowerCase() ? ref2 : "";
+        const label = qualifier ? `${docType} — ${qualifier}` : docType;
         const date = publicAccessDate(r.Date_Received);
         return {
-          title: date ? `${docType} — ${date}` : docType,
+          title: date ? `${label} — ${date}` : label,
           url: `${base.origin}/${appRoot}/Document/ViewDocument?id=${r.Guid}`,
         };
       });

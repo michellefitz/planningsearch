@@ -249,6 +249,29 @@ describe("parseFileListHtml", () => {
     ]);
   });
 
+  it("appends Doc_Ref2 when it adds context, suppresses when it duplicates Doc_Type", () => {
+    const html = [
+      "<script>",
+      'var model ={"FlexibleColumns":[],"Rows":[' +
+        '{"Guid":"AAA","Doc_Type":"Elevations","Date_Received":"04/19/2021 00:00:00","Doc_Ref2":"Proposed"},' +
+        '{"Guid":"BBB","Doc_Type":"Elevations","Date_Received":"04/19/2021 00:00:00","Doc_Ref2":"Existing"},' +
+        '{"Guid":"CCC","Doc_Type":"Decision Notices","Date_Received":"06/16/2021 00:00:00","Doc_Ref2":"Decision Notices"},' +
+        '{"Guid":"DDD","Doc_Type":"Comments on application","Date_Received":"05/24/2021 00:00:00","Doc_Ref2":"TII"},' +
+        '{"Guid":"EEE","Doc_Type":"Floor Plans","Date_Received":"04/19/2021 00:00:00","Doc_Ref2":""}],' +
+        '"FileSystemId":"PL"};',
+      "</script>",
+    ].join("\n");
+    const files = parseFileListHtml(
+      html,
+      "https://webapps.dublincity.ie/PublicAccess_Live/SearchResult/RunThirdPartySearch?FileSystemId=PL&Folder1_Ref=2615/21"
+    );
+    expect(files[0].title).toBe("Elevations — Proposed — 2021-04-19");
+    expect(files[1].title).toBe("Elevations — Existing — 2021-04-19");
+    expect(files[2].title).toBe("Decision Notices — 2021-06-16");
+    expect(files[3].title).toBe("Comments on application — TII — 2021-05-24");
+    expect(files[4].title).toBe("Floor Plans — 2021-04-19");
+  });
+
   it("collects document-looking anchors and resolves relative URLs", () => {
     const html = `
       <table>
