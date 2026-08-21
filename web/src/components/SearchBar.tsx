@@ -56,7 +56,9 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
    * focus off the input. Blurring it is what dismisses the keyboard on iOS.
    */
   const submit = (q: string) => {
+    window.clearTimeout(debounceRef.current);
     setOpen(false);
+    setSuggestions([]);
     setActive(-1);
     inputRef.current?.blur();
     onSubmit(q);

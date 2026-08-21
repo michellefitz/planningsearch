@@ -800,6 +800,7 @@ export default function App() {
                 savedByKey={savedByKey}
                 onToggleSave={toggleSave}
                 coverage={coverageSummary(meta)}
+                sort={state.sort}
               />
             </div>
           </div>

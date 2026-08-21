@@ -195,6 +195,8 @@ export interface SearchState {
   commencedOnly: boolean;
   receivedFrom: string;
   receivedTo: string;
+  decisionFrom: string;
+  decisionTo: string;
   /** Minimum residential units ("development size"); 0 = any. */
   minUnits: number;
   useMapArea: boolean;
@@ -239,6 +241,8 @@ export const EMPTY_SEARCH: SearchState = {
   commencedOnly: false,
   receivedFrom: "",
   receivedTo: "",
+  decisionFrom: "",
+  decisionTo: "",
   minUnits: 0,
   useMapArea: false,
   // Relevance by default: with a keyword it means best-match-first, and with no
@@ -263,6 +267,8 @@ export function searchParams(
   if (s.commencedOnly) p.set("commenced", "1");
   if (s.receivedFrom) p.set("receivedFrom", s.receivedFrom);
   if (s.receivedTo) p.set("receivedTo", s.receivedTo);
+  if (s.decisionFrom) p.set("decisionFrom", s.decisionFrom);
+  if (s.decisionTo) p.set("decisionTo", s.decisionTo);
   if (s.minUnits) p.set("minUnits", String(s.minUnits));
   if (s.useMapArea && bbox) p.set("bbox", bbox.join(","));
   if (near) {

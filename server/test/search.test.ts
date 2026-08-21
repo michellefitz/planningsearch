@@ -120,6 +120,12 @@ describe("query builders", () => {
   it("adds prefix search to the final token", () => {
     expect(buildFtsQuery("mill lane mayn")).toBe('"mill" "lane" "mayn"*');
   });
+  it("translates -word to FTS5 NOT", () => {
+    expect(buildFtsQuery("extension -garage")).toBe('"extension" NOT "garage"');
+  });
+  it("translates NOT keyword to FTS5 NOT", () => {
+    expect(buildFtsQuery("rear extension NOT retention")).toBe('"rear" "extension" NOT "retention"');
+  });
   it("builds trigram OR queries", () => {
     expect(buildTrigramQuery("manooth")).toContain('"man" OR');
   });

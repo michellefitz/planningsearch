@@ -2018,24 +2018,38 @@ function runSearch(p) {
     // "Rathgar Road" are the same street, while "4034/22" and "17a/18" are one
     // token each. Picking a geocoded suggestion types the commas for you, and
     // requiring the register to have written them the same way lost rows.
-    const tokens = q
-      .split(/\s+/)
-      .map((t) => t.replace(/\*+$/, "").replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
-      .filter(Boolean);
+    const rawTokens = q.split(/\s+/).filter(Boolean);
+    const include = [];
+    const exclude = [];
+    let negateNext = false;
+    for (const t of rawTokens) {
+      if (t.toUpperCase() === "NOT") { negateNext = true; continue; }
+      const negate = negateNext || t.startsWith("-");
+      negateNext = false;
+      const clean = (negate ? t.replace(/^-+/, "") : t)
+        .replace(/\*+$/, "")
+        .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+      if (!clean) continue;
+      (negate ? exclude : include).push(clean);
+    }
+    const tokens = include;
     const exact = rows.filter((a) => {
       const h = HAYSTACK.get(a.id);
-      return tokens.every((t) => h.includes(t));
+      return tokens.every((t) => h.includes(t)) && exclude.every((t) => !h.includes(t));
     });
     // A place written as one word where the register writes it as two (or the
     // other way round) is still an exact match, not a near one — so this runs
     // before the fuzzy fallback, and its hits keep match_quality "exact".
-    const squashedQ = squash(q);
+    const positiveQ = include.join(" ");
+    const squashedQ = squash(positiveQ);
     const loose =
       exact.length || squashedQ.length < 4
         ? []
         : (() => {
             const hay = squashedHaystack();
-            return rows.filter((a) => hay.get(a.id).includes(squashedQ));
+            return rows.filter((a) =>
+              hay.get(a.id).includes(squashedQ) && exclude.every((t) => !HAYSTACK.get(a.id).includes(t))
+            );
           })();
     const hits = exact.length ? exact : loose;
     if (hits.length) {
@@ -2044,16 +2058,16 @@ function runSearch(p) {
       // Weighted against this result set rather than the whole register: what
       // separates 59 Rathgar addresses is not the word "Rathgar".
       const idf = idfOver(hits, tokens, (a) => HAYSTACK.get(a.id));
-      const wanted = queryHouseNumbers(q);
+      const wanted = queryHouseNumbers(positiveQ);
       rows = hits
         .map((a) => ({ a, s: relevanceScore(a, tokens, idf, wanted) }))
         .sort((x, y) => y.s - x.s)
         .map((x) => ({ ...x.a, match_quality: "exact" }));
-    } else if (looksLikeReference(q) || looksLikeEircode(q)) {
+    } else if (looksLikeReference(positiveQ) || looksLikeEircode(positiveQ)) {
       rows = [];
     } else {
       fuzzy = true;
-      const qt = trigrams(q);
+      const qt = trigrams(positiveQ);
       const idx = triIndex();
       const hits = new Map();
       for (const g of qt) {
@@ -2062,7 +2076,7 @@ function runSearch(p) {
       }
       rows = rows
         .map((a) => ({ a, score: qt.size ? (hits.get(a.id) ?? 0) / qt.size : 0 }))
-        .filter((x) => x.score >= 0.45)
+        .filter((x) => x.score >= 0.45 && exclude.every((t) => !HAYSTACK.get(x.a.id).includes(t)))
         .sort((x, y) => y.score - x.score)
         .map((x) => ({ ...x.a, match_quality: "fuzzy" }));
     }

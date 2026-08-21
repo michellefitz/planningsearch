@@ -16,6 +16,7 @@ interface Props {
   onToggleSave: (authorityId: string, reference: string) => void;
   /** How far back each register goes — shown when nothing matched. */
   coverage: string | null;
+  sort?: string;
 }
 
 export function StatusBadge({ status, label }: { status: string; label: string }) {
@@ -124,6 +125,7 @@ export default function ResultsList({
   savedByKey,
   onToggleSave,
   coverage,
+  sort,
 }: Props) {
   if (loading)
     return (
@@ -197,7 +199,9 @@ export default function ResultsList({
               <p className="result-desc">{r.description}</p>
               <p className="result-meta">
                 <span className="ref">{r.planning_reference}</span> · {r.authority_short_name}
-                {r.received_date && ` · received ${fmtDate(r.received_date)}`}
+                {sort === "decision"
+                  ? r.decision_date && ` · decided ${fmtDate(r.decision_date)}`
+                  : r.received_date && ` · received ${fmtDate(r.received_date)}`}
                 {r.distance_km != null && ` · ${r.distance_km} km away`}
                 {r.is_domestic_guess && (
                   <span className="tag" title="Best-effort classification, not an official category">

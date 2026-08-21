@@ -58,22 +58,33 @@ function ftsQuote(token: string): string {
  * search-as-you-type.
  */
 export function buildFtsQuery(q: string): string | null {
-  const tokens = q
+  // Translate NOT / -word into FTS5 NOT. Tokens prefixed with - are negated;
+  // a bare "NOT" negates the next token.
+  const raw = q
     .split(/\s+/)
     .map((t) => t.replace(/^[^\p{L}\p{N}/*-]+|[^\p{L}\p{N}/*-]+$/gu, ""))
     .filter(Boolean);
-  if (tokens.length === 0) return null;
-  return tokens
-    .map((t, i) => {
-      const isLast = i === tokens.length - 1;
-      // A trailing * is the register-portal wildcard convention; map it (and
-      // the final token generally) to FTS prefix search.
-      const stripped = t.replace(/\*+$/, "");
-      if (!stripped) return null;
-      return isLast || t.endsWith("*") ? `${ftsQuote(stripped)}*` : ftsQuote(stripped);
-    })
-    .filter(Boolean)
-    .join(" ");
+  if (raw.length === 0) return null;
+  const parts: string[] = [];
+  let negateNext = false;
+  for (let i = 0; i < raw.length; i++) {
+    const t = raw[i];
+    if (t.toUpperCase() === "NOT") {
+      negateNext = true;
+      continue;
+    }
+    const negate = negateNext || t.startsWith("-");
+    negateNext = false;
+    const word = negate ? t.replace(/^-+/, "") : t;
+    if (!word) continue;
+    const isLast = i === raw.length - 1;
+    const stripped = word.replace(/\*+$/, "");
+    if (!stripped) continue;
+    const prefixed = !negate && (isLast || word.endsWith("*"));
+    const term = prefixed ? `${ftsQuote(stripped)}*` : ftsQuote(stripped);
+    parts.push(negate ? `NOT ${term}` : term);
+  }
+  return parts.length ? parts.join(" ") : null;
 }
 
 /**

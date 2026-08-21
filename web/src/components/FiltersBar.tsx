@@ -43,7 +43,16 @@ function appliedFilters(meta: Meta | null, s: SearchState, onChange: (n: SearchS
         : s.receivedFrom
           ? `From ${fmtDate(s.receivedFrom)}`
           : `Until ${fmtDate(s.receivedTo)}`;
-    out.push({ key: "dates", label, remove: () => onChange({ ...s, receivedFrom: "", receivedTo: "" }) });
+    out.push({ key: "received-dates", label: `Received ${label}`, remove: () => onChange({ ...s, receivedFrom: "", receivedTo: "" }) });
+  }
+  if (s.decisionFrom || s.decisionTo) {
+    const label =
+      s.decisionFrom && s.decisionTo
+        ? `${fmtDate(s.decisionFrom)} – ${fmtDate(s.decisionTo)}`
+        : s.decisionFrom
+          ? `From ${fmtDate(s.decisionFrom)}`
+          : `Until ${fmtDate(s.decisionTo)}`;
+    out.push({ key: "decision-dates", label: `Decided ${label}`, remove: () => onChange({ ...s, decisionFrom: "", decisionTo: "" }) });
   }
   if (s.minUnits) {
     const label = MIN_UNITS_OPTIONS.find((o) => o.value === s.minUnits)?.label ?? `${s.minUnits}+ homes`;
@@ -74,6 +83,8 @@ const CLEARED = {
   commencedOnly: false,
   receivedFrom: "",
   receivedTo: "",
+  decisionFrom: "",
+  decisionTo: "",
   minUnits: 0,
   useMapArea: false,
 };
@@ -298,6 +309,15 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
           from={state.receivedFrom}
           to={state.receivedTo}
           onChange={(receivedFrom, receivedTo) => onChange({ ...state, receivedFrom, receivedTo })}
+        />
+      </fieldset>
+
+      <fieldset>
+        <legend>Decided</legend>
+        <DateRangePicker
+          from={state.decisionFrom}
+          to={state.decisionTo}
+          onChange={(decisionFrom, decisionTo) => onChange({ ...state, decisionFrom, decisionTo })}
         />
       </fieldset>
 
