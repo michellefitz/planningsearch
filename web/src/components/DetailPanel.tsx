@@ -67,14 +67,52 @@ function daysUntil(iso: string): number {
 const isPast = (iso: string): boolean => daysUntil(iso) < 0;
 
 /**
- * `submissionsBy` is passed in rather than read off the record because only
- * the agile councils publish it, and only on the live portal — the national
- * dataset leaves the column empty for all four, so it arrives with enrichment
- * a moment after the sheet has already painted.
+ * When the public can still write to the council about an application.
+ *
+ * The one date on the sheet a member of the public can still act on, and it
+ * was shown on Kildare and almost nowhere else. Kildare bakes it into the
+ * register (39 of 40 live applications carry it); the four agile councils
+ * publish it on their portals and it arrives with enrichment, but patchily —
+ * sampled live, Dublin City and DLR had it on some applications and Fingal on
+ * none; Meath and Wicklow never publish it at all. So the same live
+ * application showed a countdown or nothing depending on which county it was
+ * in, and the timeline lost a row with it.
+ *
+ * Article 29 of the Planning and Development Regulations 2001 gives five weeks
+ * from the date the authority received the application, so the date is derived
+ * where it is not published — and says so, because a statutory default is not
+ * the same thing as the council's own published date.
+ *
+ * Not derived once further information is in play. Significant further
+ * information reopens the window on a fresh newspaper notice whose date we do
+ * not hold, so five weeks from receipt is simply the wrong answer there — and
+ * a confidently wrong deadline on the one date someone might act on is worse
+ * than none.
+ */
+const SUBMISSION_WEEKS = 5;
+
+export function submissionsDeadline(
+  d: Pick<AppDetail, "submissions_by_date" | "received_date" | "further_info_requested_date">,
+  fromEnrich?: string | null
+): { date: string; source: "published" | "statutory" } | null {
+  const published = d.submissions_by_date ?? fromEnrich ?? null;
+  if (published) return { date: published, source: "published" };
+  if (!d.received_date || d.further_info_requested_date) return null;
+  const from = new Date(`${d.received_date}T00:00:00`);
+  if (Number.isNaN(from.getTime())) return null;
+  from.setDate(from.getDate() + SUBMISSION_WEEKS * 7);
+  return { date: from.toISOString().slice(0, 10), source: "statutory" };
+}
+
+/**
+ * `submissionsBy` is passed in rather than read off the record because the
+ * councils that publish it do so only on the live portal — the national
+ * dataset leaves the column empty, so it arrives with enrichment a moment
+ * after the sheet has already painted.
  */
 function buildTimeline(d: AppDetail, submissionsBy?: string | null): TimelineStep[] {
   const decided = Boolean(d.decision_date);
-  const submissions = d.submissions_by_date ?? submissionsBy ?? null;
+  const submissions = submissionsDeadline(d, submissionsBy)?.date ?? null;
   const steps: TimelineStep[] = [
     { label: "Received", date: d.received_date, state: d.received_date ? "done" : "future" },
   ];
@@ -2100,10 +2138,11 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     !d.decision_date &&
     !closedDecision &&
     !CLOSED.has(liveStatus ?? d.status);
-  // Only the agile councils publish the observation deadline, and only on the
-  // live portal — so it arrives with enrichment, after the sheet has painted.
-  const submissionsBy = d.submissions_by_date ?? enrich?.submissions_by_date ?? null;
-  const timeline = buildTimeline(d, submissionsBy);
+  // Published where the council publishes one, derived from the statutory five
+  // weeks where it does not — see submissionsDeadline.
+  const submissions = submissionsDeadline(d, enrich?.submissions_by_date);
+  const submissionsBy = submissions?.date ?? null;
+  const timeline = buildTimeline(d, enrich?.submissions_by_date);
   /**
    * Whether the council asked this applicant for more, ever.
    *
@@ -2602,14 +2641,26 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         </ol>
         {/* While the window is open, make the submissions deadline actionable —
             this is the one date a member of the public can still act on. */}
-        {stillLive && submissionsBy && !isPast(submissionsBy) && (
+        {stillLive && submissions && !isPast(submissions.date) && (
           <p className="submissions-open">
-            <strong>Open for submissions until {fmtDate(submissionsBy)}</strong>
+            <strong>Open for submissions until {fmtDate(submissions.date)}</strong>
             {(() => {
-              const left = daysUntil(submissionsBy);
+              const left = daysUntil(submissions.date);
               return left === 0 ? " — today is the last day" : ` — ${left} day${left === 1 ? "" : "s"} left`;
             })()}
             . Observations are made to {d.authority_name}, usually with a fee.
+            {/* Whose date this is. The councils that publish one are stating a
+                fact; everywhere else this is the statutory default applied to
+                the received date, which is right in the ordinary case and can
+                be moved by things the register does not record. */}
+            {submissions.source === "statutory" && (
+              <span className="hint">
+                {" "}
+                Five weeks from the date {d.authority_short_name} received it —{" "}
+                {d.authority_short_name} does not publish the deadline itself, so confirm it on
+                the portal before relying on it.
+              </span>
+            )}
           </p>
         )}
         {/* The "confirm time-critical dates on the portal" caveat used to sit
