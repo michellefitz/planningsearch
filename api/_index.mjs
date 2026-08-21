@@ -18,6 +18,8 @@ import { echoesText, isDecisionSchedule, isGenericTitle } from "./_conditions/la
 import {
   FURTHER_INFO_PROMPT,
   cleanSummary,
+  FI_SELECTION_VERSION,
+  RETURNED_POST_RE,
   findFurtherInfoDocIndex,
   furtherInfoItems,
   furtherInfoSummary,
@@ -1497,6 +1499,7 @@ function findConditionsScheduleIndex(files, decisionIndex) {
     if (i === decisionIndex) return;
     const t = String(f?.title ?? "");
     if (!SCHEDULE_DOC_RE.test(t) || APPEAL_DOC_RE.test(t)) return;
+    if (RETURNED_POST_RE.test(t)) return;
     // A dated schedule is the one issued with the decision; an undated
     // duplicate is usually the working copy filed later. Prefer the dated one,
     // and the first of them, since registers append.
@@ -1517,6 +1520,12 @@ function findDecisionDocIndex(files, decision) {
   files.forEach((f, i) => {
     const t = f.title;
     if (APPEAL_DOC_RE.test(t) || NON_DECISION_DOC_RE.test(t)) return;
+    // The copy the post brought back is not the decision. Meath files it
+    // beside the original under the same document type — 212214 carries two,
+    // "Decision Documentation Returned" and "Decision Documentation -
+    // Returned" — and they scored identically to the real notification. The
+    // right one won on filing order alone.
+    if (RETURNED_POST_RE.test(t)) return;
     let score = 0;
     if (/notification of decision/i.test(t)) score += 5;
     if (/order to (grant|refuse)/i.test(t)) score += 5;
@@ -3341,7 +3350,12 @@ const readableReason = (doc, content) => {
     const app = BUNDLE.applications.find((a) => a.id === Number(fim[1]));
     if (!app) return send(res, 404, { error: "Application not found" });
     const isAgileApp = app.authority_id in AGILE_CLIENT_BY_AUTHORITY;
-    const cacheKind = versionedKind(AI_CACHE_KINDS.FURTHER_INFO, FURTHER_INFO_PROMPT);
+    // Versioned on the document choice as well as the prompt: a summary read
+    // from the wrong letter is not made right by the prompt staying the same.
+    const cacheKind = versionedKind(
+      AI_CACHE_KINDS.FURTHER_INFO,
+      `${FURTHER_INFO_PROMPT}#${FI_SELECTION_VERSION}`
+    );
 
     if (isAgileApp) {
       const conditions = await fetchAgileConditions(
