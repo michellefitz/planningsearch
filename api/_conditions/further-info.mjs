@@ -63,6 +63,42 @@ const FI_NOT_REQUEST_RE =
  *  the notices that follow it are about the newspaper and the site notice, not
  *  about the development. */
 const FI_NOTICE_RE = /publication|news\s?paper|newspaper|site notice|advertis/i;
+/**
+ * Nor is the copy the post brought back.
+ *
+ * Meath files undelivered mail beside the original under the same document
+ * type — 212214 carries "F.I. Request Letter — Returned Post-Gone Away" next
+ * to "F.I. Request Letter — Further Information", and does the same with its
+ * decision letters ("Decision Documentation Returned") and its
+ * acknowledgements. It scored identically to the real letter and, being filed
+ * after it, won the tie-break meant for a second round of questions. The
+ * summary was read out of an envelope that never reached the applicant.
+ */
+export const RETURNED_POST_RE = /returned|gone[\s-]?away|undelivered|not\s+called\s+for/i;
+
+/**
+ * The council's internal authority to ask, rather than the asking.
+ *
+ * A Chief Executive's Order directs that further information be sought; the
+ * letter is what goes to the applicant and says what is wanted. Both are filed
+ * as "F.I. Request Letter" on Meath, so without this the choice between them
+ * rests on which the register happened to append last.
+ */
+const INTERNAL_ORDER_RE = /chief executive|executive'?s? order|manager'?s? order|\border\b/i;
+
+/**
+ * Bumped when the rules above change which document gets read.
+ *
+ * The cached summary is keyed on the prompt, which is right while the prompt
+ * is the only thing that shapes the answer — it is not. A summary read out of
+ * the wrong document does not stop being wrong because the prompt stayed the
+ * same, and Meath 212214's was cached from a returned envelope. Folded into
+ * the cache kind so a change here retires the answers it invalidates.
+ *
+ * 2 — returned post excluded, and the letter preferred to the order that
+ *     authorised it.
+ */
+export const FI_SELECTION_VERSION = 2;
 
 export function findFurtherInfoDocIndex(files) {
   let best = -1;
@@ -70,9 +106,18 @@ export function findFurtherInfoDocIndex(files) {
   (files ?? []).forEach((f, i) => {
     const t = String(f?.title ?? "");
     if (!FI_DOC_RE.test(t) || FI_NOT_REQUEST_RE.test(t) || FI_NOTICE_RE.test(t)) return;
+    if (RETURNED_POST_RE.test(t)) return;
     let score = 1;
     if (/request/i.test(t)) score += 3;
     if (/letter/i.test(t)) score += 1;
+    // Names the thing itself, not the order authorising it. Enough to settle a
+    // tie between two documents the council filed under the same type.
+    if (/further\s+information/i.test(t)) score += 2;
+    if (INTERNAL_ORDER_RE.test(t)) score -= 2;
+    // A penalty ranks a document below its siblings; it never rules one out.
+    // Some councils file only the order, and the order does carry what was
+    // asked for — better to read it than to tell the reader there is nothing.
+    score = Math.max(1, score);
     // >= so a later entry wins a tie: registers append chronologically, and an
     // application can go round twice — Kildare 25189 was asked in December and
     // again in June. The operative request is the most recent one.

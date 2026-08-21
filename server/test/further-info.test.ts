@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   FURTHER_INFO_PROMPT,
   cleanSummary,
+  RETURNED_POST_RE,
   findFurtherInfoDocIndex,
   furtherInfoItems,
   furtherInfoSummary,
@@ -320,5 +321,78 @@ describe("findFurtherInfoDocIndex on South Dublin", () => {
   it("does not mistake the actual decision for the request", () => {
     const picked = findFurtherInfoDocIndex(SOUTH_DUBLIN);
     expect(SOUTH_DUBLIN[picked].title).toMatch(/ADDITIONAL INFORMATION/);
+  });
+});
+
+/**
+ * Meath 212214 — Trammon, a 206-hectare solar farm.
+ *
+ * Meath files undelivered mail beside the original under the same document
+ * type. This application carries three documents titled "F.I. Request
+ * Letter": the Chief Executive's Order authorising the request, the letter
+ * itself, and the copy the post brought back. All three scored identically —
+ * each contains "Request" and "Letter" — and the tie-break that exists for a
+ * second round of questions handed the summary to the returned envelope.
+ *
+ * Titles are the real ones, read live on 2026-08-21.
+ */
+describe("findFurtherInfoDocIndex on a file list carrying returned post", () => {
+  const MEATH = [
+    { title: "Report Received from Internal Staff — Internal Technical Report-Fire Officer's" },
+    { title: "F.I. Request Letter — Chief Executive Order" },
+    { title: "F.I. Request Letter — Further Information" },
+    { title: "F.I. Request Letter — Returned Post-Gone Away" },
+    { title: "F.I. Received Doc. — Further Information Received" },
+    { title: "F.I. Receipt Ack. Letter — Returned Post-Gone Away" },
+  ];
+
+  it("reads the letter the council issued, not the one that came back", () => {
+    expect(findFurtherInfoDocIndex(MEATH)).toBe(2);
+  });
+
+  it("prefers the letter to the order that authorised it", () => {
+    // A Chief Executive's Order directs that further information be sought;
+    // the letter is what goes to the applicant and says what is wanted. Both
+    // are filed as "F.I. Request Letter", so without this the choice rests on
+    // which the register appended last.
+    expect(
+      findFurtherInfoDocIndex([
+        { title: "F.I. Request Letter — Further Information" },
+        { title: "F.I. Request Letter — Chief Executive Order" },
+      ])
+    ).toBe(0);
+  });
+
+  it("still reads the order where that is all the council filed", () => {
+    // The penalty ranks a document below its siblings; it never rules one
+    // out. The order does carry what was asked for, and reading it beats
+    // telling the reader there is no request on file.
+    expect(findFurtherInfoDocIndex([{ title: "F.I. Request Letter — Chief Executive Order" }])).toBe(
+      0
+    );
+  });
+
+  it("still takes the later of two genuine rounds", () => {
+    // The tie-break this fix narrows, not removes: Kildare 25189 was asked in
+    // December and again in June, and June is the operative request.
+    expect(
+      findFurtherInfoDocIndex([
+        { title: "F.I. Request Letter — 19/12/2025" },
+        { title: "F.I. Request Letter — 16/06/2026" },
+      ])
+    ).toBe(1);
+  });
+
+  it("recognises the ways a register says a letter came back", () => {
+    for (const title of [
+      "F.I. Request Letter — Returned Post-Gone Away",
+      "Notification of Decision Letters — Decision Documentation Returned",
+      "F.I. Request Letter — Undelivered",
+      "F.I. Request Letter — Not Called For",
+    ]) {
+      expect(RETURNED_POST_RE.test(title)).toBe(true);
+    }
+    // And does not fire on wording that merely contains one of the words.
+    expect(RETURNED_POST_RE.test("F.I. Request Letter — Further Information")).toBe(false);
   });
 });
