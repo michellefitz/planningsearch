@@ -270,6 +270,17 @@ export function bcmsNoticeUrl(notice: string): string {
   return `https://data.nbco.gov.ie/dataset/bcnccc/resource/${BCMS_RESOURCE_ID}?filters=${filters}`;
 }
 
+const APP_TYPE_HINTS: Record<string, string> = {
+  permission: "A standard application to build or change something.",
+  retention: "Permission sought for something already built or in use without planning permission.",
+  outline: "Approval in principle only — detailed drawings come later in a follow-up application.",
+  permission_consequent: "The detailed application that follows an outline permission already granted.",
+  extension_of_duration: "Extending the time limit on an existing permission that hasn't been built yet.",
+  exemption_declaration: "A formal ruling (Section 5) on whether particular works need planning permission at all.",
+  council_development: "Development by the council itself (roads, housing, parks), approved under Part 8.",
+  strategic: "A large-scale scheme decided under a special route — SHD, LRD, or Strategic Development Zone.",
+};
+
 /** Colour the outcome word so grants and refusals read at a glance. */
 function outcomeClass(text: string): string {
   if (/refus/i.test(text)) return "outcome-refuse";
@@ -2576,7 +2587,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
               permission, so surface the type up here rather than only in the
               facts list. "Other" carries no signal, so it stays hidden. */}
           {d.application_type !== "other" && d.application_type_label && (
-            <span className="pill pill-type" title="Application type">
+            <span className="pill pill-type" title={APP_TYPE_HINTS[d.application_type] ?? "Application type"}>
               {d.application_type_label}
             </span>
           )}

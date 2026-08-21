@@ -22,7 +22,7 @@ interface Props {
 export function StatusBadge({ status, label }: { status: string; label: string }) {
   const s = STATUS_STYLE[status] ?? STATUS_STYLE.unknown;
   return (
-    <span className="status-badge" style={{ "--sc": s.color } as CSSProperties}>
+    <span className="status-badge" style={{ "--sc": s.color } as CSSProperties} title={s.hint}>
       {label}
     </span>
   );

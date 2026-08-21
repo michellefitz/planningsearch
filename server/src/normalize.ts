@@ -469,4 +469,22 @@ export const GLOSSARY: Record<string, string> = {
     "The statutory date by which the council must decide, usually 8 weeks after receipt unless further information is requested.",
   "final grant":
     "Issued after the decision if no appeal is lodged within 4 weeks of the decision date.",
+  "split decision":
+    "Part of what was applied for was granted and part was refused.",
+  curtilage:
+    "The enclosed area of land around a building that is used with it — the garden, yard, or grounds.",
+  "an coimisiún pleanála":
+    "The national planning appeals board (formerly An Bord Pleanála). Either the applicant or a third party can appeal a council decision to it.",
+  "part 8":
+    "The process councils use to get approval for their own developments — decided by the elected members, not the planning department.",
+  "material contravention":
+    "A decision to grant permission for something that doesn't comply with the local development plan. Requires a special vote by the council.",
+  "commencement notice":
+    "A formal notice the developer must send before starting building work on site.",
+  "compliance submission":
+    "Documents submitted to show the council that specific conditions of the permission have been met.",
+  "section 34":
+    "The section of the Planning Act under which the council makes its decision on an application.",
+  eircode:
+    "Ireland's postcode system. Each code identifies a specific address or delivery point.",
 };

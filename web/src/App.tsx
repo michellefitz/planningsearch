@@ -1068,7 +1068,7 @@ export default function App() {
               {Object.entries(STATUS_STYLE)
                 .filter(([k]) => k !== "unknown")
                 .map(([key, s]) => (
-                  <span key={key} className="legend-item">
+                  <span key={key} className="legend-item" title={s.hint}>
                     <span className="legend-pin" style={{ background: s.color }} aria-hidden="true">
                       {s.letter}
                     </span>
