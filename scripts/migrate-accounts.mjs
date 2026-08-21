@@ -101,6 +101,9 @@ const STATEMENTS = [
     alerts_enabled boolean not null default true,
     created_at timestamptz not null default now()
   )`,
+  // Null, not a default: a watch written before the choice existed must keep
+  // exactly the alerts it already had, and null is what says so.
+  `alter table area_watches add column if not exists kinds text[]`,
   `create table if not exists area_watch_alerted (
     watch_id bigint not null references area_watches(id) on delete cascade,
     authority_id text not null,

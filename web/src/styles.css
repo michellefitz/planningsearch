@@ -5401,3 +5401,121 @@ p.loading-line {
 .qa-panel-embed .sheet-close {
   display: none;
 }
+
+/* ---- What a watched area alerts on ----------------------------------- */
+
+/* Checkboxes rather than chips: the options are not exclusive, several are
+   usually wanted at once, and a checkbox says so without being taught. */
+.watch-kinds {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 0.6rem 0.7rem 0.5rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--surface-2);
+}
+
+.watch-kinds legend {
+  padding: 0 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.watch-kind {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.watch-kind input {
+  margin: 0.15rem 0 0;
+  accent-color: var(--action);
+}
+
+.watch-kind label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  cursor: pointer;
+  line-height: 1.25;
+}
+
+.watch-kind-label {
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+/* The app's words are not the reader's — "Decisions" and "Appeals" both need
+   a line saying what actually arrives in the inbox. */
+.watch-kind-hint {
+  font-size: 0.76rem;
+  color: var(--ink-3);
+}
+
+.watch-kinds-warn {
+  margin: 0;
+  font-size: 0.76rem;
+  color: #9f1239;
+}
+
+/* ---- The card shown when you open a saved area from the dashboard ---- */
+
+.watch-view-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name close" "sub close";
+  gap: 0 0.5rem;
+  align-items: start;
+}
+
+.watch-view-head strong {
+  grid-area: name;
+  font-size: 0.95rem;
+}
+
+.watch-view-head .watch-row-sub {
+  grid-area: sub;
+}
+
+.watch-view-close {
+  grid-area: close;
+  align-self: start;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.2rem;
+  color: var(--ink-3);
+  border-radius: var(--r-sm);
+}
+
+.watch-view-close:hover {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+/* ---- The dashboard row -------------------------------------------------
+   The row used to say a name, a radius and a date, and nothing about what the
+   area would actually tell you — so the only way to find out was to wait for
+   an email, or not get one and wonder why. */
+.watch-row-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+}
+
+.watch-kind-tag {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  padding: 0 0.4rem;
+  border-radius: var(--r-pill);
+  background: var(--action-tint);
+  color: var(--action);
+  white-space: nowrap;
+}

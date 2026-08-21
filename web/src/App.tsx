@@ -9,12 +9,24 @@ import {
   type Meta,
   type PointFeatureCollection,
   type SearchState,
+  fmtDate,
 } from "./api";
 import SearchBar from "./components/SearchBar";
 import FiltersBar from "./components/FiltersBar";
 import ResultsList from "./components/ResultsList";
 import { STATUS_STYLE } from "./statusStyle";
-import { accountApi, saveKey, type AreaWatch, type Me, type SavedApp } from "./accountApi";
+import {
+  accountApi,
+  DEFAULT_WATCH_KINDS,
+  fmtRadius,
+  saveKey,
+  type AreaWatch,
+  type Me,
+  type SavedApp,
+  watchKinds,
+  type WatchKind,
+} from "./accountApi";
+import { WatchKindPicker } from "./components/WatchKindPicker";
 import type { AgentAppRef } from "./agentApi";
 import { coverageSummary } from "./coverage";
 import { posthog } from "./posthog";
@@ -105,7 +117,13 @@ export default function App() {
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   // Area-watch creation (draggable circle + card) and read-only preview of a
   // saved watch. Only one circle shows at a time; a draft wins.
-  const [watchDraft, setWatchDraft] = useState<{ name: string; lat: number; lng: number; radius_m: number } | null>(null);
+  const [watchDraft, setWatchDraft] = useState<{
+    name: string;
+    lat: number;
+    lng: number;
+    radius_m: number;
+    kinds: WatchKind[];
+  } | null>(null);
   const [watchView, setWatchView] = useState<AreaWatch | null>(null);
   const [watchSaving, setWatchSaving] = useState(false);
   const [watchNotice, setWatchNotice] = useState<string | null>(null);
@@ -244,7 +262,9 @@ export default function App() {
     setWatchNotice(null);
     setMobileView("map");
     setCanSearchArea(false);
-    setWatchDraft({ name: "", radius_m: 1000, ...center });
+    // Starts on what the feature has always alerted on, so someone who ignores
+    // the choice gets what they would have got before it existed.
+    setWatchDraft({ name: "", radius_m: 1000, kinds: [...DEFAULT_WATCH_KINDS], ...center });
   };
 
   // Place search inside watch mode: jump the map (and the pin) to a town,
@@ -295,6 +315,7 @@ export default function App() {
         lat: watchDraft.lat,
         lng: watchDraft.lng,
         radius_m: watchDraft.radius_m,
+        kinds: watchDraft.kinds,
       });
       await refreshMe();
       posthog.capture("area_watch_created", { radius_m: watch.radius_m });
@@ -927,6 +948,13 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+                {/* After the area, because the area is the question people
+                    arrive with — and before the name, because naming it is the
+                    last thing you do. */}
+                <WatchKindPicker
+                  kinds={watchDraft.kinds}
+                  onChange={(kinds) => setWatchDraft({ ...watchDraft, kinds })}
+                />
                 <input
                   type="text"
                   value={watchDraft.name}
@@ -937,7 +965,12 @@ export default function App() {
                 {watchNotice && <p className="watch-notice">{watchNotice}</p>}
                 <div className="watch-actions">
                   {me?.user ? (
-                    <button type="button" className="watch-save" disabled={watchSaving} onClick={saveWatchDraft}>
+                    <button
+                      type="button"
+                      className="watch-save"
+                      disabled={watchSaving || watchDraft.kinds.length === 0}
+                      onClick={saveWatchDraft}
+                    >
                       {watchSaving ? "Saving…" : "Save watch"}
                     </button>
                   ) : (
@@ -952,15 +985,41 @@ export default function App() {
               </div>
             </>
           )}
+          {/* Viewing a saved area used to be a chip that said its name and
+              nothing else. The circle is on the map above; the question the
+              reader has at that moment is what it will actually tell them, so
+              that is what the card answers — and lets them change. */}
           {!watchDraft && watchView && (
-            <button
-              type="button"
-              className="watch-viewing-chip"
-              onClick={() => { setWatchView(null); setWatchNotice(null); }}
-              title="Hide this watched area"
-            >
-              {watchNotice ?? `Watching: ${watchView.name}`} ✕
-            </button>
+            <div className="watch-card watch-view-card" role="dialog" aria-label={`Watching ${watchView.name}`}>
+              <div className="watch-view-head">
+                <strong>{watchView.name}</strong>
+                <span className="watch-row-sub">
+                  {fmtRadius(watchView.radius_m)} · added {fmtDate(watchView.created_at.slice(0, 10))}
+                </span>
+                <button
+                  type="button"
+                  className="watch-view-close"
+                  onClick={() => { setWatchView(null); setWatchNotice(null); }}
+                  aria-label="Hide this watched area"
+                >
+                  ✕
+                </button>
+              </div>
+              <WatchKindPicker
+                idPrefix={`watch-view-${watchView.id}`}
+                kinds={watchKinds(watchView)}
+                onChange={(kinds) => {
+                  if (!kinds.length) return; // the picker says why; do not save nothing
+                  // Optimistic: the checkbox must not lag a network round trip.
+                  setWatchView({ ...watchView, kinds });
+                  void accountApi
+                    .updateWatch(watchView.id, { kinds })
+                    .then(() => refreshMe())
+                    .catch(() => setWatchNotice("Couldn't save that just now."));
+                }}
+              />
+              {watchNotice && <p className="watch-notice">{watchNotice}</p>}
+            </div>
           )}
           {/* The map had no loading state at all.
            *

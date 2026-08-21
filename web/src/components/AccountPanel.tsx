@@ -1,5 +1,14 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { accountApi, type AreaWatch, type Me, type SavedApp, type SavedList } from "../accountApi";
+import {
+  accountApi,
+  fmtRadius,
+  watchKinds,
+  WATCH_KIND_LABELS,
+  type AreaWatch,
+  type Me,
+  type SavedApp,
+  type SavedList,
+} from "../accountApi";
 import type { PointFeatureCollection } from "../api";
 import { StatusBadge } from "./ResultsList";
 import { lazy, Suspense } from "react";
@@ -607,18 +616,29 @@ export default function AccountPanel({ me, notice, onRefresh, onOpenApp, onGoSea
           <div className="account-empty">
             <strong>No areas watched yet</strong>
             <p>
-              Pick a point on the map and a radius, and we'll email you the day anything new lands
-              inside it — planning applications, An Coimisiún Pleanála cases, or work commencing.
+              Pick a point on the map and a radius, choose what you want to hear about — new
+              applications, decisions, appeals, work starting on site — and we'll email you the day
+              one of them lands inside it.
             </p>
             <button type="button" onClick={onAddWatch}>Watch an area on the map</button>
           </div>
         ) : (
           me.watches!.map((w) => (
             <div key={w.id} className="watch-row">
-              <button type="button" className="watch-row-main" onClick={() => onViewWatch(w)} title="Show on the map">
+              <button type="button" className="watch-row-main" onClick={() => onViewWatch(w)} title="Show on the map and edit">
                 <strong>{w.name}</strong>
                 <span className="watch-row-sub">
-                  within {w.radius_m < 1000 ? `${w.radius_m} m` : `${w.radius_m / 1000} km`} · added {fmtDate(w.created_at.slice(0, 10))}
+                  within {fmtRadius(w.radius_m)} · added {fmtDate(w.created_at.slice(0, 10))}
+                </span>
+                {/* What this area will actually tell you. It used to say
+                    nothing, so the only way to find out was to wait for an
+                    email — or not get one and wonder why. */}
+                <span className="watch-row-kinds">
+                  {watchKinds(w).map((k) => (
+                    <span className="watch-kind-tag" key={k}>
+                      {WATCH_KIND_LABELS[k].label}
+                    </span>
+                  ))}
                 </span>
               </button>
               <button

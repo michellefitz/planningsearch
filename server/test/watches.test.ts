@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — plain .mjs module without type declarations
-import { findWatchHits, watchHitSummary } from "../../api/_accounts/watches.mjs";
+import {
+  DEFAULT_WATCH_KINDS,
+  WATCH_KIND_IDS,
+  findWatchHits,
+  normaliseWatchKinds,
+  watchHitSummary,
+} from "../../api/_accounts/watches.mjs";
 // @ts-ignore
 import { buildDigestEmail } from "../../api/_accounts/digest.mjs";
 
@@ -94,5 +100,110 @@ describe("buildDigestEmail with area sections", () => {
     const entry = { address: "1 High St", reference: "26/1", url: "u", summaries: ["Decision made"] };
     const mail = buildDigestEmail([entry], null);
     expect(mail.subject).toBe("Update on 1 High St");
+  });
+});
+
+/**
+ * Choosing what a watch alerts on.
+ *
+ * Before this a watch alerted on new applications and commencement notices and
+ * said neither — the dashboard offered "everything" without saying what
+ * everything was. The kind strings are deliberately the ones already written
+ * into area_watch_alerted: renaming "application" or "commencement" would make
+ * every previously alerted row stop matching and re-send the lot.
+ */
+const decided = (over: Record<string, unknown> = {}) =>
+  app({ decision_date: "2026-07-10", decision: "GRANT PERMISSION", received_date: null, ...over });
+
+describe("watch kinds", () => {
+  it("keeps an old watch alerting on exactly what it always did", () => {
+    // Null kinds is a row written before the choice existed. Changing what it
+    // alerts on, in either direction, is worse than the missing feature was.
+    const old = { ...WATCH, kinds: null };
+    expect(findWatchHits([app({})], old, SINCE)[0].kinds).toEqual(["application"]);
+    expect(findWatchHits([decided()], old, SINCE)).toEqual([]);
+  });
+
+  it("alerts on a decision when the watch asked for one", () => {
+    const w = { ...WATCH, kinds: ["decision"] };
+    const hits = findWatchHits([decided()], w, SINCE);
+    expect(hits[0].kinds).toEqual(["decision"]);
+  });
+
+  it("stays quiet about a new application when the watch did not ask", () => {
+    const w = { ...WATCH, kinds: ["decision"] };
+    expect(findWatchHits([app({})], w, SINCE)).toEqual([]);
+  });
+
+  it("reports several kinds on one application", () => {
+    // A file can be received, decided and started inside the same window.
+    const busy = app({ decision_date: "2026-07-10", decision: "GRANT PERMISSION", commencement_date: "2026-07-20" });
+    const w = { ...WATCH, kinds: [...WATCH_KIND_IDS] };
+    expect(findWatchHits([busy], w, SINCE)[0].kinds).toEqual([
+      "application",
+      "decision",
+      "commencement",
+    ]);
+  });
+
+  it("alerts on an appeal", () => {
+    const appealed = app({
+      received_date: null,
+      appeal_lodged_date: "2026-07-05",
+      appeal_reference: "ABP-123456-26",
+    });
+    const w = { ...WATCH, kinds: ["appeal"] };
+    expect(findWatchHits([appealed], w, SINCE)[0].kinds).toEqual(["appeal"]);
+  });
+
+  it("still respects the recency window and the circle", () => {
+    const w = { ...WATCH, kinds: ["decision"] };
+    expect(findWatchHits([decided({ decision_date: "2020-01-01" })], w, SINCE)).toEqual([]);
+    // ~3 km east of the centre, well outside a 1 km radius.
+    expect(findWatchHits([decided({ lng: -6.545 })], w, SINCE)).toEqual([]);
+  });
+});
+
+describe("normaliseWatchKinds", () => {
+  it("keeps a stable order whatever order they arrive in", () => {
+    expect(normaliseWatchKinds(["commencement", "application"])).toEqual([
+      "application",
+      "commencement",
+    ]);
+  });
+
+  it("drops anything it does not recognise, and de-duplicates", () => {
+    expect(normaliseWatchKinds(["decision", "decision", "nonsense"])).toEqual(["decision"]);
+  });
+
+  it("returns null when nothing usable was asked for", () => {
+    // The caller decides what null means: a default on create, an error on edit.
+    expect(normaliseWatchKinds([])).toBeNull();
+    expect(normaliseWatchKinds(["nonsense"])).toBeNull();
+    expect(normaliseWatchKinds(null)).toBeNull();
+    expect(normaliseWatchKinds("decision")).toBeNull();
+  });
+
+  it("defaults to what the feature did before it was a choice", () => {
+    expect([...DEFAULT_WATCH_KINDS]).toEqual(["application", "commencement"]);
+  });
+});
+
+describe("watchHitSummary for the new kinds", () => {
+  it("never lets a grant and a refusal read the same", () => {
+    expect(watchHitSummary(decided(), "decision")).toContain("GRANT PERMISSION");
+    expect(watchHitSummary(decided({ decision: "REFUSE PERMISSION" }), "decision")).toContain(
+      "REFUSE PERMISSION"
+    );
+  });
+
+  it("says something useful when the register recorded no wording", () => {
+    expect(watchHitSummary(decided({ decision: null }), "decision")).toBe("A decision has issued");
+  });
+
+  it("names the appeal case where there is one", () => {
+    expect(watchHitSummary(app({ appeal_reference: "ABP-123456-26" }), "appeal")).toContain(
+      "ABP-123456-26"
+    );
   });
 });
