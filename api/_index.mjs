@@ -14,7 +14,7 @@ import { handleAccountRoute, isAccountRoute } from "./_accounts/routes.mjs";
 import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
 import { conditionHighlights, HIGHLIGHTS_PROMPT } from "./_conditions/highlights.mjs";
 import { conditionTitles, TITLES_PROMPT, untitledItems } from "./_conditions/titles.mjs";
-import { echoesText, isGenericTitle } from "./_conditions/labels.mjs";
+import { echoesText, isDecisionSchedule, isGenericTitle } from "./_conditions/labels.mjs";
 import {
   FURTHER_INFO_PROMPT,
   cleanSummary,
@@ -32,6 +32,8 @@ import {
   decodeEntities,
   parseFileListHtml,
   stripTags,
+  TITLE_JOIN,
+  matchDocumentIndexes,
 } from "./_documents/listing.mjs";
 import { djvuToImageBlocks, djvuToPdf, isDjvu } from "./_documents/djvu.mjs";
 import { documentLoadingShell } from "./_documents/loading-page.mjs";
@@ -3196,10 +3198,14 @@ export default async function handler(req, res) {
           app.planning_reference
         );
         // Only the ones with nothing worth showing. South Dublin writes real
-        // titles and costs nothing here.
+        // titles and costs nothing here, and DLR's whole-decision schedule is
+        // named deterministically — asked for a five-word label for a 4,000
+        // character document, the model picks a sentence out of it.
         const untitled = untitledItems(
           conditions?.items ?? [],
-          (i) => !isGenericTitle(i?.title) && !echoesText(i?.title, i?.text)
+          (i) =>
+            isDecisionSchedule(i?.text) ||
+            (!isGenericTitle(i?.title) && !echoesText(i?.title, i?.text))
         );
         return untitled.length ? conditionTitles(untitled, callClaude) : [];
       }
@@ -3267,6 +3273,48 @@ async function documentAsContent(doc) {
   }
   if (isDjvu(doc.contentType, doc.filename)) return djvuToImageBlocks(doc.body);
   return [];
+}
+
+/**
+ * Put the document index back on a cached answer that predates it.
+ *
+ * The summaries were cached before the sheet could link to their source, so
+ * every application anyone has already looked at holds a title and no index.
+ * Re-reading the document to fill that in would cost a model call for a link;
+ * the file listing alone answers it, and only for the entries that are
+ * missing it, so nothing already correct pays anything.
+ */
+async function withDocumentIndex(app, stored, findIndex) {
+  if (!stored || typeof stored !== "object") return stored;
+  if (!stored.source_document || stored.source_document_index != null) return stored;
+  const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
+  if (!listUrl) return stored;
+  const files = await fetchScannedFileList(listUrl);
+  if (!files) return stored;
+  // By title first — it is what was stored — then by asking the same matcher
+  // that chose it in the first place.
+  const byTitle = files.findIndex((f) => f?.title === stored.source_document);
+  const index = byTitle >= 0 ? byTitle : findIndex(files);
+  return index >= 0 ? { ...stored, source_document_index: index } : stored;
+}
+
+/**
+ * The same, for a cached decision extract.
+ *
+ * Its titles were stored joined — `A" and "B` — because that string was
+ * dropped straight into a sentence in quotes. Split back apart and matched
+ * against the listing, so an answer cached before this can still link to both
+ * documents it was read from.
+ */
+async function withDecisionDocuments(app, stored) {
+  if (!stored || typeof stored !== "object") return stored;
+  if (!stored.source_document || stored.source_documents?.length) return stored;
+  const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
+  if (!listUrl) return stored;
+  const files = await fetchScannedFileList(listUrl);
+  if (!files) return stored;
+  const source_documents = matchDocumentIndexes(files, stored.source_document);
+  return source_documents.length ? { ...stored, source_documents } : stored;
 }
 
 const readableReason = (doc, content) => {
@@ -3340,17 +3388,25 @@ const readableReason = (doc, content) => {
     const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
     if (!listUrl) return send(res, 200, { supported: false, summary: null });
     const stored = await aiCacheGet(cacheKind, app.authority_id, app.planning_reference);
-    if (stored !== undefined) return send(res, 200, { supported: true, ...stored });
+    if (stored !== undefined)
+      return send(res, 200, {
+        supported: true,
+        ...(await withDocumentIndex(app, stored, findFurtherInfoDocIndex)),
+      });
     if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
     const files = await fetchScannedFileList(listUrl);
     const index = files ? findFurtherInfoDocIndex(files) : -1;
-    const empty = { supported: true, summary: null, source_document: null };
+    const empty = { supported: true, summary: null, source_document: null, source_document_index: null };
     if (index < 0) return send(res, 200, empty);
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000);
+    // The index travels with the title so the sheet can link to the letter
+    // rather than telling the reader to go and find it.
     const source_document = files[index].title;
+    const source_document_index = index;
     const content = await documentAsContent(doc);
     const unreadable = readableReason(doc, content);
-    if (unreadable) return send(res, 200, { ...empty, source_document, reason: unreadable });
+    if (unreadable)
+      return send(res, 200, { ...empty, source_document, source_document_index, reason: unreadable });
     const raw = await callClaude(
       FURTHER_INFO_PROMPT,
       [
@@ -3366,7 +3422,7 @@ const readableReason = (doc, content) => {
     // Same cleanup and word budget as the structured path, so a request read
     // from a PDF and one read from conditions come out the same length.
     const summary = cleanSummary(raw);
-    const result = { summary, source_document };
+    const result = { summary, source_document, source_document_index };
     if (summary) await aiCachePut(cacheKind, app.authority_id, app.planning_reference, result);
     return send(res, 200, { supported: true, ...result });
   }
@@ -3519,6 +3575,9 @@ const readableReason = (doc, content) => {
     const result = {
       summary,
       based_on_document: summary && pdf ? doc?.title ?? null : null,
+      // The Commission publishes its orders as ordinary PDFs on its own site,
+      // so this one needs no proxy — the sheet links straight to it.
+      based_on_document_url: summary && pdf ? doc?.url ?? null : null,
       decision: decisionText,
       decision_label: outcome.label,
       outcome: outcome.kind,
@@ -3556,7 +3615,8 @@ const readableReason = (doc, content) => {
         app.authority_id,
         app.planning_reference
       );
-      if (stored !== undefined) return send(res, 200, { supported: true, ...stored });
+      if (stored !== undefined)
+        return send(res, 200, { supported: true, ...(await withDecisionDocuments(app, stored)) });
     }
     const cached = DECISION_SUMMARY_CACHE.get(app.id);
     if (cached) return send(res, 200, { supported: true, ...cached });
@@ -3574,13 +3634,34 @@ const readableReason = (doc, content) => {
         trace,
       });
     }
-    const empty = { supported: true, summary: null, conditions: [], reasons: [], highlights: null, source_document: null };
+    const empty = {
+      supported: true,
+      summary: null,
+      conditions: [],
+      reasons: [],
+      highlights: null,
+      source_document: null,
+      source_documents: [],
+    };
     if (!files || index < 0) return send(res, 200, { ...empty, reason: "not_found" });
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000, trace);
-    let source_document = files[index].title;
+    /**
+     * Which documents this was read out of, and where to find each one.
+     *
+     * The title alone made the reader hunt for it in a list of a hundred —
+     * Kildare 2660420 carries twenty-two — so the index travels with it and
+     * the sheet links straight through the document proxy. An array because a
+     * decision is not always one file: where the council keeps the conditions
+     * in a schedule of their own, two were read.
+     */
+    const sourceDocuments = [{ title: files[index].title, index }];
+    const named = () => ({
+      source_document: sourceDocuments.map((d) => d.title).join(TITLE_JOIN),
+      source_documents: sourceDocuments,
+    });
     const content = await documentAsContent(doc);
     const unreadable = readableReason(doc, content);
-    if (unreadable) return send(res, 200, { ...empty, source_document, reason: unreadable });
+    if (unreadable) return send(res, 200, { ...empty, ...named(), reason: unreadable });
     // Where the council keeps the conditions in a schedule of their own, read
     // that too — the letter alone says how many there are and not what they say.
     const scheduleIndex = findConditionsScheduleIndex(files, index);
@@ -3589,11 +3670,11 @@ const readableReason = (doc, content) => {
       const scheduleContent = await documentAsContent(schedule);
       if (scheduleContent.length) {
         content.push(...scheduleContent);
-        source_document = `${source_document}" and "${files[scheduleIndex].title}`;
+        sourceDocuments.push({ title: files[scheduleIndex].title, index: scheduleIndex });
       }
     }
     const extract = await extractDecisionDocument(content, app.decision);
-    if (!extract) return send(res, 200, { ...empty, source_document, reason: "unavailable" });
+    if (!extract) return send(res, 200, { ...empty, ...named(), reason: "unavailable" });
     /**
      * The same "notable conditions" the other four councils get.
      *
@@ -3615,7 +3696,7 @@ const readableReason = (doc, content) => {
           callClaude
         )
       : null;
-    const result = { ...extract, highlights, source_document };
+    const result = { ...extract, highlights, ...named() };
     DECISION_SUMMARY_CACHE.set(app.id, result);
     await aiCachePut(decisionCacheKind(), app.authority_id, app.planning_reference, result);
     return send(res, 200, { supported: true, ...result });

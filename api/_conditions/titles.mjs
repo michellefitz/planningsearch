@@ -39,6 +39,9 @@ export const TITLES_PROMPT =
   "list and find the one they need without opening every row.\n\n" +
   "Return ONLY a JSON array, no prose and no Markdown fences:\n" +
   '[{"n": number, "title": string}]\n\n' +
+  "Each condition begins with a marker line of the form `--- CONDITION #7 ---`, and 7 is its n. " +
+  "Numbered points inside a condition's wording belong to that condition — never treat them as " +
+  "separate conditions, and never use one of their numbers as an n.\n\n" +
   "n is the condition number you were given. title is what the condition controls, in AT MOST " +
   "FIVE WORDS of plain English — the words a person would use, not the council's. " +
   '"Construction hours". "Obscure glazing to side windows". "Development contribution". ' +
@@ -58,9 +61,22 @@ export function untitledItems(items, isUsable) {
     .slice(0, MAX_ITEMS);
 }
 
+/**
+ * The marker carries the word, not just the number.
+ *
+ * It used to read `--- 2 ---`, which is indistinguishable from the "2." that
+ * opens the second point of a condition's own wording. On DLR D20A/0569 the
+ * further-information item is three numbered asks in one block, and the model
+ * read its second point as condition 2 and titled the *decision schedule*
+ * sitting beside it "Confirm internal floor areas" — a sentence from a
+ * different item entirely.
+ */
 export function titlesUserMsg(items) {
   return items
-    .map((c, i) => `--- ${c.order || i + 1} ---\n${String(c.text ?? "").slice(0, HEAD_CHARS)}`)
+    .map(
+      (c, i) =>
+        `--- CONDITION #${c.order || i + 1} ---\n${String(c.text ?? "").slice(0, HEAD_CHARS)}`
+    )
     .join("\n\n");
 }
 

@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseFileListHtml } from "../../api/_documents/listing.mjs";
+import {
+  TITLE_JOIN,
+  matchDocumentIndexes,
+  parseFileListHtml,
+} from "../../api/_documents/listing.mjs";
 
 /**
  * Real listing pages, saved as fetched. Four systems are behind this one
@@ -94,5 +98,50 @@ describe("a listing with nothing published yet", () => {
    *  is the right answer — better than the vendor link the sweep used to find. */
   it("returns nothing rather than something", () => {
     expect(parse("kildare", "https://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx?catalog=planning&id=2660938")).toEqual([]);
+  });
+});
+
+/**
+ * Naming a document and linking to it are the same thing.
+ *
+ * The document proxy takes a file's position in the council's listing, so a
+ * summary that says which document it was read from can link straight to it —
+ * "look for it in the documents below" made the reader hunt through a list
+ * that runs to twenty-two entries on Kildare 2660420 and over a hundred on
+ * 25189.
+ */
+describe("matchDocumentIndexes", () => {
+  const FILES = [
+    { title: "Application Form - Part A" },
+    { title: "Planners Report — 10.06.2026" },
+    { title: "Notification of Decision — 10.06.2026" },
+    { title: "Schedule of Conditions — 10.06.2026" },
+  ];
+
+  it("finds a single named document", () => {
+    expect(matchDocumentIndexes(FILES, "Notification of Decision — 10.06.2026")).toEqual([
+      { title: "Notification of Decision — 10.06.2026", index: 2 },
+    ]);
+  });
+
+  it("splits the pair a Kildare decision is read from", () => {
+    // The two titles were stored joined, because the string went straight into
+    // a sentence already in quotes.
+    const joined = `Notification of Decision — 10.06.2026${TITLE_JOIN}Schedule of Conditions — 10.06.2026`;
+    expect(matchDocumentIndexes(FILES, joined).map((d) => d.index)).toEqual([2, 3]);
+  });
+
+  it("drops a title the listing no longer carries", () => {
+    // An unlinked name beats a link to the wrong document.
+    expect(matchDocumentIndexes(FILES, "F.I. Request Letter")).toEqual([]);
+    const joined = `Notification of Decision — 10.06.2026${TITLE_JOIN}Gone`;
+    expect(matchDocumentIndexes(FILES, joined).map((d) => d.title)).toEqual([
+      "Notification of Decision — 10.06.2026",
+    ]);
+  });
+
+  it("says nothing when there is nothing to say", () => {
+    expect(matchDocumentIndexes(FILES, null)).toEqual([]);
+    expect(matchDocumentIndexes(null, "Anything")).toEqual([]);
   });
 });

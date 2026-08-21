@@ -5377,3 +5377,20 @@ p.loading-line {
     font-weight: 600;
   }
 }
+
+/* A document named in a sentence — "AI-extracted from X", "couldn't read X".
+   Underlined rather than coloured: these sit inside quiet grey notes, and a
+   blue link there pulls harder than the note deserves, but the reader still
+   has to be able to tell that the name is the way to the file. */
+.doc-ref {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
+}
+
+.doc-ref:hover,
+.doc-ref:focus-visible {
+  color: var(--action);
+  text-decoration-color: currentColor;
+}

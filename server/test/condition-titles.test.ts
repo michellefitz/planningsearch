@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { echoesText, isGenericTitle, itemLabel, snippetFrom } from "../../api/_conditions/labels.mjs";
-import { cleanTitle, parseTitles, untitledItems } from "../../api/_conditions/titles.mjs";
+import {
+  echoesText,
+  isDecisionSchedule,
+  isGenericTitle,
+  itemLabel,
+  scheduleConditionCount,
+  snippetFrom,
+} from "../../api/_conditions/labels.mjs";
+import {
+  TITLES_PROMPT,
+  cleanTitle,
+  parseTitles,
+  titlesUserMsg,
+  untitledItems,
+} from "../../api/_conditions/titles.mjs";
 
 /**
  * What the four agile councils actually put in the title field, taken from
@@ -144,5 +157,161 @@ describe("the written titles themselves", () => {
 
   it("survives a reply that is not JSON at all", () => {
     expect(parseTitles("I'm sorry, I can't help with that.", [{ order: 1, text: "a" }])).toEqual([]);
+  });
+});
+
+/**
+ * DLR D20A/0569, 36 Mather Road North — the case that prompted both fixes.
+ *
+ * DLR does not publish its conditions separately. The application carries one
+ * "C" item, 4,285 characters long, titled "EK" (the planner's initials), whose
+ * text is the decision order itself; and one "I" item that is the
+ * further-information request, three numbered asks in a single block.
+ */
+const DLR_SCHEDULE = `First Schedule
+Reasons and Considerations
+
+Having regard to the Objective 'A' zoning of the site and the policies and objectives set out in the Dún Laoghaire-Rathdown County Development Plan 2016-2022, it is considered that the development would not detract from the amenities of the area and is consistent with the provisions of the current County Development Plan. The development is therefore considered to be in accordance with the proper planning and sustainable development of the area subject to (6) conditions.
+
+Second Schedule
+Conditions
+
+1. The development shall be carried out in its entirety in accordance with the plans, particulars and specifications lodged with the application.
+REASON: To ensure that the development shall be in accordance with the permission.`;
+
+const DLR_REQUEST = `1.  The Planning Authority has concerns that the proposed rear extension, by reason of its height, would appear visually overbearing on No. 34 Mather Road North. The applicant is requested, therefore, to submit revised proposals which address these concerns.
+
+2.  The applicant is requested to confirm the internal gross floor area of the proposed rear and side extensions and the garden studio.`;
+
+describe("a decision filed as one condition", () => {
+  it("recognises the schedule headings", () => {
+    expect(isDecisionSchedule(DLR_SCHEDULE)).toBe(true);
+  });
+
+  it("does not fire on a condition that merely mentions a schedule", () => {
+    // Kildare's decision letter says this and is a real condition.
+    expect(
+      isDecisionSchedule("Subject to the six conditions set out in the Schedule attached hereto.")
+    ).toBe(false);
+    expect(isDecisionSchedule(DLR_REQUEST)).toBe(false);
+    expect(isDecisionSchedule("")).toBe(false);
+    expect(isDecisionSchedule(null)).toBe(false);
+  });
+
+  it("names it for what it is, over the planner's initials", () => {
+    // "EK" is a code, so the old fallbacks took the opening words instead and
+    // produced "First Schedule Reasons and Considerations…" — the name of the
+    // document's first section rather than of the document.
+    expect(itemLabel({ title: "EK", text: DLR_SCHEDULE, order: 2 }, 2)).toBe(
+      "Schedule of conditions"
+    );
+  });
+});
+
+describe("titlesUserMsg markers", () => {
+  it("cannot be confused with numbering inside a condition", () => {
+    /**
+     * The marker used to be `--- 2 ---`, indistinguishable from the "2." that
+     * opens the second ask of the request above. The model read that ask as
+     * condition 2 and titled the decision schedule beside it "Confirm internal
+     * floor areas" — a sentence from a different item entirely.
+     */
+    const msg = titlesUserMsg([
+      { order: 1, text: DLR_REQUEST },
+      { order: 2, text: DLR_SCHEDULE },
+    ]);
+    expect(msg).toContain("--- CONDITION #1 ---");
+    expect(msg).toContain("--- CONDITION #2 ---");
+    // No marker that a numbered point inside the wording could imitate.
+    expect(msg).not.toMatch(/^--- \d+ ---$/m);
+  });
+
+  it("tells the model what the marker means", () => {
+    expect(TITLES_PROMPT).toContain("--- CONDITION #7 ---");
+    expect(TITLES_PROMPT).toMatch(/never use one of their numbers as an n/i);
+  });
+});
+
+describe("counting the conditions inside a schedule", () => {
+  /** The real six, abbreviated — numbering and REASON lines as DLR writes them. */
+  const SIX = `First Schedule
+Reasons and Considerations
+
+The development is considered to be in accordance with the proper planning and sustainable development of the area subject to (6) conditions.
+
+Second Schedule
+Conditions
+
+1. The development shall be carried out in its entirety in accordance with the plans lodged.
+REASON: To ensure that the development shall be in accordance with the permission.
+
+2. The roof area of the extensions shall not be used as a balcony or roof terrace.
+REASON: In the interests of residential amenity.
+
+3. The entire dwelling shall be used as a single dwelling unit.
+REASON: To prevent unauthorised development.
+
+4. The proposed garden studio shall be used solely for uses incidental to the dwelling.
+REASON: In the interests of residential amenity.
+
+5. The disposal of surface water shall be in accordance with the requirements as follows:
+
+(a) The surface water shall be infiltrated locally, to a soakaway designed to BRE Digest 365.
+
+(b) Any changes to the parking areas shall be constructed in accordance with the GDSDS.
+REASON: In the interest of public health.
+
+6. The applicants shall prevent any mud or debris being carried onto the public road.
+REASON: In the interest of orderly development.`;
+
+  it("counts the conditions, not the rows the council filed them in", () => {
+    // The heading said "Conditions of this decision 1" on a permission
+    // carrying six, because DLR files all six as a single item.
+    expect(scheduleConditionCount(SIX)).toBe(6);
+  });
+
+  it("is not fooled by sub-points or the REASON under each condition", () => {
+    // Condition 5 carries (a) and (b), and every condition carries a REASON —
+    // counting matches rather than reading the highest number gets this wrong.
+    expect(SIX.match(/REASON:/g)).toHaveLength(6);
+    expect(scheduleConditionCount(SIX)).toBe(6);
+  });
+
+  it("ignores numbering above the conditions heading", () => {
+    const withNumberedReasons = `First Schedule
+Reasons and Considerations
+
+1. The site is zoned Objective A.
+2. The development accords with the plan.
+3. It would not injure residential amenity.
+
+Second Schedule
+Conditions
+
+1. The development shall be carried out in accordance with the plans lodged.
+
+2. The roof area shall not be used as a balcony.`;
+    expect(scheduleConditionCount(withNumberedReasons)).toBe(2);
+  });
+
+  it("says nothing about anything that is not a schedule", () => {
+    expect(scheduleConditionCount(DLR_REQUEST)).toBeNull();
+    expect(scheduleConditionCount("The development shall be carried out as lodged.")).toBeNull();
+    expect(scheduleConditionCount(null)).toBeNull();
+  });
+
+  it("never claims a count it could not read", () => {
+    // A schedule whose conditions are not numbered falls back to the row
+    // count, which is what the list already showed.
+    const unnumbered = `First Schedule
+Reasons and Considerations
+
+The development is acceptable.
+
+Second Schedule
+Conditions
+
+The development shall be carried out in accordance with the plans lodged.`;
+    expect(scheduleConditionCount(unnumbered)).toBeNull();
   });
 });

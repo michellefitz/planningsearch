@@ -193,3 +193,30 @@ export function parseFileListHtml(html, baseUrl) {
   }
   return files;
 }
+
+/**
+ * The separator the decision summariser used to join two document titles.
+ *
+ * It reads `A" and "B` because the string was dropped straight into a sentence
+ * already in quotes. Kept here rather than inlined, because a cached answer
+ * from before the indexes travelled has to be split back apart on exactly the
+ * same string it was joined with.
+ */
+export const TITLE_JOIN = '" and "';
+
+/**
+ * Where each named document sits in the council's file list.
+ *
+ * The summaries were cached before the sheet could link to their source, so
+ * every application anyone has already looked at holds titles and no indexes.
+ * Matching the titles back against the listing costs one HTTP call and no
+ * model call, and a title the listing no longer carries simply drops out —
+ * better an unlinked name than a link to the wrong document.
+ */
+export function matchDocumentIndexes(files, joinedTitle) {
+  if (!joinedTitle) return [];
+  return String(joinedTitle)
+    .split(TITLE_JOIN)
+    .map((title) => ({ title, index: (files ?? []).findIndex((f) => f?.title === title) }))
+    .filter((d) => d.index >= 0);
+}
