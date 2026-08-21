@@ -15,6 +15,7 @@ import { topUpDescriptionSummaries } from "../_ai/topup.mjs";
 import {
   ensureWatchSchema, findWatchHits, MAX_RADIUS_M, MAX_WATCHES_PER_USER,
   MIN_RADIUS_M, watchHitSummary, watchWindowStart,
+  DEFAULT_WATCH_KINDS, normaliseWatchKinds,
 } from "./watches.mjs";
 
 const AGILE = new Set(["dublin-city", "fingal", "dlr", "south-dublin"]);
@@ -160,7 +161,7 @@ async function loadLists(userId) {
 async function loadWatches(userId) {
   try {
     return await sql(
-      `select id, name, lat, lng, radius_m, alerts_enabled, created_at
+      `select id, name, lat, lng, radius_m, kinds, alerts_enabled, created_at
        from area_watches where user_id = $1 order by created_at desc`,
       [userId]
     );
@@ -398,11 +399,15 @@ document.getElementById("btn").onclick = async function() {
     const count = await sql(`select count(*)::int as n from area_watches where user_id = $1`, [user.id]);
     if ((count[0]?.n ?? 0) >= MAX_WATCHES_PER_USER)
       return sendPrivate(res, 400, { error: `limit of ${MAX_WATCHES_PER_USER} watched areas reached` });
+    // A watch that alerts on nothing is a watch that will feel broken, so an
+    // unrecognised or empty selection falls back to what the feature did
+    // before it was a choice.
+    const kinds = normaliseWatchKinds(body?.kinds) ?? [...DEFAULT_WATCH_KINDS];
     const rows = await sql(
-      `insert into area_watches (user_id, name, lat, lng, radius_m)
-       values ($1, $2, $3, $4, $5)
-       returning id, name, lat, lng, radius_m, alerts_enabled, created_at`,
-      [user.id, name, lat, lng, radius]
+      `insert into area_watches (user_id, name, lat, lng, radius_m, kinds)
+       values ($1, $2, $3, $4, $5, $6)
+       returning id, name, lat, lng, radius_m, kinds, alerts_enabled, created_at`,
+      [user.id, name, lat, lng, radius, kinds]
     );
     const watch = rows[0];
     const hits = findWatchHits(ctx.applications, watch, watchWindowStart());
@@ -429,10 +434,23 @@ document.getElementById("btn").onclick = async function() {
     }
     if (req.method === "PATCH") {
       const body = await readJsonBody(req);
+      await ensureWatchSchema();
       if (typeof body?.alerts_enabled === "boolean")
         await sql(`update area_watches set alerts_enabled = $3 where id = $1 and user_id = $2`, [id, user.id, body.alerts_enabled]);
+      if (body?.name !== undefined) {
+        const next = String(body.name ?? "").trim().slice(0, 80);
+        if (!next) return sendPrivate(res, 400, { error: "name required" });
+        await sql(`update area_watches set name = $3 where id = $1 and user_id = $2`, [id, user.id, next]);
+      }
+      if (body?.kinds !== undefined) {
+        // Rejected rather than silently defaulted: on an edit, "none" is a
+        // mistake the reader should see, not a reset to whatever we assume.
+        const kinds = normaliseWatchKinds(body.kinds);
+        if (!kinds) return sendPrivate(res, 400, { error: "choose at least one thing to watch for" });
+        await sql(`update area_watches set kinds = $3 where id = $1 and user_id = $2`, [id, user.id, kinds]);
+      }
       const rows = await sql(
-        `select id, name, lat, lng, radius_m, alerts_enabled, created_at
+        `select id, name, lat, lng, radius_m, kinds, alerts_enabled, created_at
          from area_watches where id = $1 and user_id = $2`,
         [id, user.id]
       );
@@ -661,7 +679,7 @@ async function handleCron(req, res, ctx) {
   try {
     await ensureWatchSchema();
     const watches = await sql(
-      `select id, user_id, name, lat, lng, radius_m from area_watches where alerts_enabled`
+      `select id, user_id, name, lat, lng, radius_m, kinds from area_watches where alerts_enabled`
     );
     const since = watchWindowStart();
     for (const w of watches) {
