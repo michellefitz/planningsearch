@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { echoesText, isGenericTitle, itemLabel, snippetFrom } from "../../api/_conditions/labels.mjs";
-import { cleanTitle, parseTitles, untitledItems } from "../../api/_conditions/titles.mjs";
+import {
+  echoesText,
+  isDecisionSchedule,
+  isGenericTitle,
+  itemLabel,
+  snippetFrom,
+} from "../../api/_conditions/labels.mjs";
+import {
+  TITLES_PROMPT,
+  cleanTitle,
+  parseTitles,
+  titlesUserMsg,
+  untitledItems,
+} from "../../api/_conditions/titles.mjs";
 
 /**
  * What the four agile councils actually put in the title field, taken from
@@ -144,5 +156,77 @@ describe("the written titles themselves", () => {
 
   it("survives a reply that is not JSON at all", () => {
     expect(parseTitles("I'm sorry, I can't help with that.", [{ order: 1, text: "a" }])).toEqual([]);
+  });
+});
+
+/**
+ * DLR D20A/0569, 36 Mather Road North — the case that prompted both fixes.
+ *
+ * DLR does not publish its conditions separately. The application carries one
+ * "C" item, 4,285 characters long, titled "EK" (the planner's initials), whose
+ * text is the decision order itself; and one "I" item that is the
+ * further-information request, three numbered asks in a single block.
+ */
+const DLR_SCHEDULE = `First Schedule
+Reasons and Considerations
+
+Having regard to the Objective 'A' zoning of the site and the policies and objectives set out in the Dún Laoghaire-Rathdown County Development Plan 2016-2022, it is considered that the development would not detract from the amenities of the area and is consistent with the provisions of the current County Development Plan. The development is therefore considered to be in accordance with the proper planning and sustainable development of the area subject to (6) conditions.
+
+Second Schedule
+Conditions
+
+1. The development shall be carried out in its entirety in accordance with the plans, particulars and specifications lodged with the application.
+REASON: To ensure that the development shall be in accordance with the permission.`;
+
+const DLR_REQUEST = `1.  The Planning Authority has concerns that the proposed rear extension, by reason of its height, would appear visually overbearing on No. 34 Mather Road North. The applicant is requested, therefore, to submit revised proposals which address these concerns.
+
+2.  The applicant is requested to confirm the internal gross floor area of the proposed rear and side extensions and the garden studio.`;
+
+describe("a decision filed as one condition", () => {
+  it("recognises the schedule headings", () => {
+    expect(isDecisionSchedule(DLR_SCHEDULE)).toBe(true);
+  });
+
+  it("does not fire on a condition that merely mentions a schedule", () => {
+    // Kildare's decision letter says this and is a real condition.
+    expect(
+      isDecisionSchedule("Subject to the six conditions set out in the Schedule attached hereto.")
+    ).toBe(false);
+    expect(isDecisionSchedule(DLR_REQUEST)).toBe(false);
+    expect(isDecisionSchedule("")).toBe(false);
+    expect(isDecisionSchedule(null)).toBe(false);
+  });
+
+  it("names it for what it is, over the planner's initials", () => {
+    // "EK" is a code, so the old fallbacks took the opening words instead and
+    // produced "First Schedule Reasons and Considerations…" — the name of the
+    // document's first section rather than of the document.
+    expect(itemLabel({ title: "EK", text: DLR_SCHEDULE, order: 2 }, 2)).toBe(
+      "Schedule of conditions"
+    );
+  });
+});
+
+describe("titlesUserMsg markers", () => {
+  it("cannot be confused with numbering inside a condition", () => {
+    /**
+     * The marker used to be `--- 2 ---`, indistinguishable from the "2." that
+     * opens the second ask of the request above. The model read that ask as
+     * condition 2 and titled the decision schedule beside it "Confirm internal
+     * floor areas" — a sentence from a different item entirely.
+     */
+    const msg = titlesUserMsg([
+      { order: 1, text: DLR_REQUEST },
+      { order: 2, text: DLR_SCHEDULE },
+    ]);
+    expect(msg).toContain("--- CONDITION #1 ---");
+    expect(msg).toContain("--- CONDITION #2 ---");
+    // No marker that a numbered point inside the wording could imitate.
+    expect(msg).not.toMatch(/^--- \d+ ---$/m);
+  });
+
+  it("tells the model what the marker means", () => {
+    expect(TITLES_PROMPT).toContain("--- CONDITION #7 ---");
+    expect(TITLES_PROMPT).toMatch(/never use one of their numbers as an n/i);
   });
 });

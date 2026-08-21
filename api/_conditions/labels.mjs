@@ -163,7 +163,35 @@ function joinThemes(themes) {
  * numbered form when the text raises no theme we recognise, so a row is never
  * left blank.
  */
+/**
+ * The whole decision, filed as one condition.
+ *
+ * DLR does not publish its conditions separately. D20A/0569 carries a single
+ * "C" item, 4,285 characters long, titled with the planner's initials, whose
+ * text is the decision order itself: a "First Schedule / Reasons and
+ * Considerations", the two screening determinations, then a "Second Schedule /
+ * Conditions" holding all six. It is not a condition and no five-word label
+ * describes it — asked for one, the model wrote "Confirm internal floor areas",
+ * which is a line out of the further-information request that happened to sit
+ * beside it in the same call.
+ *
+ * The schedule headings are what identify it, each on a line of its own. An
+ * ordinary condition that merely mentions a schedule — Kildare's "subject to
+ * the six conditions set out in the Schedule attached" — never matches,
+ * because there the words are inside a sentence.
+ */
+const SCHEDULE_HEADING_RE = /^[ \t]*(?:first|second|third)\s+schedule[ \t]*$/im;
+
+export function isDecisionSchedule(text) {
+  return SCHEDULE_HEADING_RE.test(String(text ?? ""));
+}
+
 export function itemLabel(item, fallbackNumber) {
+  // Before the council's own title: DLR's is its planner's initials, and the
+  // deterministic fallbacks below would take the opening words instead — "First
+  // Schedule Reasons and Considerations", which names the first section of the
+  // document rather than the document.
+  if (isDecisionSchedule(item?.text)) return "Schedule of conditions";
   const title = String(item?.title ?? "").trim();
   const usable =
     !isGenericTitle(title) && !echoesText(title, item?.text) && title.length <= MAX_TITLE_CHARS;

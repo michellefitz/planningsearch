@@ -14,7 +14,7 @@ import { handleAccountRoute, isAccountRoute } from "./_accounts/routes.mjs";
 import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
 import { conditionHighlights, HIGHLIGHTS_PROMPT } from "./_conditions/highlights.mjs";
 import { conditionTitles, TITLES_PROMPT, untitledItems } from "./_conditions/titles.mjs";
-import { echoesText, isGenericTitle } from "./_conditions/labels.mjs";
+import { echoesText, isDecisionSchedule, isGenericTitle } from "./_conditions/labels.mjs";
 import {
   FURTHER_INFO_PROMPT,
   cleanSummary,
@@ -3196,10 +3196,14 @@ export default async function handler(req, res) {
           app.planning_reference
         );
         // Only the ones with nothing worth showing. South Dublin writes real
-        // titles and costs nothing here.
+        // titles and costs nothing here, and DLR's whole-decision schedule is
+        // named deterministically — asked for a five-word label for a 4,000
+        // character document, the model picks a sentence out of it.
         const untitled = untitledItems(
           conditions?.items ?? [],
-          (i) => !isGenericTitle(i?.title) && !echoesText(i?.title, i?.text)
+          (i) =>
+            isDecisionSchedule(i?.text) ||
+            (!isGenericTitle(i?.title) && !echoesText(i?.title, i?.text))
         );
         return untitled.length ? conditionTitles(untitled, callClaude) : [];
       }
