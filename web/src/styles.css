@@ -5378,10 +5378,6 @@ p.loading-line {
   }
 }
 
-/* A document named in a sentence — "AI-extracted from X", "couldn't read X".
-   Underlined rather than coloured: these sit inside quiet grey notes, and a
-   blue link there pulls harder than the note deserves, but the reader still
-   has to be able to tell that the name is the way to the file. */
 .doc-ref {
   color: inherit;
   text-decoration: underline;
@@ -5393,4 +5389,22 @@ p.loading-line {
 .doc-ref:focus-visible {
   color: var(--action);
   text-decoration-color: currentColor;
+}
+
+/* QA page: embed DetailPanel inline instead of as a fixed overlay */
+.qa-panel-embed .detail-sheet {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  border-left: none;
+  box-shadow: none;
+  animation: none;
+  padding: 0.8rem 1rem 1rem;
+  overflow-y: visible;
+}
+.qa-panel-embed .detail-sheet.sheet-closing {
+  transform: none;
+}
+.qa-panel-embed .sheet-close {
+  display: none;
 }
