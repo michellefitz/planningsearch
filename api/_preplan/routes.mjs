@@ -49,9 +49,10 @@ function ensureSchema() {
       lng double precision not null,
       address text not null,
       eircode text,
-      intent text not null,
+      intent text,
       created_at timestamptz not null default now()
     )`);
+    await sql(`alter table preplan_projects alter column intent drop not null`).catch(() => {});
     await sql(`create table if not exists preplan_reports (
       id bigint generated always as identity primary key,
       project_id bigint not null references preplan_projects(id) on delete cascade,
@@ -198,13 +199,13 @@ async function dispatch(req, res, route, url, ctx) {
     const eircode = body?.eircode ? String(body.eircode).trim() : null;
     const lat = Number(body?.lat);
     const lng = Number(body?.lng);
-    if (!label || !intent || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return send(res, 400, { error: "label, intent and a location are required" });
+    if (!label || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return send(res, 400, { error: "label and a location are required" });
     }
     const rows = await sql(
       `insert into preplan_projects (user_id, label, lat, lng, address, eircode, intent)
        values ($1, $2, $3, $4, $5, $6, $7) returning *`,
-      [user.id, label, lat, lng, address || label, eircode, intent]
+      [user.id, label, lat, lng, address || label, eircode, intent || null]
     );
     return send(res, 200, { project: rows[0] });
   }

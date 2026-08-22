@@ -118,13 +118,13 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
   }, [query, runAddressSearch]);
 
   const submit = async () => {
-    if (!label.trim() || !intent.trim() || !location) return;
+    if (!label.trim() || !location) return;
     setSubmitting(true);
     setError(null);
     try {
       const { project } = await preplanApi.createProject({
         label: label.trim(),
-        intent: intent.trim(),
+        intent: intent.trim() || null,
         lat: location.lat,
         lng: location.lng,
         address: location.address,
@@ -154,12 +154,12 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
         </label>
 
         <label className="pf-field">
-          <span>What do you want to do here?</span>
+          <span>What do you want to do here? <span style={{ fontWeight: 400, color: "var(--ink-3)" }}>(optional — leave blank for a planning history report)</span></span>
           <textarea
             value={intent}
             onChange={(e) => setIntent(e.target.value)}
             rows={3}
-            placeholder="e.g. Convert the attic with a rear dormer and two roof windows to the front"
+            placeholder="e.g. Convert the attic with a rear dormer. Leave blank to get a full planning history instead."
             maxLength={1000}
           />
         </label>
@@ -223,7 +223,7 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
           <button
             type="button"
             className="btn btn-primary"
-            disabled={!label.trim() || !intent.trim() || !location || submitting}
+            disabled={!label.trim() || !location || submitting}
             onClick={submit}
           >
             {submitting ? "Saving…" : "Save project"}

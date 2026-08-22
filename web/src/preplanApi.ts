@@ -7,7 +7,7 @@ export interface PreplanProject {
   lng: number;
   address: string;
   eircode: string | null;
-  intent: string;
+  intent: string | null;
   created_at: string;
   latest_report_id: number | null;
   latest_report_status: string | null;
@@ -120,7 +120,7 @@ export interface PreplanReport {
   label: string;
   address: string;
   eircode: string | null;
-  intent: string;
+  intent: string | null;
   lat: number;
   lng: number;
 }
@@ -143,7 +143,7 @@ export const preplanApi = {
       json<{ projects: PreplanProject[]; reports: PreplanReportRow[] }>(r)
     ),
 
-  createProject: (p: { label: string; lat: number; lng: number; address: string; eircode?: string | null; intent: string }) =>
+  createProject: (p: { label: string; lat: number; lng: number; address: string; eircode?: string | null; intent?: string | null }) =>
     fetch("/api/preplan/projects", {
       method: "POST",
       credentials: "same-origin",

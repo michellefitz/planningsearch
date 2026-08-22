@@ -312,18 +312,21 @@ export const RURAL_REASON_QUESTION =
 const IRRELEVANT_STATUSES = new Set(["invalid", "incomplete"]);
 
 export function selectPrecedents(rows, lat, lng, intent, limit = 8) {
-  const tokens = intentTokens(intent);
+  const tokens = intentTokens(intent ?? "");
+  const isHistory = !intent?.trim();
+  const effectiveLimit = isHistory ? 50 : limit;
+  const effectiveRadius = isHistory ? 50 : PRECEDENT_RADIUS_M;
   const scored = [];
   for (const row of rows) {
     if (row.lat == null || row.lng == null) continue;
-    if (row.status && IRRELEVANT_STATUSES.has(row.status)) continue;
+    if (!isHistory && row.status && IRRELEVANT_STATUSES.has(row.status)) continue;
     const distance_m = Math.round(haversineMeters(lat, lng, row.lat, row.lng));
-    if (distance_m > PRECEDENT_RADIUS_M) continue;
+    if (distance_m > effectiveRadius) continue;
     const desc = (row.description ?? "").toLowerCase();
     const hits = tokens.filter((t) => desc.includes(t));
-    scored.push({ ...row, distance_m, score: hits.length * 2 + (1 - distance_m / PRECEDENT_RADIUS_M), keyword_hits: hits });
+    scored.push({ ...row, distance_m, score: hits.length * 2 + (1 - distance_m / effectiveRadius), keyword_hits: hits });
   }
-  return scored.sort((a, b) => b.score - a.score).slice(0, limit);
+  return scored.sort((a, b) => b.score - a.score).slice(0, effectiveLimit);
 }
 
 export function deepDiveCandidates(precedents, max = 3) {
@@ -525,9 +528,11 @@ For each one write a 1-2 sentence plain-English summary of what was applied for 
 no legalese, no register boilerplate, no addresses.
 Reply with only a JSON object mapping each planning_reference to its summary. No other text.`;
 
-export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Considerations" section of a pre-planning research report
+export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Considerations" section of a planning research report
 for a member of the public in Ireland. You are given a JSON evidence pack gathered
-for their site plus their stated intention.
+for their site. If an "intent" is provided, the report is a pre-planning assessment
+for that project; if intent is null, this is a planning history report — summarise
+what has happened at this property.
 
 Rules:
 - Ground every statement in the evidence pack. Never invent designations,
@@ -535,15 +540,17 @@ Rules:
   not checked.
 - You are NOT predicting a decision and NOT giving professional advice. Never
   state or imply a likelihood of permission.
-- Structure: **Overview** (2-3 sentences: the headline of what this research
-  found for this site and intent — a person should get the gist from this
-  alone), **Site constraints** (what the designations mean for this intent),
-  **What nearby decisions show** (themes from precedents and their documents,
-  cited by planning reference), **Likely condition themes**, **Worth checking
-  before applying** (exempt-development thresholds, a pre-planning meeting with
-  the council, and the specific chapters of the local development plan named in
-  the evidence pack that bear on this proposal).
-- Plain English, no legalese. 350-550 words. Markdown with the five bold
+- When intent is provided, structure as: **Overview** (2-3 sentences: the headline
+  of what this research found for this site and intent), **Site constraints**
+  (what the designations mean for this intent), **What nearby decisions show**
+  (themes from precedents and their documents, cited by planning reference),
+  **Likely condition themes**, **Worth checking before applying**.
+- When intent is null (history report), structure as: **Overview** (2-3 sentences:
+  what the planning record shows for this property), **Planning history**
+  (each application at this address, cited by reference, with outcome and key
+  conditions), **Site context** (designations, flood, heritage), **Implementation
+  status** (commencement, completion, expiry where known).
+- Plain English, no legalese. 350-550 words. Markdown with the bold
   headings above only.`;
 
 const unavailable = (reason) => ({ unavailable: true, reason });
