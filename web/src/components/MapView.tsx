@@ -198,7 +198,7 @@ export default function MapView({
     if (!map || !loadedRef.current) return;
     const enabled = overlaysRef.current[layer];
     const vis = enabled ? "visible" : "none";
-    for (const id of [`ov-${layer}-fill`, `ov-${layer}-line`]) {
+    for (const id of [`ov-${layer}-fill`, `ov-${layer}-line`, `ov-${layer}-circle`]) {
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
     }
     const src = map.getSource(`ov-${layer}`) as maplibregl.GeoJSONSource | undefined;
@@ -311,6 +311,22 @@ export default function MapView({
           layout: { visibility: "none" },
           paint: { "line-color": s.line, "line-width": 0.8, "line-opacity": 0.7 },
         });
+        if (layer === "derelict") {
+          map.addLayer({
+            id: "ov-derelict-circle",
+            type: "circle",
+            source: "ov-derelict",
+            filter: ["==", ["geometry-type"], "Point"],
+            layout: { visibility: "none" },
+            paint: {
+              "circle-radius": 6,
+              "circle-color": s.fill,
+              "circle-opacity": 0.85,
+              "circle-stroke-color": s.line,
+              "circle-stroke-width": 1.5,
+            },
+          });
+        }
 
         // Click a polygon → info popup.
         map.on("click", `ov-${layer}-fill`, (e) => {
@@ -409,6 +425,33 @@ export default function MapView({
         map.on("mouseenter", `ov-${layer}-fill`, () => (map.getCanvas().style.cursor = "pointer"));
         map.on("mouseleave", `ov-${layer}-fill`, () => (map.getCanvas().style.cursor = ""));
       }
+
+      // Derelict point features need a click handler on the circle layer too.
+      map.on("click", "ov-derelict-circle", (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const pr = f.properties ?? {};
+        const addr = String(pr.address ?? "").trim();
+        const ref = String(pr.reference ?? "").trim();
+        const council = String(pr.council_label ?? "").trim();
+        const dateAdded = String(pr.date_added ?? "").trim();
+        const valuation = String(pr.valuation ?? "").trim();
+        const isProtected = pr.protected_structure;
+        const html =
+          `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(addr || ref || "Derelict site")}</strong></div>` +
+          `<span class="ov-pop-tag">Derelict Sites Register${ref ? ` · ${escapeHtml(ref)}` : ""}</span>` +
+          (council ? `<span class="ov-pop-sub">${escapeHtml(council)}</span>` : "") +
+          (dateAdded ? `<span class="ov-pop-sub">On register since ${escapeHtml(dateAdded)}</span>` : "") +
+          (valuation ? `<span class="ov-pop-sub">Valuation: ${escapeHtml(valuation)}</span>` : "") +
+          (isProtected ? `<span class="ov-pop-sub">Also a Protected Structure</span>` : "") +
+          `</div>`;
+        new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
+          .setLngLat(e.lngLat)
+          .setHTML(html)
+          .addTo(map);
+      });
+      map.on("mouseenter", "ov-derelict-circle", () => (map.getCanvas().style.cursor = "pointer"));
+      map.on("mouseleave", "ov-derelict-circle", () => (map.getCanvas().style.cursor = ""));
 
       // Alert-area preview (watch creation and "view watch"): one circle.
       map.addSource("watch-circle", { type: "geojson", data: EMPTY_FC as never });
