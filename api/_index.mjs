@@ -2347,6 +2347,10 @@ site is on the RZLT map, mention it — it signals development potential and mea
 tax (3% of market value) intended to activate the land for housing. Not all residential land is on the RZLT map; only \
 land the local authority considers underused.
 
+DERELICT SITES: Some properties are on the statutory Derelict Sites Register (Derelict Sites Act 1990). This is a \
+formal designation by the local authority — distinct from merely appearing neglected. Being on the register means \
+the council has served notices and may levy charges. Coverage: Dublin City, South Dublin, DLR, Wicklow only.
+
 FORMAT: Short paragraphs and **bold** for key facts only — no headings, no numbered section titles, no tables, no \
 links, no long essays. Do NOT use bullet lists to present applications: write each property as a short paragraph — \
 bold its address, then put its token on the next line. When you reference a specific application, put a token like \

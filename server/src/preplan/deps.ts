@@ -31,7 +31,7 @@ async function fetchJson(url: string): Promise<unknown> {
 
 const WEB_PUBLIC = process.env.PLANVIEW_WEB_PUBLIC ?? path.resolve(process.cwd(), "../web/public");
 
-async function loadStaticGeojson(name: "aca" | "flood"): Promise<StaticGeojson> {
+async function loadStaticGeojson(name: "aca" | "flood" | "derelict"): Promise<StaticGeojson> {
   const raw = await readFile(path.join(WEB_PUBLIC, `${name}.geojson`), "utf8");
   return JSON.parse(raw) as StaticGeojson;
 }

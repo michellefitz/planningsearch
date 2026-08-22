@@ -28,8 +28,8 @@ export interface StaticGeojson {
 export interface PointDeps {
   /** GET a URL, parse JSON. Reject on HTTP/network failure. */
   fetchJson(url: string): Promise<unknown>;
-  /** Load a baked geojson file (aca, flood). */
-  loadStaticGeojson(name: "aca" | "flood"): Promise<StaticGeojson>;
+  /** Load a baked geojson file (aca, flood, derelict). */
+  loadStaticGeojson(name: "aca" | "flood" | "derelict"): Promise<StaticGeojson>;
 }
 
 export interface Unavailable {
@@ -87,6 +87,8 @@ export const DESIGNATION_MEANING: Record<string, string> = {
     "Zone of Archaeological Notification — works here must be notified to the National Monuments Service, and an archaeological assessment may be required.",
   aca: "Architectural Conservation Area — external works that would normally be exempt development usually need permission here, and design standards are higher.",
   rzlt: "This land is on the RZLT Final Map — identified as vacant or idle serviced residential land, liable for the Residential Zoned Land Tax. It signals development potential and may indicate the local authority considers the site underused.",
+  derelict:
+    "This site is on a local authority's statutory Derelict Sites Register (Derelict Sites Act 1990). The council has formally designated it as derelict and may have served notices or levied charges. Adjacent derelict sites are material to a planning application — they affect the character and amenity of the area.",
   flood:
     "Indicative flood extent — a Site-Specific Flood Risk Assessment may be required, and some uses are restricted under the Flood Risk Management Guidelines.",
   groundwater_high:
@@ -200,6 +202,39 @@ export async function getDesignations(lat: number, lng: number, deps: PointDeps)
             meaning: DESIGNATION_MEANING.rzlt,
           };
         });
+      },
+    },
+    {
+      label: "derelict",
+      async run() {
+        const fc = await deps.loadStaticGeojson("derelict");
+        return fc.features
+          .filter((f) => {
+            const g = f.geometry;
+            const coords = g?.coordinates as unknown;
+            let clng: number, clat: number;
+            if (g?.type === "Point" && Array.isArray(coords)) {
+              [clng, clat] = coords as [number, number];
+            } else if (g?.type === "Polygon" && Array.isArray(coords)) {
+              const ring = (coords as [number, number][][])[0];
+              if (!ring?.length) return false;
+              let sx = 0, sy = 0;
+              for (const [x, y] of ring) { sx += x; sy += y; }
+              clng = sx / ring.length; clat = sy / ring.length;
+            } else {
+              return false;
+            }
+            return haversineMeters(lat, lng, clat, clng) <= 50;
+          })
+          .map((f) => {
+            const p = f.properties ?? {};
+            return {
+              kind: "Derelict Sites Register",
+              name: str(p.address) || str(p.reference) || "Derelict site",
+              detail: [str(p.reference), str(p.council_label), str(p.date_added) ? `since ${str(p.date_added)}` : ""].filter(Boolean).join(" · "),
+              meaning: DESIGNATION_MEANING.derelict,
+            };
+          });
       },
     },
     {

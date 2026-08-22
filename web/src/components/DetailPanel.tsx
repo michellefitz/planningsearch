@@ -2024,12 +2024,14 @@ function PropertyContext({
   detail: d,
   zones,
   rzlt,
+  derelict,
   flood,
   eircode,
 }: {
   detail: AppDetail;
   zones: Fetched<ZoningInfo[]>;
   rzlt: Fetched<RzltInfo[]>;
+  derelict: Fetched<Array<{ address: string; reference: string; council_label: string; date_added: string | null }>>;
   flood: Fetched<{ at_risk: boolean; scenarios: string[] }>;
   eircode: string | null;
 }) {
@@ -2072,6 +2074,20 @@ function PropertyContext({
                     <strong>On RZLT map</strong>
                     {r.zone_desc && ` · ${r.zone_desc}`}
                     {r.area_ha != null && <span className="hint"> · {r.area_ha} ha</span>}
+                  </div>
+                ))}
+        </dd>
+        <dt>Derelict site</dt>
+        <dd>
+          {derelict === "pending"
+            ? CHECKING
+            : derelict === "none"
+              ? "Not on a published register"
+              : derelict.map((ds) => (
+                  <div key={ds.reference || ds.address}>
+                    <strong>On Derelict Sites Register</strong>
+                    {ds.reference && <span className="hint"> · {ds.reference}</span>}
+                    {ds.date_added && <span className="hint"> · since {ds.date_added}</span>}
                   </div>
                 ))}
         </dd>
@@ -2395,6 +2411,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const [descExpanded, setDescExpanded] = useState(false);
   const [zones, setZones] = useState<Fetched<ZoningInfo[]>>("pending");
   const [rzlt, setRzlt] = useState<Fetched<RzltInfo[]>>("pending");
+  const [derelict, setDerelict] = useState<Fetched<Array<{ address: string; reference: string; council_label: string; date_added: string | null }>>>("pending");
   const [flood, setFlood] = useState<Fetched<{ at_risk: boolean; scenarios: string[] }>>("pending");
   // Enrichment can supply a fuller proposal description than the (sometimes
   // truncated) national one — prefer it for both the display and the summary.
@@ -2489,6 +2506,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     if (d.lat != null && d.lng != null) {
       setZones("pending");
       setRzlt("pending");
+      setDerelict("pending");
       setFlood("pending");
       api
         .zoning(d.id)
@@ -2505,6 +2523,51 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         })
         .catch(() => {
           if (!cancelled) setRzlt("none");
+        });
+      fetch("/derelict.geojson")
+        .then((r) => r.ok ? r.json() as Promise<GeoJSON.FeatureCollection> : null)
+        .then((fc) => {
+          if (cancelled || !fc || d.lat == null || d.lng == null) {
+            if (!cancelled) setDerelict("none");
+            return;
+          }
+          const toRad = (deg: number) => (deg * Math.PI) / 180;
+          const haversine = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+            const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+            return 6371000 * 2 * Math.asin(Math.sqrt(a));
+          };
+          const featureCenter = (f: GeoJSON.Feature): [number, number] | null => {
+            const g = f.geometry;
+            if (g.type === "Point") return g.coordinates as [number, number];
+            if (g.type === "Polygon") {
+              const ring = g.coordinates[0];
+              if (!ring?.length) return null;
+              let sx = 0, sy = 0;
+              for (const [x, y] of ring) { sx += x; sy += y; }
+              return [sx / ring.length, sy / ring.length];
+            }
+            return null;
+          };
+          const nearby = fc.features
+            .map((f) => {
+              const c = featureCenter(f);
+              if (!c) return null;
+              const dist = haversine(d.lat!, d.lng!, c[1], c[0]);
+              if (dist > 50) return null;
+              const p = f.properties as Record<string, unknown>;
+              return {
+                address: String(p.address ?? "").trim(),
+                reference: String(p.reference ?? "").trim(),
+                council_label: String(p.council_label ?? "").trim(),
+                date_added: p.date_added ? String(p.date_added) : null,
+              };
+            })
+            .filter(Boolean) as Array<{ address: string; reference: string; council_label: string; date_added: string | null }>;
+          setDerelict(nearby.length > 0 ? nearby : "none");
+        })
+        .catch(() => {
+          if (!cancelled) setDerelict("none");
         });
       getFloodData()
         .then((fc) => {
@@ -2537,6 +2600,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         });
     } else {
       setZones("none");
+      setRzlt("none");
+      setDerelict("none");
       setFlood("none");
     }
     // AI summary + party backfill need upstream calls, so the detail
@@ -3131,6 +3196,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         detail={d}
         zones={zones}
         rzlt={rzlt}
+        derelict={derelict}
         flood={flood}
         eircode={d.eircode ?? enrich?.eircode ?? null}
       />

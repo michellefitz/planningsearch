@@ -188,6 +188,37 @@ export async function getDesignations(lat, lng, deps) {
       },
     },
     {
+      label: "derelict",
+      async run() {
+        const fc = await deps.loadStaticGeojson("derelict");
+        return fc.features
+          .filter((f) => {
+            const g = f.geometry;
+            let clng, clat;
+            if (g?.type === "Point" && Array.isArray(g.coordinates)) {
+              [clng, clat] = g.coordinates;
+            } else if (g?.type === "Polygon" && Array.isArray(g.coordinates?.[0])) {
+              const ring = g.coordinates[0];
+              let sx = 0, sy = 0;
+              for (const [x, y] of ring) { sx += x; sy += y; }
+              clng = sx / ring.length; clat = sy / ring.length;
+            } else {
+              return false;
+            }
+            return haversineMeters(lat, lng, clat, clng) <= 50;
+          })
+          .map((f) => {
+            const p = f.properties ?? {};
+            return {
+              kind: "Derelict Sites Register",
+              name: str(p.address) || str(p.reference) || "Derelict site",
+              detail: [str(p.reference), str(p.council_label), str(p.date_added) ? `since ${str(p.date_added)}` : ""].filter(Boolean).join(" · "),
+              meaning: DESIGNATION_MEANING.derelict,
+            };
+          });
+      },
+    },
+    {
       label: "aca",
       async run() {
         const fc = await deps.loadStaticGeojson("aca");

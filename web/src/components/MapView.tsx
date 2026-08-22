@@ -8,7 +8,7 @@ import { sheetFocusOffset } from "../sheetMetrics";
 
 /** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport.
     Flood zones rebuilt from OPW CFRAM shapefiles and served as a static file. */
-type OverlayKey = "zoning" | "conservation" | "archaeology" | "aca" | "flood" | "rzlt";
+type OverlayKey = "zoning" | "conservation" | "archaeology" | "aca" | "flood" | "rzlt" | "derelict";
 const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; line: string; label: string }> = {
   flood: { fill: "#3b82f6", fillOpacity: 0.25, line: "#1e40af", label: "Flood zones (indicative)" },
   aca: { fill: "#b45a2d", fillOpacity: 0.3, line: "#8a3f1d", label: "Architectural Conservation Areas" },
@@ -18,6 +18,7 @@ const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; lin
   archaeology: { fill: "#8e6bbf", fillOpacity: 0.28, line: "#67479a", label: "Archaeological zones" },
   zoning: { fill: "#14b8a6", fillOpacity: 0.22, line: "#0f766e", label: "Zoning" },
   rzlt: { fill: "#e11d48", fillOpacity: 0.25, line: "#be123c", label: "RZLT (vacant/idle land)" },
+  derelict: { fill: "#991b1b", fillOpacity: 0.35, line: "#7f1d1d", label: "Derelict sites" },
 };
 // Overlays are only meaningful (and light enough to fetch) when zoomed in.
 const MIN_OVERLAY_ZOOM = 12;
@@ -174,17 +175,18 @@ export default function MapView({
   const applyActiveStateRef = useRef(applyActiveState);
   applyActiveStateRef.current = applyActiveState;
 
-  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false, flood: false, rzlt: false });
+  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false, flood: false, rzlt: false, derelict: false });
   const [layersOpen, setLayersOpen] = useState(false);
   const [mapZoom, setMapZoom] = useState(7);
   const overlaysRef = useRef(overlays);
   overlaysRef.current = overlays;
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const zoomRef = useRef(7);
-  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0, archaeology: 0, aca: 0, flood: 0, rzlt: 0 });
-  // The ACA layer is one static file — fetched at most once, then reused.
+  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0, archaeology: 0, aca: 0, flood: 0, rzlt: 0, derelict: 0 });
+  // Static overlay layers — fetched at most once, then reused.
   const acaDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
   const floodDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
+  const derelictDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
   // The flood file is large (~5 MB gzipped) — surface its fetch in the UI.
   const [floodLoading, setFloodLoading] = useState(false);
   // Latest overlay-refresh closure, so the map's one-off event handlers can
@@ -202,16 +204,16 @@ export default function MapView({
     const src = map.getSource(`ov-${layer}`) as maplibregl.GeoJSONSource | undefined;
     if (!src) return;
     // Static layers: one file each, no viewport queries or zoom gate.
-    if (layer === "aca" || layer === "flood") {
+    if (layer === "aca" || layer === "flood" || layer === "derelict") {
       if (!enabled) return;
-      const dataRef = layer === "aca" ? acaDataRef : floodDataRef;
+      const dataRef = layer === "aca" ? acaDataRef : layer === "flood" ? floodDataRef : derelictDataRef;
       if (!dataRef.current) {
         const seq = ++seqRef.current[layer];
         if (layer === "flood") setFloodLoading(true);
         try {
-          const fc = layer === "aca"
-            ? await fetch("/aca.geojson").then((r) => r.ok ? r.json() as Promise<GeoJSON.FeatureCollection> : null)
-            : await getFloodData();
+          const fc = layer === "flood"
+            ? await getFloodData()
+            : await fetch(layer === "aca" ? "/aca.geojson" : "/derelict.geojson").then((r) => r.ok ? r.json() as Promise<GeoJSON.FeatureCollection> : null);
           if (!fc) return;
           dataRef.current = fc;
           if (seq !== seqRef.current[layer]) return;
@@ -357,6 +359,21 @@ export default function MapView({
               `<span class="ov-pop-tag">Recorded monuments${pr.zone_ref ? ` · ${escapeHtml(String(pr.zone_ref))}` : ""}</span>` +
               `<span class="ov-pop-sub">Works here must be notified to the National Monuments Service</span>` +
               `<a class="ov-pop-sub" href="https://maps.archaeology.ie/historicenvironment/" target="_blank" rel="noopener">Details on maps.archaeology.ie</a>` +
+              `</div>`;
+          } else if (layer === "derelict") {
+            const addr = String(pr.address ?? "").trim();
+            const ref = String(pr.reference ?? "").trim();
+            const council = String(pr.council_label ?? "").trim();
+            const dateAdded = String(pr.date_added ?? "").trim();
+            const valuation = String(pr.valuation ?? "").trim();
+            const isProtected = pr.protected_structure;
+            html =
+              `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(addr || ref || "Derelict site")}</strong></div>` +
+              `<span class="ov-pop-tag">Derelict Sites Register${ref ? ` · ${escapeHtml(ref)}` : ""}</span>` +
+              (council ? `<span class="ov-pop-sub">${escapeHtml(council)}</span>` : "") +
+              (dateAdded ? `<span class="ov-pop-sub">On register since ${escapeHtml(dateAdded)}</span>` : "") +
+              (valuation ? `<span class="ov-pop-sub">Valuation: ${escapeHtml(valuation)}</span>` : "") +
+              (isProtected ? `<span class="ov-pop-sub">Also a Protected Structure</span>` : "") +
               `</div>`;
           } else if (layer === "rzlt") {
             const parcel = String(pr.parcel_id ?? "").trim();
