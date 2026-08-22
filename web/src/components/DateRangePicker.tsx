@@ -38,18 +38,10 @@ interface Preset {
 }
 
 const PRESETS: Preset[] = [
-  { label: "Last week", from: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d; } },
   { label: "Last month", from: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d; } },
   { label: "Last 3 months", from: () => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d; } },
   { label: "Last year", from: () => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d; } },
 ];
-
-function yearPresets(): Array<{ label: string; year: number }> {
-  const now = new Date().getFullYear();
-  const out = [];
-  for (let y = now; y >= now - 8; y--) out.push({ label: String(y), year: y });
-  return out;
-}
 
 function triggerLabel(from: string, to: string): string {
   if (from && to) {
@@ -113,15 +105,6 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
       return from === pf && to === pt;
     })?.label ?? null;
 
-  const activeYear =
-    from && to && from.slice(5) === "01-01" &&
-    (to.slice(5) === "12-31" || to === today) &&
-    from.slice(0, 4) === to.slice(0, 4)
-      ? Number(from.slice(0, 4))
-      : from && to && from.slice(5) === "01-01" && to === today
-        ? Number(from.slice(0, 4))
-        : null;
-
   const pickDay = (day: string) => {
     if (!from || (from && to)) {
       onChange(day, "");
@@ -138,14 +121,6 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
     const end = p.to ? p.to() : new Date();
     onChange(fmt(start), fmt(end));
     setMonth(new Date(end.getFullYear(), end.getMonth(), 1));
-  };
-
-  const applyYear = (year: number) => {
-    const thisYear = new Date().getFullYear();
-    const f = `${year}-01-01`;
-    const t = year === thisYear ? today : `${year}-12-31`;
-    onChange(f, t);
-    setMonth(new Date(year, 0, 1));
   };
 
   const commitFromInput = () => {
@@ -219,18 +194,6 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
                 onClick={() => applyPreset(p)}
               >
                 {p.label}
-              </button>
-            ))}
-          </div>
-          <div className="chip-row">
-            {yearPresets().map((y) => (
-              <button
-                key={y.year}
-                type="button"
-                className={`chip ${activeYear === y.year ? "chip-on" : ""}`}
-                onClick={() => applyYear(y.year)}
-              >
-                {y.label}
               </button>
             ))}
           </div>

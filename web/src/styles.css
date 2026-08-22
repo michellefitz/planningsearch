@@ -1253,12 +1253,10 @@ body {
 .filters-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.42rem 0.75rem;
+  gap: 0.3rem;
+  padding: 0.24rem 0.55rem;
   font: inherit;
-  /* Was 0.8rem, a size used nowhere else — .btn beside it is 0.82rem. The
-     mobile strip already normalises to one scale; this is desktop catching up. */
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 500;
   line-height: 1;
   color: var(--ink-2);
@@ -1430,6 +1428,18 @@ body {
   display: inline-grid;
   place-items: center;
   opacity: 0.65;
+  background: none;
+  border: 0;
+  padding: 0.1rem;
+  margin: -0.1rem -0.15rem -0.1rem 0;
+  cursor: pointer;
+  color: inherit;
+  border-radius: var(--r-sm);
+}
+
+.applied-x:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--action) 15%, transparent);
 }
 
 .applied-chip:hover .applied-x {

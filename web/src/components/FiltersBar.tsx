@@ -415,14 +415,14 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
       {applied.length > 0 && (
         <div className="applied-row" role="group" aria-label="Active filters">
           {applied.map((f) => (
-            <button key={f.key} type="button" className="applied-chip" onClick={f.remove} aria-label={`Remove filter: ${f.label}`}>
+            <span key={f.key} className="applied-chip" onClick={() => setOpen(true)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(true); } }}>
               {f.label}
-              <span className="applied-x" aria-hidden="true">
+              <button type="button" className="applied-x" onClick={(e) => { e.stopPropagation(); f.remove(); }} aria-label={`Remove filter: ${f.label}`}>
                 <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
                   <path d="M1 1l6 6M7 1L1 7" />
                 </svg>
-              </span>
-            </button>
+              </button>
+            </span>
           ))}
         </div>
       )}
