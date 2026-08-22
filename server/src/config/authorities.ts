@@ -1,5 +1,5 @@
 /**
- * The five v1 authorities, their source systems, and best-effort deep-link
+ * Supported authorities, their source systems, and best-effort deep-link
  * builders into each council's own portal.
  *
  * Deep-link patterns are the Phase 0 spike surface (PRD §5.2/§9): the national

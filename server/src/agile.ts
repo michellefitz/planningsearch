@@ -1,5 +1,5 @@
 /**
- * Agile Applications citizen-portal API (South Dublin, Dublin City, Fingal).
+ * Agile Applications citizen-portal API.
  *
  * The SPA's backing API is open but tenant-scoped via three headers
  * (x-client / x-product / x-service, captured from a real browser session).

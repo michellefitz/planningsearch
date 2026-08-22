@@ -47,7 +47,7 @@ export const SERVICE_URL =
  *
  * Coverage is effectively 1:1 with the points, verified against the live
  * service on 2026-07-30: 500,559 sites against 500,736 points nationally,
- * 94,380 against 94,303 for the five authorities since 2012, 438 against 438
+ * 94,380 against 94,303 for the configured authorities since 2012, 438 against 438
  * for applications received in the last 30 days, and the same max ETL_DATE.
  * Every year back to 2012 matches, so this is not a stale one-off load.
  */
@@ -138,7 +138,7 @@ export function featureToRecord(
   const reference = str(attrs, FIELD_MAP.reference);
   if (!authorityName || !reference) return null;
   const authorityId = authorityIdForNationalName(authorityName);
-  if (!authorityId) return null; // outside the five v1 authorities
+  if (!authorityId) return null; // outside the configured authorities
 
   const description = str(attrs, FIELD_MAP.description);
   const statusRaw = str(attrs, FIELD_MAP.status);
@@ -256,7 +256,7 @@ export function featureToRecord(
     // different units. Measured against true geometry for 300 sites each,
     // Dublin City, Fingal, DLR and South Dublin give square metres while
     // Kildare gives hectares — so reading it as hectares (as this did) made
-    // four of the five authorities 10,000x too large. The honest value is the
+    // four of the configured authorities 10,000x too large. The honest value is the
     // area of the site boundary, which fetchAllSites measures; applications
     // with no boundary get null rather than a number in unknown units.
     site_area_ha: null,
@@ -315,7 +315,7 @@ export async function fetchPage(opts: FetchPageOptions): Promise<ArcgisFeature[]
 }
 
 /**
- * WHERE clause selecting the five v1 authorities, optionally since a date.
+ * WHERE clause selecting the configured authorities, optionally since a date.
  * Uses LIKE fragments rather than exact names because the source is not
  * consistent about accents/hyphens (e.g. Dún Laoghaire-Rathdown).
  */
