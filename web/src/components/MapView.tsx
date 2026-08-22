@@ -602,6 +602,9 @@ export default function MapView({
     const map = mapRef.current;
     if (map && loadedRef.current && data) {
       (map.getSource("apps") as maplibregl.GeoJSONSource).setData(data as never);
+      if (map.getLayer("cluster-count")) {
+        map.setLayoutProperty("cluster-count", "visibility", data.truncated ? "none" : "visible");
+      }
     }
   }, [data]);
 
@@ -615,10 +618,14 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    for (const layer of ["clusters", "cluster-count", "pins", "pin-letters"]) {
+    for (const layer of ["clusters", "pins", "pin-letters"]) {
       if (map.getLayer(layer)) map.setLayoutProperty(layer, "visibility", hideApps ? "none" : "visible");
     }
-  }, [hideApps]);
+    if (map.getLayer("cluster-count")) {
+      const show = !hideApps && !data?.truncated;
+      map.setLayoutProperty("cluster-count", "visibility", show ? "visible" : "none");
+    }
+  }, [hideApps, data?.truncated]);
 
   // Draw (or clear) the alert-area circle and manage its centre pin.
   useEffect(() => {
