@@ -1853,6 +1853,124 @@ body {
   text-decoration: underline;
 }
 
+.dr-month-btn {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  padding: 0.15rem 0.5rem;
+}
+
+.dr-month-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+
+.dr-inputs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.dr-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.dr-inputs label > span {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.dr-inputs input {
+  font: inherit;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  width: 100%;
+}
+
+.dr-inputs input:focus {
+  outline: none;
+  border-color: var(--action);
+}
+
+.dr-dash {
+  color: var(--ink-3);
+  padding-bottom: 0.3rem;
+  flex: none;
+}
+
+.dr-today-btn {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--action);
+  background: var(--action-tint);
+  border: 1px solid var(--action);
+  border-radius: var(--r-sm);
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  flex: none;
+  white-space: nowrap;
+}
+
+.dr-today-btn:hover {
+  background: var(--action);
+  color: #fff;
+}
+
+.dr-year-grid,
+.dr-month-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+}
+
+.dr-year-cell,
+.dr-month-cell {
+  height: 2.2rem;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.dr-year-cell:hover:not(:disabled),
+.dr-month-cell:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.dr-year-cell:disabled,
+.dr-month-cell:disabled {
+  color: var(--ink-3);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dr-year-active,
+.dr-month-active {
+  background: var(--action-tint);
+  color: var(--action);
+  font-weight: 600;
+}
+
 /* The checkbox stays pinned top-left while the label + hint wrap as one
    flowing block — otherwise long labels form ragged two-column text. */
 .toggle-row {
