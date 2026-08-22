@@ -40,6 +40,13 @@ const ZONE_GROUPS: Record<string, { color: string; label: string }> = {
 const escapeHtml = (v: unknown): string =>
   String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
+const DERELICT_REGISTER_URL: Record<string, string> = {
+  "dublin-city": "https://www.dublincity.ie/planning-and-land-use/active-land-management/derelict-sites-register",
+  "south-dublin": "https://www.sdcc.ie/en/services/planning-building-control/derelict-sites/",
+  dlr: "https://www.dlrcoco.ie/property-management/derelict-sites",
+  wicklow: "https://www.wicklow.ie/Living/Services/Planning/Derelict-Vacant-Sites/Derelict-Sites",
+};
+
 /** Re-exported so existing map-side imports keep working; the definition
  *  lives outside this module so importing it doesn't pull in maplibre-gl. */
 export { STATUS_STYLE };
@@ -379,12 +386,15 @@ export default function MapView({
           } else if (layer === "derelict") {
             const addr = String(pr.address ?? "").trim();
             const ref = String(pr.reference ?? "").trim();
-            const council = String(pr.council_label ?? "").trim();
+            const councilLabel = String(pr.council_label ?? "").trim();
+            const councilId = String(pr.council ?? "").trim();
             const dateAdded = String(pr.date_added ?? "").trim();
+            const regUrl = DERELICT_REGISTER_URL[councilId];
             html =
               `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(addr || ref || "Derelict site")}</strong></div>` +
               `<span class="ov-pop-tag">Derelict Sites Register${ref ? ` · ${escapeHtml(ref)}` : ""}</span>` +
-              (council || dateAdded ? `<span class="ov-pop-sub">${escapeHtml([council, dateAdded ? `since ${dateAdded}` : ""].filter(Boolean).join(" · "))}</span>` : "") +
+              (councilLabel || dateAdded ? `<span class="ov-pop-sub">${escapeHtml([councilLabel, dateAdded ? `since ${dateAdded}` : ""].filter(Boolean).join(" · "))}</span>` : "") +
+              (regUrl ? `<a class="ov-pop-sub" href="${escapeHtml(regUrl)}" target="_blank" rel="noopener">View register on ${escapeHtml(councilLabel || "council website")}</a>` : "") +
               `</div>`;
           } else if (layer === "rzlt") {
             const parcel = String(pr.parcel_id ?? "").trim();
@@ -428,12 +438,15 @@ export default function MapView({
         const pr = f.properties ?? {};
         const addr = String(pr.address ?? "").trim();
         const ref = String(pr.reference ?? "").trim();
-        const council = String(pr.council_label ?? "").trim();
+        const councilLabel = String(pr.council_label ?? "").trim();
+        const councilId = String(pr.council ?? "").trim();
         const dateAdded = String(pr.date_added ?? "").trim();
+        const regUrl = DERELICT_REGISTER_URL[councilId];
         const html =
           `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(addr || ref || "Derelict site")}</strong></div>` +
           `<span class="ov-pop-tag">Derelict Sites Register${ref ? ` · ${escapeHtml(ref)}` : ""}</span>` +
-          (council || dateAdded ? `<span class="ov-pop-sub">${escapeHtml([council, dateAdded ? `since ${dateAdded}` : ""].filter(Boolean).join(" · "))}</span>` : "") +
+          (councilLabel || dateAdded ? `<span class="ov-pop-sub">${escapeHtml([councilLabel, dateAdded ? `since ${dateAdded}` : ""].filter(Boolean).join(" · "))}</span>` : "") +
+          (regUrl ? `<a class="ov-pop-sub" href="${escapeHtml(regUrl)}" target="_blank" rel="noopener">View register on ${escapeHtml(councilLabel || "council website")}</a>` : "") +
           `</div>`;
         new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
           .setLngLat(e.lngLat)
