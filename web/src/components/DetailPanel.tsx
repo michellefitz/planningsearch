@@ -790,6 +790,83 @@ function ExtractedConditions({
   );
 }
 
+/**
+ * One related application, as a card.
+ *
+ * It used to be a row whose only target was the reference — a blue
+ * "4034/22" you had to hit exactly — with the status and dates as inert text
+ * beside it, and the eplanning variant put a "↗" on it, which says "this opens
+ * somewhere else" about something that opens the sheet you are already in.
+ *
+ * A related application is the same kind of thing as the one on screen, so it
+ * gets the same anatomy as a result in the list: what it was, what happened to
+ * it, when. The reference stops being the title — it is the least readable
+ * thing about an application — and becomes the quiet meta line it is
+ * everywhere else in the app.
+ */
+function RelatedCard({
+  reference,
+  description,
+  status,
+  receivedDate,
+  decisionDate,
+  note,
+  onOpen,
+  href,
+}: {
+  reference: string;
+  description?: string | null;
+  status?: string | null;
+  receivedDate?: string | null;
+  decisionDate?: string | null;
+  /** Why this one is here, when we can say something better than "same address". */
+  note?: ReactNode;
+  /** Opens the application in this sheet. */
+  onOpen?: () => void;
+  /** Only for a related application the register knows and we do not hold — it
+   *  genuinely leaves the app, and only then does it get the arrow. */
+  href?: string;
+}) {
+  const body = (
+    <>
+      <span className="related-card-top">
+        <span className="related-card-title">
+          {description?.trim() || reference}
+        </span>
+        {status && STATUS_STYLE[status] && (
+          <StatusBadge status={status} label={STATUS_STYLE[status].label} />
+        )}
+      </span>
+      <span className="related-card-meta">
+        <span className="ref">{reference}</span>
+        {decisionDate ? (
+          <span>decided {fmtDate(decisionDate)}</span>
+        ) : receivedDate ? (
+          <span>received {fmtDate(receivedDate)}</span>
+        ) : null}
+        {href && <span className="related-card-out">opens {new URL(href).hostname} ↗</span>}
+      </span>
+      {note && <span className="related-card-note">{note}</span>}
+    </>
+  );
+  if (href) {
+    return (
+      <li className="related-item">
+        <a className="related-card" href={href} target="_blank" rel="noopener noreferrer">
+          {body}
+        </a>
+      </li>
+    );
+  }
+  return (
+    <li className="related-item">
+      <button type="button" className="related-card" onClick={onOpen}>
+        {body}
+      </button>
+    </li>
+  );
+}
+
 /** One or two documents, named and linked, in a sentence. */
 function SourceDocuments({
   detail: d,
@@ -2049,28 +2126,16 @@ function EplanningRelated({
       <h3 id="related-h">Related applications</h3>
       <ul className="related-list">
         {items.map((r) => (
-          <li key={r.id ?? r.eplanning_url} className="related-item">
-            <div className="related-top">
-              {r.id != null ? (
-                <button
-                  type="button"
-                  className="link-btn ref"
-                  onClick={() => onSelectRelated(r.id!)}
-                >
-                  {r.planning_reference}
-                </button>
-              ) : (
-                <a className="ref" href={r.eplanning_url} target="_blank" rel="noopener noreferrer">
-                  {r.planning_reference} ↗
-                </a>
-              )}
-              {r.status && STATUS_STYLE[r.status] && (
-                <StatusBadge status={r.status} label={STATUS_STYLE[r.status].label} />
-              )}
-              {r.received_date && <span className="related-date">received {fmtDate(r.received_date)}</span>}
-            </div>
-            {r.description && <p className="related-desc">{r.description}</p>}
-          </li>
+          <RelatedCard
+            key={r.id ?? r.eplanning_url}
+            reference={r.planning_reference}
+            description={r.description}
+            status={r.status}
+            receivedDate={r.received_date}
+            {...(r.id != null
+              ? { onOpen: () => onSelectRelated(r.id!) }
+              : { href: r.eplanning_url })}
+          />
         ))}
       </ul>
     </section>
@@ -2869,27 +2934,15 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           {d.related.length > 0 ? (
             <ul className="related-list">
               {d.related.map((r) => (
-                <li key={r.id} className="related-item">
-                  <div className="related-top">
-                    <button
-                      type="button"
-                      className="link-btn ref"
-                      onClick={() => onSelectRelated(r.id)}
-                    >
-                      {r.planning_reference}
-                    </button>
-                    {r.status && STATUS_STYLE[r.status] && (
-                      <StatusBadge status={r.status} label={STATUS_STYLE[r.status].label} />
-                    )}
-                    {r.received_date && (
-                      <span className="related-date">received {fmtDate(r.received_date)}</span>
-                    )}
-                    {r.decision_date && (
-                      <span className="related-date">decided {fmtDate(r.decision_date)}</span>
-                    )}
-                  </div>
-                  {r.description && <p className="related-desc">{r.description}</p>}
-                </li>
+                <RelatedCard
+                  key={r.id}
+                  reference={r.planning_reference}
+                  description={r.description}
+                  status={r.status}
+                  receivedDate={r.received_date}
+                  decisionDate={r.decision_date}
+                  onOpen={() => onSelectRelated(r.id)}
+                />
               ))}
             </ul>
           ) : (
