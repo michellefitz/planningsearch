@@ -6,6 +6,7 @@ interface Props {
   onChange: (q: string) => void;
   onSubmit: (q: string) => void;
   onNearMe: () => void;
+  onFlyTo?: (lat: number, lng: number) => void;
 }
 
 /**
@@ -14,12 +15,13 @@ interface Props {
  * it look like you had to pick one of them. Typing "Terenure" and pressing
  * Search has always worked — it just never looked like an option.
  */
-type Option = { kind: "query" | "suggestion"; text: string };
+type Place = { name: string; lat: number; lng: number };
+type Option = { kind: "query" | "suggestion" | "place"; text: string; place?: Place };
 
-export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props) {
+export default function SearchBar({ value, onChange, onSubmit, onNearMe, onFlyTo }: Props) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [places, setPlaces] = useState<Place[]>([]);
   const [open, setOpen] = useState(false);
-  // Keyboard cursor into the options; -1 means "typing, nothing chosen".
   const [active, setActive] = useState(-1);
   const debounceRef = useRef<number>();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -28,16 +30,19 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
     window.clearTimeout(debounceRef.current);
     if (value.trim().length < 2) {
       setSuggestions([]);
+      setPlaces([]);
       return;
     }
     debounceRef.current = window.setTimeout(async () => {
       try {
-        const { suggestions } = await api.suggest(value);
-        setSuggestions(suggestions);
+        const res = await api.suggest(value);
+        setSuggestions(res.suggestions);
+        setPlaces(res.places ?? []);
         setActive(-1);
-        setOpen(suggestions.length > 0);
+        setOpen(res.suggestions.length > 0 || (res.places?.length ?? 0) > 0);
       } catch {
         setSuggestions([]);
+        setPlaces([]);
       }
     }, 200);
     return () => window.clearTimeout(debounceRef.current);
@@ -45,6 +50,7 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
 
   const options: Option[] = [
     ...(value.trim() ? [{ kind: "query" as const, text: value.trim() }] : []),
+    ...places.map((p) => ({ kind: "place" as const, text: p.name, place: p })),
     ...suggestions.map((text) => ({ kind: "suggestion" as const, text })),
   ];
 
@@ -59,13 +65,19 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
     window.clearTimeout(debounceRef.current);
     setOpen(false);
     setSuggestions([]);
+    setPlaces([]);
     setActive(-1);
     inputRef.current?.blur();
     onSubmit(q);
   };
 
   const take = (o: Option) => {
-    // A suggestion replaces what was typed; the query row searches it as-is.
+    if (o.kind === "place" && o.place && onFlyTo) {
+      onChange(o.text);
+      submit(o.text);
+      onFlyTo(o.place.lat, o.place.lng);
+      return;
+    }
     if (o.kind === "suggestion") onChange(o.text);
     submit(o.text);
   };
@@ -73,6 +85,7 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
   const clear = () => {
     onChange("");
     setSuggestions([]);
+    setPlaces([]);
     setOpen(false);
     setActive(-1);
     inputRef.current?.focus();
@@ -214,6 +227,14 @@ export default function SearchBar({ value, onChange, onSubmit, onNearMe }: Props
                     <span>
                       Search for <strong>{o.text}</strong>
                     </span>
+                  </>
+                ) : o.kind === "place" ? (
+                  <>
+                    <svg className="sugg-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+                      <circle cx="12" cy="9" r="2.5" />
+                    </svg>
+                    <span>{o.text}</span>
                   </>
                 ) : (
                   o.text

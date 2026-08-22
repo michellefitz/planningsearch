@@ -382,7 +382,7 @@ export const api = {
   search: (p: URLSearchParams) =>
     getJson<{ total: number; fuzzy: boolean; results: AppSummary[] }>(`/api/search?${p}`, T.bundle),
   suggest: (q: string) =>
-    getJson<{ suggestions: string[] }>(`/api/suggest?q=${encodeURIComponent(q)}`, T.bundle),
+    getJson<{ suggestions: string[]; places?: Array<{ name: string; lat: number; lng: number }> }>(`/api/suggest?q=${encodeURIComponent(q)}`, T.bundle),
   detail: (id: number) => getJson<AppDetail>(`/api/applications/${id}`, T.bundle),
   related: (id: number) =>
     getJson<{

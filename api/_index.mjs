@@ -2958,7 +2958,7 @@ export default async function handler(req, res) {
 
   if (route === "/api/suggest") {
     const q = (p.get("q") ?? "").trim().toLowerCase();
-    if (!q) return send(res, 200, { suggestions: [] });
+    if (!q) return send(res, 200, { suggestions: [], places: [] });
     const seen = new Set();
     const out = [];
     for (const a of BUNDLE.applications) {
@@ -2971,7 +2971,30 @@ export default async function handler(req, res) {
       }
       if (out.length >= 8) break;
     }
-    return send(res, 200, { suggestions: out });
+    const places = [];
+    if (q.length >= 3 && !/^\d/.test(q) && !looksLikeReference(q)) {
+      try {
+        const geo = await fetch(
+          `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
+            q: q + ", Ireland",
+            format: "json",
+            limit: "3",
+            countrycodes: "ie",
+            addressdetails: "1",
+          })}`,
+          { headers: { "User-Agent": UA_HEADERS["User-Agent"] }, signal: AbortSignal.timeout(3000) }
+        );
+        if (geo.ok) {
+          for (const r of await geo.json()) {
+            const name = r.display_name?.split(",").slice(0, 3).join(",").trim();
+            if (name && r.lat && r.lon) {
+              places.push({ name, lat: Number(r.lat), lng: Number(r.lon) });
+            }
+          }
+        }
+      } catch {}
+    }
+    return send(res, 200, { suggestions: out, places });
   }
 
   if (route === "/api/map/applications") {

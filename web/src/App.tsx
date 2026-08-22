@@ -744,6 +744,7 @@ export default function App() {
                 // right there for anyone who wants the other view.
               }}
               onNearMe={nearMe}
+              onFlyTo={(lat, lng) => setFlyTo({ lat, lng, zoom: 14 })}
             />
             {error && (
               <p className="error" role="alert">
