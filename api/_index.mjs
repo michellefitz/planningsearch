@@ -29,7 +29,7 @@ import { appealOutcome, bestAppealDecision, contradictsOutcome } from "./_condit
 import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached, versionedKind } from "./_ai/store.mjs";
 import { descriptionKey } from "./_ai/descriptions.mjs";
 import { closeTruncatedJson } from "./_ai/json.mjs";
-import { nearEnoughToRelate } from "./_related/distance.mjs";
+import { sameSite } from "./_related/footprint.mjs";
 import { idfOver, queryHouseNumbers, relevanceScore } from "./_search/relevance.mjs";
 import {
   ANCHOR_RE,
@@ -62,6 +62,24 @@ function sitePolygons() {
     POLYGONS = {};
   }
   return POLYGONS;
+}
+
+/**
+ * Site extents, keyed by application id — the four numbers the related list
+ * needs to tell one site from the property beside it (see _related/footprint).
+ * A separate sidecar from the boundaries themselves: this is read on ordinary
+ * detail views, and parsing 19 MB of geometry to compare two rectangles would
+ * undo the reason the polygons were lifted out of the bundle at all.
+ */
+let BOUNDS = null;
+function siteBounds() {
+  if (BOUNDS) return BOUNDS;
+  try {
+    BOUNDS = JSON.parse(fs.readFileSync(path.join(__dirname, "_data/bounds.json"), "utf8"));
+  } catch {
+    BOUNDS = {};
+  }
+  return BOUNDS;
 }
 
 /**
@@ -3839,11 +3857,15 @@ const readableReason = (doc, content) => {
       app.authority_id === "kildare" || !app.address_text
         ? []
         : new Set(addressIndex().get(app.authority_id + "|" + addressKey(app.address_text)) ?? []);
+    // Read only once there is something to compare, so a detail view with no
+    // address matches never touches the sidecar.
+    const boundsFor =
+      relatedIds && relatedIds.size > 0 ? (a) => siteBounds()[String(a.id)] ?? null : null;
     const related =
       !relatedIds || relatedIds.size === 0
         ? []
         : BUNDLE.applications
-            .filter((a) => a.id !== id && relatedIds.has(a.id) && nearEnoughToRelate(app, a))
+            .filter((a) => a.id !== id && relatedIds.has(a.id) && sameSite(app, a, boundsFor))
             .sort((x, y) => (y.received_date ?? "").localeCompare(x.received_date ?? ""))
             .slice(0, 10)
             .map((a) => ({

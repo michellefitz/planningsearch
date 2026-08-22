@@ -17,6 +17,7 @@ import {
   featureToRecord, fetchAllSince, fetchAllSites, SERVICE_URL, siteKey, SITES_URL,
 } from "./ingest/arcgis.js";
 import { buildPprIndex, lookupPpr } from "./ingest/ppr.js";
+import { boundsOf } from "../../api/_related/footprint.mjs";
 import { fillMissingCoordinates } from "./coordinates.js";
 import { fetchKildareRecent, eplanningItemToRecord } from "./ingest/eplanning-list.js";
 import { ACP_AUTHORITY, fetchAcpDirectRecords } from "./ingest/acp.js";
@@ -45,6 +46,19 @@ const POLYGONS_OUT =
  *  only detail views need these. */
 const SUMMARIES_OUT =
   process.env.PLANVIEW_SUMMARIES_OUT ?? path.join(path.dirname(OUT), "summaries.json");
+
+/**
+ * Site extents — [west, south, east, north] per application id — derived from
+ * the same boundaries as polygons.json. Its own sidecar because the related
+ * list reads it on ordinary detail views, and polygons.json is ~19 MB of
+ * geometry to answer a question four numbers settle (see _related/footprint).
+ */
+const BOUNDS_OUT =
+  process.env.PLANVIEW_BOUNDS_OUT ?? path.join(path.dirname(OUT), "bounds.json");
+
+/** ~1.1 m, which is finer than the 20 m of clear ground that separates two
+ *  sites, and keeps the sidecar to a fraction of the geometry it comes from. */
+const BOUNDS_DP = 5;
 
 /** Minimal Neon HTTP SQL client (mirrors api/_accounts/db.mjs) — a plain fetch
  *  so the build needs no database driver dependency. */
@@ -403,8 +417,20 @@ async function main() {
   // the same information; publicApp restores the nulls on the way out, so no
   // API response changes.
   const polygonParts: string[] = [];
+  const bounds: Record<string, number[]> = {};
   for (const app of apps) {
-    if (app.geom_polygon) polygonParts.push(`"${app.id}":${app.geom_polygon}`);
+    if (app.geom_polygon) {
+      polygonParts.push(`"${app.id}":${app.geom_polygon}`);
+      // The only place the geometry is parsed. Cheap enough once at build time,
+      // and it is what keeps every request off the 19 MB file.
+      try {
+        const b = boundsOf(JSON.parse(app.geom_polygon));
+        if (b) bounds[String(app.id)] = b.map((n: number) => Number(n.toFixed(BOUNDS_DP)));
+      } catch {
+        // A boundary we cannot parse is one the related list falls back to
+        // centroids for, exactly as if the council had published none.
+      }
+    }
     delete (app as { geom_polygon?: unknown }).geom_polygon;
     // Only the canonical fields, never the optional extras. A row that matched
     // a commencement notice with no completion date carries completion_date:
@@ -479,6 +505,13 @@ async function main() {
   const polyMb = (fs.statSync(POLYGONS_OUT).size / 1024 / 1024).toFixed(1);
   console.log(
     `Wrote ${polygonParts.length} site boundaries to ${POLYGONS_OUT} (${polyMb} MB)`
+  );
+
+  // Always written, for the same reason as the polygons.
+  fs.writeFileSync(BOUNDS_OUT, JSON.stringify(bounds));
+  const boundsMb = (fs.statSync(BOUNDS_OUT).size / 1024 / 1024).toFixed(1);
+  console.log(
+    `Wrote ${Object.keys(bounds).length} site extents to ${BOUNDS_OUT} (${boundsMb} MB)`
   );
 
   await writeSummarySidecar(apps);

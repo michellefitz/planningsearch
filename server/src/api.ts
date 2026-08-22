@@ -15,6 +15,7 @@ import {
   normalizeStatus,
 } from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
+import { boundsOf, sameSite } from "../../api/_related/footprint.mjs";
 import {
   countObjectionFiles,
   deriveScannedFilesUrl,
@@ -855,15 +856,36 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       if (key) {
         const candidates = db
           .prepare(
-            `SELECT id, address_text FROM applications
+            `SELECT id, address_text, lat, lng, geom_polygon FROM applications
              WHERE id != @id AND authority_id = @authority_id AND address_text IS NOT NULL`
           )
           .all({ id, authority_id: row.authority_id }) as Array<{
           id: number;
           address_text: string;
+          lat: number | null;
+          lng: number | null;
+          geom_polygon: string | null;
         }>;
+        // Sharing an address key is not the same as sharing a site: outside the
+        // cities the key is a townland. Settle it on the site boundary, falling
+        // back to the centroid cap where one is missing (see _related/footprint).
+        const extent = (a: { geom_polygon?: string | null }) => {
+          if (!a.geom_polygon) return null;
+          try {
+            return boundsOf(JSON.parse(a.geom_polygon));
+          } catch {
+            return null;
+          }
+        };
+        const subject = {
+          lat: row.lat as number | null,
+          lng: row.lng as number | null,
+          geom_polygon: row.geom_polygon as string | null,
+        };
         const matchIds = candidates
-          .filter((c) => normalizeAddress(c.address_text) === key)
+          .filter(
+            (c) => normalizeAddress(c.address_text) === key && sameSite(subject, c, extent)
+          )
           .map((c) => c.id);
         if (matchIds.length) {
           related = db
