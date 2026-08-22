@@ -525,7 +525,7 @@ export function parseAgileDocEntries(json: unknown): AgileDocEntry[] {
  *  itself is streamed by index through our proxy, which adds tenant headers). */
 export function parseAgileDocuments(json: unknown): ScannedFile[] {
   return parseAgileDocEntries(json).map((e) => ({
-    title: e.date ? `${e.title} — ${e.date}` : e.title,
+    title: e.date ? `${e.date} — ${e.title}` : e.title,
     url: `${AGILE_API}/document/${e.documentHash ?? e.documentId}`,
   }));
 }

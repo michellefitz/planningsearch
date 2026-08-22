@@ -1819,7 +1819,7 @@ function parseAgileDocEntries(json) {
 
 function parseAgileDocuments(json) {
   return parseAgileDocEntries(json).map((e) => ({
-    title: e.date ? `${e.title} — ${e.date}` : e.title,
+    title: e.date ? `${e.date} — ${e.title}` : e.title,
     url: `${AGILE_API}/document/${e.documentHash ?? e.documentId}`,
   }));
 }

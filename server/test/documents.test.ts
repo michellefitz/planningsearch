@@ -387,8 +387,8 @@ describe("agile document parsing (verified /api/application/{id}/document shape)
       RESPONSE.map((d) => ({ ...d, receivedDate: "2024-07-18T00:00:00" }))
     );
     expect(files.map((f) => f.title)).toEqual([
-      "Site Notice — 18/07/2024",
-      "Application Form - Part A — 18/07/2024",
+      "18/07/2024 — Site Notice",
+      "18/07/2024 — Application Form - Part A",
     ]);
     expect(files[0].url).toContain("/document/SB6XY5JCGJSJTDDMW677");
   });
