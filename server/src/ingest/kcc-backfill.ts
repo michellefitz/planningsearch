@@ -145,7 +145,7 @@ export function kccFeatureToRecord(
     lat,
     lng,
     geom_polygon: null,
-    source_url: auth.portalUrlForReference(reference),
+    source_url: `https://www.eplanning.ie/KildareCC/AppFileRefDetails/${reference}/0`,
     last_synced: now,
   };
 }
