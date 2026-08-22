@@ -381,15 +381,10 @@ export default function MapView({
             const ref = String(pr.reference ?? "").trim();
             const council = String(pr.council_label ?? "").trim();
             const dateAdded = String(pr.date_added ?? "").trim();
-            const valuation = String(pr.valuation ?? "").trim();
-            const isProtected = pr.protected_structure;
             html =
               `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(addr || ref || "Derelict site")}</strong></div>` +
               `<span class="ov-pop-tag">Derelict Sites Register${ref ? ` · ${escapeHtml(ref)}` : ""}</span>` +
-              (council ? `<span class="ov-pop-sub">${escapeHtml(council)}</span>` : "") +
-              (dateAdded ? `<span class="ov-pop-sub">On register since ${escapeHtml(dateAdded)}</span>` : "") +
-              (valuation ? `<span class="ov-pop-sub">Valuation: ${escapeHtml(valuation)}</span>` : "") +
-              (isProtected ? `<span class="ov-pop-sub">Also a Protected Structure</span>` : "") +
+              (council || dateAdded ? `<span class="ov-pop-sub">${escapeHtml([council, dateAdded ? `since ${dateAdded}` : ""].filter(Boolean).join(" · "))}</span>` : "") +
               `</div>`;
           } else if (layer === "rzlt") {
             const parcel = String(pr.parcel_id ?? "").trim();
@@ -435,15 +430,10 @@ export default function MapView({
         const ref = String(pr.reference ?? "").trim();
         const council = String(pr.council_label ?? "").trim();
         const dateAdded = String(pr.date_added ?? "").trim();
-        const valuation = String(pr.valuation ?? "").trim();
-        const isProtected = pr.protected_structure;
         const html =
           `<div class="ov-popup"><div class="ov-pop-title"><strong>${escapeHtml(addr || ref || "Derelict site")}</strong></div>` +
           `<span class="ov-pop-tag">Derelict Sites Register${ref ? ` · ${escapeHtml(ref)}` : ""}</span>` +
-          (council ? `<span class="ov-pop-sub">${escapeHtml(council)}</span>` : "") +
-          (dateAdded ? `<span class="ov-pop-sub">On register since ${escapeHtml(dateAdded)}</span>` : "") +
-          (valuation ? `<span class="ov-pop-sub">Valuation: ${escapeHtml(valuation)}</span>` : "") +
-          (isProtected ? `<span class="ov-pop-sub">Also a Protected Structure</span>` : "") +
+          (council || dateAdded ? `<span class="ov-pop-sub">${escapeHtml([council, dateAdded ? `since ${dateAdded}` : ""].filter(Boolean).join(" · "))}</span>` : "") +
           `</div>`;
         new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
           .setLngLat(e.lngLat)

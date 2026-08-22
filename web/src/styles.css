@@ -3332,20 +3332,10 @@ a.ov-pop-sub {
   left: 0.6rem;
   bottom: 0.6rem;
   z-index: 5;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(23, 25, 30, 0.07);
-  border-radius: var(--r-lg);
-  padding: 0.45rem 0.7rem;
-  /* Capped so the key wraps to two rows instead of running the width of the
-     map and colliding with MapLibre's attribution control at bottom-right. */
-  max-width: min(calc(100% - 1.2rem), 34rem);
-  box-shadow: var(--shadow-sm);
 }
 
 .legend-items {
-  display: flex;
+  display: none;
   flex-wrap: wrap;
   gap: 0.35rem 0.75rem;
   font-size: 0.7rem;
@@ -3353,9 +3343,38 @@ a.ov-pop-sub {
   color: var(--ink-2);
 }
 
-/* The collapse toggle is a mobile-only affordance. */
 .legend-toggle {
-  display: none;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(26, 29, 33, 0.08);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  box-shadow: 0 1px 3px rgba(26, 29, 33, 0.1);
+  cursor: pointer;
+}
+
+.legend.legend-open {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(23, 25, 30, 0.07);
+  border-radius: var(--r-lg);
+  padding: 0.45rem 0.7rem;
+  max-width: min(calc(100% - 1.2rem), 34rem);
+  box-shadow: var(--shadow-sm);
+}
+
+.legend.legend-open .legend-toggle {
+  margin-bottom: 0.35rem;
+}
+
+.legend.legend-open .legend-items {
+  display: flex;
 }
 
 /* Floating "search this area" prompt, shown after a user pan/zoom. */
@@ -3590,51 +3609,17 @@ a.ov-pop-sub {
 }
 
 @media (max-width: 767px) {
-  /* Collapsed by default: the legend is just a tappable "Key" chip so the map
-     keeps its room; tapping expands the full key. */
-  .legend {
-    padding: 0;
-    background: none;
-    border: none;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
   .legend-toggle {
-    display: inline-flex;
-    align-items: center;
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(26, 29, 33, 0.08);
-    border-radius: 999px;
     padding: 0.5rem 0.9rem;
-    font: inherit;
     font-size: 0.74rem;
-    font-weight: 600;
-    color: var(--ink-2);
-    box-shadow: 0 1px 3px rgba(26, 29, 33, 0.1);
-    cursor: pointer;
   }
   .legend .legend-items {
-    display: none;
     font-size: 0.64rem;
     gap: 0.3rem 0.6rem;
   }
   .legend.legend-open {
-    padding: 0.5rem 0.6rem;
-    background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(26, 29, 33, 0.06);
-    border-radius: var(--radius);
-    box-shadow: 0 1px 3px rgba(26, 29, 33, 0.08);
     max-height: 55dvh;
     overflow-y: auto;
-  }
-  .legend.legend-open .legend-toggle {
-    margin-bottom: 0.45rem;
-  }
-  .legend.legend-open .legend-items {
-    display: flex;
   }
   .legend-pin {
     width: 0.78rem;
