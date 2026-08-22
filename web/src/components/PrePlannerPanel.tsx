@@ -96,34 +96,77 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
 
   const runAddressSearch = useCallback(async (q: string) => {
     const seq = ++searchSeq.current;
-    if (q.trim().length < 3) {
+    const trimmed = q.trim();
+    if (trimmed.length < 3) {
       setMatches([]);
       return;
     }
     setSearching(true);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
-          q: q.trim() + ", Ireland",
-          format: "json",
+      const results: Array<{ display: string; lat: number; lng: number }> = [];
+
+      // Photon (Komoot) for address typeahead — better than Nominatim for
+      // house-number-level results and incremental typing.
+      const photonRes = await fetch(
+        `https://photon.komoot.io/api/?${new URLSearchParams({
+          q: trimmed,
           limit: "6",
-          countrycodes: "ie",
-          addressdetails: "1",
+          lang: "en",
+          lat: "53.35",
+          lon: "-6.5",
         })}`,
-        { headers: { "User-Agent": "PlanView/0.1" }, signal: AbortSignal.timeout(4000) }
+        { signal: AbortSignal.timeout(4000) }
       );
       if (seq !== searchSeq.current) return;
-      if (!res.ok) { setMatches([]); return; }
-      const data = await res.json();
-      setMatches(
-        data
-          .filter((r: { lat: string; lon: string }) => r.lat && r.lon)
-          .map((r: { display_name: string; lat: string; lon: string }) => ({
-            display: r.display_name?.replace(/, Ireland$/, "").replace(/, County.*$/, ", Co. " + (r.display_name.match(/County (\w+)/)?.[1] ?? "")) ?? "",
-            lat: Number(r.lat),
-            lng: Number(r.lon),
-          }))
-      );
+      if (photonRes.ok) {
+        const geo = await photonRes.json();
+        for (const f of geo.features ?? []) {
+          const p = f.properties ?? {};
+          const coords = f.geometry?.coordinates;
+          if (!coords) continue;
+          const country = (p.country ?? "").toLowerCase();
+          if (country && !country.includes("ireland") && !country.includes("éire")) continue;
+          const parts = [
+            [p.housenumber, p.street].filter(Boolean).join(" ") || p.name || "",
+            p.city || p.town || p.village || "",
+            p.county || "",
+          ].filter(Boolean);
+          results.push({ display: parts.join(", "), lat: coords[1], lng: coords[0] });
+        }
+      }
+
+      // Nominatim fallback for Eircodes (Photon doesn't index them).
+      if (results.length === 0 || /^[A-Z]\d{2}\s*[A-Z0-9]{4}$/i.test(trimmed)) {
+        const nomRes = await fetch(
+          `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
+            q: trimmed + ", Ireland",
+            format: "json",
+            limit: "4",
+            countrycodes: "ie",
+            addressdetails: "1",
+          })}`,
+          { headers: { "User-Agent": "PlanView/0.1" }, signal: AbortSignal.timeout(4000) }
+        );
+        if (seq !== searchSeq.current) return;
+        if (nomRes.ok) {
+          const data = await nomRes.json();
+          const seen = new Set(results.map((r) => `${r.lat.toFixed(3)},${r.lng.toFixed(3)}`));
+          for (const r of data) {
+            if (!r.lat || !r.lon) continue;
+            const key = `${Number(r.lat).toFixed(3)},${Number(r.lon).toFixed(3)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const display = (r.display_name ?? "")
+              .replace(/, Ireland$/, "")
+              .replace(/, Éire \/ Ireland$/, "")
+              .replace(/, County.*$/, ", Co. " + (r.display_name?.match(/County (\w+)/)?.[1] ?? ""));
+            results.push({ display, lat: Number(r.lat), lng: Number(r.lon) });
+          }
+        }
+      }
+
+      if (seq !== searchSeq.current) return;
+      setMatches(results.slice(0, 6));
     } catch {
       if (seq === searchSeq.current) setMatches([]);
     } finally {
