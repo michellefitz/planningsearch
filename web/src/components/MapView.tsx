@@ -8,7 +8,7 @@ import { sheetFocusOffset } from "../sheetMetrics";
 
 /** Constraint overlays sourced from ArcGIS as GeoJSON for the viewport.
     Flood zones rebuilt from OPW CFRAM shapefiles and served as a static file. */
-type OverlayKey = "zoning" | "conservation" | "archaeology" | "aca" | "flood";
+type OverlayKey = "zoning" | "conservation" | "archaeology" | "aca" | "flood" | "rzlt";
 const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; line: string; label: string }> = {
   flood: { fill: "#3b82f6", fillOpacity: 0.25, line: "#1e40af", label: "Flood zones (indicative)" },
   aca: { fill: "#b45a2d", fillOpacity: 0.3, line: "#8a3f1d", label: "Architectural Conservation Areas" },
@@ -17,6 +17,7 @@ const OVERLAY_STYLE: Record<OverlayKey, { fill: string; fillOpacity: number; lin
   conservation: { fill: "#2e8f5b", fillOpacity: 0.22, line: "#1d6b41", label: "Natural heritage (SAC · SPA · NHA)" },
   archaeology: { fill: "#8e6bbf", fillOpacity: 0.28, line: "#67479a", label: "Archaeological zones" },
   zoning: { fill: "#14b8a6", fillOpacity: 0.22, line: "#0f766e", label: "Zoning" },
+  rzlt: { fill: "#e11d48", fillOpacity: 0.25, line: "#be123c", label: "RZLT (vacant/idle land)" },
 };
 // Overlays are only meaningful (and light enough to fetch) when zoomed in.
 const MIN_OVERLAY_ZOOM = 12;
@@ -173,14 +174,14 @@ export default function MapView({
   const applyActiveStateRef = useRef(applyActiveState);
   applyActiveStateRef.current = applyActiveState;
 
-  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false, flood: false });
+  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({ zoning: false, conservation: false, archaeology: false, aca: false, flood: false, rzlt: false });
   const [layersOpen, setLayersOpen] = useState(false);
   const [mapZoom, setMapZoom] = useState(7);
   const overlaysRef = useRef(overlays);
   overlaysRef.current = overlays;
   const bboxRef = useRef<[number, number, number, number] | null>(null);
   const zoomRef = useRef(7);
-  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0, archaeology: 0, aca: 0, flood: 0 });
+  const seqRef = useRef<Record<OverlayKey, number>>({ zoning: 0, conservation: 0, archaeology: 0, aca: 0, flood: 0, rzlt: 0 });
   // The ACA layer is one static file — fetched at most once, then reused.
   const acaDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
   const floodDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
@@ -356,6 +357,18 @@ export default function MapView({
               `<span class="ov-pop-tag">Recorded monuments${pr.zone_ref ? ` · ${escapeHtml(String(pr.zone_ref))}` : ""}</span>` +
               `<span class="ov-pop-sub">Works here must be notified to the National Monuments Service</span>` +
               `<a class="ov-pop-sub" href="https://maps.archaeology.ie/historicenvironment/" target="_blank" rel="noopener">Details on maps.archaeology.ie</a>` +
+              `</div>`;
+          } else if (layer === "rzlt") {
+            const parcel = String(pr.parcel_id ?? "").trim();
+            const zoneDesc = String(pr.zone_desc ?? "").trim();
+            const area = pr.area_ha != null ? `${pr.area_ha} ha` : "";
+            const auth = String(pr.authority ?? "").trim();
+            html =
+              `<div class="ov-popup"><div class="ov-pop-title"><strong>RZLT parcel${parcel ? ` ${escapeHtml(parcel)}` : ""}</strong></div>` +
+              `<span class="ov-pop-tag">Residential Zoned Land Tax</span>` +
+              (zoneDesc ? `<span class="ov-pop-sub">${escapeHtml(zoneDesc)}</span>` : "") +
+              (area || auth ? `<span class="ov-pop-sub">${escapeHtml([area, auth].filter(Boolean).join(" · "))}</span>` : "") +
+              `<span class="ov-pop-sub">Vacant/idle serviced land liable for RZLT</span>` +
               `</div>`;
           } else {
             const code = String(pr.zone_code ?? "").trim();
@@ -713,8 +726,8 @@ export default function MapView({
                 {layer === "flood" && floodLoading && <span className="overlay-loading"> loading…</span>}
               </label>
             ))}
-            {(overlays.zoning || overlays.conservation || overlays.archaeology) && mapZoom < MIN_OVERLAY_ZOOM && (
-              <p className="overlay-hint">Zoom in to load zoning, heritage and archaeology layers</p>
+            {(overlays.zoning || overlays.conservation || overlays.archaeology || overlays.rzlt) && mapZoom < MIN_OVERLAY_ZOOM && (
+              <p className="overlay-hint">Zoom in to load zoning, heritage, archaeology and RZLT layers</p>
             )}
             {overlays.flood && (
               <div className="zone-legend">

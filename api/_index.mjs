@@ -938,8 +938,11 @@ async function fetchAgileParties(authorityId, sourceUrl, reference) {
 }
 
 const ZONING_CACHE = new Map();
+const RZLT_CACHE = new Map();
 const GZT_URL =
   "https://services.arcgis.com/NzlPQPKn5QF9v2US/ArcGIS/rest/services/GZT_Current_Plan/FeatureServer/0/query";
+const RZLT_URL =
+  "https://services.arcgis.com/NzlPQPKn5QF9v2US/arcgis/rest/services/Residential_Zoned_Land_Tax_Final_Map2026_view/FeatureServer/0/query";
 
 /**
  * Land-use zoning at a point, from the national Generalised Zoning Types
@@ -991,7 +994,47 @@ async function fetchZoning(lat, lng) {
   }
 }
 
-// Map overlays (zoning, conservation, archaeology) as GeoJSON for a
+async function fetchRzlt(lat, lng) {
+  const cacheKey = `${lat},${lng}`;
+  if (RZLT_CACHE.has(cacheKey)) return RZLT_CACHE.get(cacheKey);
+  const params = new URLSearchParams({
+    geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+    geometryType: "esriGeometryPoint",
+    spatialRel: "esriSpatialRelIntersects",
+    where: "1=1",
+    outFields: "PARCEL_ID,LOCAL_AUTHORITY_NAME,ZONE_GZT,GZT_DESC,ZONE_ORIG,SITE_AREA,DATE_ADDED",
+    returnGeometry: "false",
+    f: "json",
+  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(`${RZLT_URL}?${params}`, { signal: controller.signal });
+    if (!res.ok) return null;
+    const body = await res.json();
+    if (body.error || !Array.isArray(body.features)) return null;
+    const result = body.features.map((f) => {
+      const a = f.attributes;
+      const ts = typeof a.DATE_ADDED === "number" ? a.DATE_ADDED : null;
+      return {
+        parcel_id: String(a.PARCEL_ID ?? "").trim(),
+        authority: String(a.LOCAL_AUTHORITY_NAME ?? "").trim(),
+        zone: String(a.ZONE_GZT ?? "").trim(),
+        zone_desc: String(a.GZT_DESC ?? a.ZONE_ORIG ?? "").trim(),
+        area_ha: typeof a.SITE_AREA === "number" ? Math.round(a.SITE_AREA * 1000) / 1000 : null,
+        date_added: ts ? new Date(ts).toISOString().slice(0, 10) : null,
+      };
+    });
+    RZLT_CACHE.set(cacheKey, result);
+    return result;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Map overlays (zoning, conservation, archaeology, rzlt) as GeoJSON for a
 // viewport. Mirrors server/src/overlays.ts.
 // NPWS designated areas: the npws.ie webservices host is dead; this DHLGH
 // ArcGIS Online mirror is the live public endpoint (CC-BY, via data.gov.ie).
@@ -1013,6 +1056,7 @@ const SMR_ZONE_URL =
 const OVERLAY_CONFIG = {
   zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,GZT_DESC,PLAN_NAME" },
   archaeology: { url: SMR_ZONE_URL, where: "1=1", outFields: "ZONE_ID" },
+  rzlt: { url: RZLT_URL, where: "1=1", outFields: "PARCEL_ID,LOCAL_AUTHORITY_NAME,ZONE_GZT,GZT_DESC,ZONE_ORIG,SITE_AREA" },
 };
 const CONSERVATION_FIELDS = "SITECODE,SITE_NAME,URL";
 const EMPTY_FC = { type: "FeatureCollection", features: [] };
@@ -1052,6 +1096,14 @@ function ovTransform(layer, features, designation) {
       };
     } else if (layer === "archaeology") {
       f.properties = { zone_ref: ovStr(p.ZONE_ID) };
+    } else if (layer === "rzlt") {
+      f.properties = {
+        parcel_id: ovStr(p.PARCEL_ID),
+        authority: ovStr(p.LOCAL_AUTHORITY_NAME),
+        zone: ovStr(p.ZONE_GZT),
+        zone_desc: ovStr(p.GZT_DESC) || ovStr(p.ZONE_ORIG),
+        area_ha: typeof p.SITE_AREA === "number" ? Math.round(p.SITE_AREA * 1000) / 1000 : null,
+      };
     }
     return f;
   });
@@ -2290,6 +2342,11 @@ of a notice is evidence work has not started, not proof — some notices cite un
 ZONING: When zoning is relevant to the question, name the zone and what it is designated for, and relate it to the \
 proposal type (e.g. residential extensions in an established-residential zone are routine matters of amenity and design).
 
+RZLT: The Residential Zoned Land Tax map identifies serviced, residentially zoned land that is vacant or idle. If a \
+site is on the RZLT map, mention it — it signals development potential and means the landowner is liable for an annual \
+tax (3% of market value) intended to activate the land for housing. Not all residential land is on the RZLT map; only \
+land the local authority considers underused.
+
 FORMAT: Short paragraphs and **bold** for key facts only — no headings, no numbered section titles, no tables, no \
 links, no long essays. Do NOT use bullet lists to present applications: write each property as a short paragraph — \
 bold its address, then put its token on the next line. When you reference a specific application, put a token like \
@@ -3227,7 +3284,16 @@ export default async function handler(req, res) {
     return send(res, 200, { supported: true, zones });
   }
 
-  const om = route.match(/^\/api\/overlays\/(zoning|conservation|archaeology)$/);
+  const rm = route.match(/^\/api\/applications\/(\d+)\/rzlt$/);
+  if (rm) {
+    const app = BUNDLE.applications.find((a) => a.id === Number(rm[1]));
+    if (!app) return send(res, 404, { error: "Application not found" });
+    if (app.lat == null || app.lng == null) return send(res, 200, { supported: false, rzlt: null });
+    const rzlt = await fetchRzlt(app.lat, app.lng);
+    return send(res, 200, { supported: true, rzlt });
+  }
+
+  const om = route.match(/^\/api\/overlays\/(zoning|conservation|archaeology|rzlt)$/);
   if (om) {
     const bbox = parseBbox(p.get("bbox"));
     if (!bbox) return send(res, 200, { type: "FeatureCollection", features: [] });

@@ -5,6 +5,7 @@
  * bbox-limit, simplify and cap the payload.
  */
 import { GZT_URL } from "./zoning.js";
+import { RZLT_URL } from "./rzlt.js";
 
 const TIMEOUT_MS = 12_000;
 
@@ -31,7 +32,7 @@ export const SMR_ZONE_URL =
   process.env.PLANVIEW_SMR_ZONE_URL ??
   "https://services-eu1.arcgis.com/HyjXgkV6KGMSF3jt/arcgis/rest/services/SMRZoneOpenData/FeatureServer/0/query";
 
-export type OverlayLayer = "zoning" | "conservation" | "archaeology";
+export type OverlayLayer = "zoning" | "conservation" | "archaeology" | "rzlt";
 
 interface OverlayConfig {
   url: string;
@@ -42,6 +43,7 @@ interface OverlayConfig {
 const OVERLAYS: Record<Exclude<OverlayLayer, "conservation">, OverlayConfig> = {
   zoning: { url: GZT_URL, where: "CURRENT_PLAN=1", outFields: "ZONE_ORIG,ZONE_DESC,GZT_DESC,PLAN_NAME" },
   archaeology: { url: SMR_ZONE_URL, where: "1=1", outFields: "ZONE_ID" },
+  rzlt: { url: RZLT_URL, where: "1=1", outFields: "PARCEL_ID,LOCAL_AUTHORITY_NAME,ZONE_GZT,GZT_DESC,ZONE_ORIG,SITE_AREA" },
 };
 const CONSERVATION_FIELDS = "SITECODE,SITE_NAME,URL";
 
@@ -92,6 +94,14 @@ function transformFeatures(layer: OverlayLayer, features: unknown[], designation
       };
     } else if (layer === "archaeology") {
       f.properties = { zone_ref: s(p.ZONE_ID) };
+    } else if (layer === "rzlt") {
+      f.properties = {
+        parcel_id: s(p.PARCEL_ID),
+        authority: s(p.LOCAL_AUTHORITY_NAME),
+        zone: s(p.ZONE_GZT),
+        zone_desc: s(p.GZT_DESC) || s(p.ZONE_ORIG),
+        area_ha: typeof p.SITE_AREA === "number" ? Math.round((p.SITE_AREA as number) * 1000) / 1000 : null,
+      };
     }
     return f;
   });
@@ -105,7 +115,7 @@ export interface GeoJson {
 }
 
 export function isOverlayLayer(v: string): v is OverlayLayer {
-  return v === "zoning" || v === "conservation" || v === "archaeology";
+  return v === "zoning" || v === "conservation" || v === "archaeology" || v === "rzlt";
 }
 
 /** Raw features for one ArcGIS layer within a bbox; [] on any error. */

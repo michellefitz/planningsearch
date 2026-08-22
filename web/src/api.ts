@@ -198,6 +198,15 @@ export interface ZoningInfo {
   plan_url: string | null;
 }
 
+export interface RzltInfo {
+  parcel_id: string;
+  authority: string;
+  zone: string;
+  zone_desc: string;
+  area_ha: number | null;
+  date_added: string | null;
+}
+
 export interface SearchState {
   q: string;
   authorities: string[];
@@ -444,6 +453,11 @@ export const api = {
       `/api/applications/${id}/zoning`,
       T.portal
     ),
+  rzlt: (id: number) =>
+    getJson<{ supported: boolean; rzlt: RzltInfo[] | null }>(
+      `/api/applications/${id}/rzlt`,
+      T.portal
+    ),
   conditions: (id: number) =>
     getJson<{ supported: boolean; conditions: DecisionConditions | null }>(
       `/api/applications/${id}/conditions`,
@@ -536,6 +550,6 @@ export const api = {
     getJson<{ id: number }>(
       `/api/resolve?authority=${encodeURIComponent(authority)}&reference=${encodeURIComponent(reference)}`
     ),
-  overlay: (layer: "zoning" | "conservation" | "archaeology", bbox: [number, number, number, number]) =>
+  overlay: (layer: "zoning" | "conservation" | "archaeology" | "rzlt", bbox: [number, number, number, number]) =>
     getJson<GeoJSON.FeatureCollection>(`/api/overlays/${layer}?bbox=${bbox.join(",")}`, T.bundle),
 };

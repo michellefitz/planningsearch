@@ -52,6 +52,9 @@ const SAC_URL = process.env.PLANVIEW_SAC_URL ?? `${NPWS_URL}/3/query`;
 const SMR_ZONE_URL =
   process.env.PLANVIEW_SMR_ZONE_URL ??
   "https://services-eu1.arcgis.com/HyjXgkV6KGMSF3jt/arcgis/rest/services/SMRZoneOpenData/FeatureServer/0/query";
+const RZLT_URL =
+  process.env.PLANVIEW_RZLT_URL ??
+  "https://services.arcgis.com/NzlPQPKn5QF9v2US/arcgis/rest/services/Residential_Zoned_Land_Tax_Final_Map2026_view/FeatureServer/0/query";
 const GSI_GWV_URL =
   process.env.PLANVIEW_GSI_GWV_URL ??
   "https://gsi.geodata.gov.ie/server/rest/services/Groundwater/IE_GSI_Groundwater_Vulnerability_40K_IE26_ITM/FeatureServer/0/query";
@@ -76,6 +79,7 @@ export const DESIGNATION_MEANING = {
   archaeology:
     "Zone of Archaeological Notification — works here must be notified to the National Monuments Service, and an archaeological assessment may be required.",
   aca: "Architectural Conservation Area — external works that would normally be exempt development usually need permission here, and design standards are higher.",
+  rzlt: "This land is on the RZLT Final Map — identified as vacant or idle serviced residential land, liable for the Residential Zoned Land Tax. It signals development potential and may indicate the local authority considers the site underused.",
   flood:
     "Indicative flood extent — a Site-Specific Flood Risk Assessment may be required, and some uses are restricted under the Flood Risk Management Guidelines.",
   groundwater_high:
@@ -161,6 +165,26 @@ export async function getDesignations(lat, lng, deps) {
           detail: "",
           meaning: DESIGNATION_MEANING.archaeology,
         }));
+      },
+    },
+    {
+      label: "rzlt",
+      async run() {
+        const feats = await features(
+          deps,
+          pointQueryUrl(RZLT_URL, lat, lng, "PARCEL_ID,LOCAL_AUTHORITY_NAME,ZONE_GZT,GZT_DESC,ZONE_ORIG,SITE_AREA")
+        );
+        return feats.map((f) => {
+          const p = f.properties ?? {};
+          const zone = str(p.GZT_DESC) || str(p.ZONE_ORIG) || "Residential";
+          const area = typeof p.SITE_AREA === "number" ? `${Math.round(p.SITE_AREA * 1000) / 1000} ha` : "";
+          return {
+            kind: "RZLT",
+            name: `RZLT parcel ${str(p.PARCEL_ID) || "(on map)"}`,
+            detail: [zone, area, str(p.LOCAL_AUTHORITY_NAME)].filter(Boolean).join(" · "),
+            meaning: DESIGNATION_MEANING.rzlt,
+          };
+        });
       },
     },
     {

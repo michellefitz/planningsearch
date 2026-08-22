@@ -74,6 +74,11 @@ of a notice is evidence work has not started, not proof — some notices cite un
 ZONING: When zoning is relevant to the question, name the zone and what it is designated for, and relate it to the \
 proposal type (e.g. residential extensions in an established-residential zone are routine matters of amenity and design).
 
+RZLT: The Residential Zoned Land Tax map identifies serviced, residentially zoned land that is vacant or idle. If a \
+site is on the RZLT map, mention it — it signals development potential and means the landowner is liable for an annual \
+tax (3% of market value) intended to activate the land for housing. Not all residential land is on the RZLT map; only \
+land the local authority considers underused.
+
 FORMAT: Short paragraphs and **bold** for key facts only — no headings, no numbered section titles, no tables, no \
 links, no long essays. Do NOT use bullet lists to present applications: write each property as a short paragraph — \
 bold its address, then put its token on the next line. When you reference a specific application, put a token like \

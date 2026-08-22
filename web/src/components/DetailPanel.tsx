@@ -9,6 +9,7 @@ import {
   type DocumentReason,
   type Meta,
   type ZoningInfo,
+  type RzltInfo,
   type SourceDocument,
 } from "../api";
 import PropertyMedia, { GMAPS_KEY, MapLinks } from "./PropertyMedia";
@@ -2019,19 +2020,16 @@ type Fetched<T> = T | "pending" | "none";
 const NO_INFO = <span className="no-info">No information available</span>;
 const CHECKING = <span className="hint loading-line">Checking…</span>;
 
-/**
- * Location context — zoning, flood risk and recorded sales as one compact
- * list of data points, not full sections. Always the same three rows, so
- * every application reads the same way.
- */
 function PropertyContext({
   detail: d,
   zones,
+  rzlt,
   flood,
   eircode,
 }: {
   detail: AppDetail;
   zones: Fetched<ZoningInfo[]>;
+  rzlt: Fetched<RzltInfo[]>;
   flood: Fetched<{ at_risk: boolean; scenarios: string[] }>;
   eircode: string | null;
 }) {
@@ -2060,6 +2058,20 @@ function PropertyContext({
                         </a>
                       </>
                     )}
+                  </div>
+                ))}
+        </dd>
+        <dt>RZLT</dt>
+        <dd>
+          {rzlt === "pending"
+            ? CHECKING
+            : rzlt === "none"
+              ? "Not on the RZLT map"
+              : rzlt.map((r) => (
+                  <div key={r.parcel_id}>
+                    <strong>On RZLT map</strong>
+                    {r.zone_desc && ` · ${r.zone_desc}`}
+                    {r.area_ha != null && <span className="hint"> · {r.area_ha} ha</span>}
                   </div>
                 ))}
         </dd>
@@ -2382,6 +2394,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [zones, setZones] = useState<Fetched<ZoningInfo[]>>("pending");
+  const [rzlt, setRzlt] = useState<Fetched<RzltInfo[]>>("pending");
   const [flood, setFlood] = useState<Fetched<{ at_risk: boolean; scenarios: string[] }>>("pending");
   // Enrichment can supply a fuller proposal description than the (sometimes
   // truncated) national one — prefer it for both the display and the summary.
@@ -2475,6 +2488,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     let cancelled = false;
     if (d.lat != null && d.lng != null) {
       setZones("pending");
+      setRzlt("pending");
       setFlood("pending");
       api
         .zoning(d.id)
@@ -2483,6 +2497,14 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         })
         .catch(() => {
           if (!cancelled) setZones("none");
+        });
+      api
+        .rzlt(d.id)
+        .then((res) => {
+          if (!cancelled) setRzlt(res.rzlt?.length ? res.rzlt : "none");
+        })
+        .catch(() => {
+          if (!cancelled) setRzlt("none");
         });
       getFloodData()
         .then((fc) => {
@@ -3108,6 +3130,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
       <PropertyContext
         detail={d}
         zones={zones}
+        rzlt={rzlt}
         flood={flood}
         eircode={d.eircode ?? enrich?.eircode ?? null}
       />

@@ -43,6 +43,7 @@ import {
   type ConditionHighlight,
 } from "./conditions.js";
 import { fetchZoning } from "./zoning.js";
+import { fetchRzlt } from "./rzlt.js";
 import { fetchOverlay, isOverlayLayer } from "./overlays.js";
 import {
   AGILE_CLIENT_BY_AUTHORITY,
@@ -664,7 +665,19 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
     return { supported: true, zones };
   });
 
-  // Polygon overlays (zoning, conservation, archaeology) as GeoJSON for the current map viewport.
+  // RZLT (Residential Zoned Land Tax) at the application's location.
+  app.get("/api/applications/:id/rzlt", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare("SELECT lat, lng FROM applications WHERE id = ?")
+      .get(id) as { lat: number | null; lng: number | null } | undefined;
+    if (!row) return reply.code(404).send({ error: "Application not found" });
+    if (row.lat == null || row.lng == null) return { supported: false, rzlt: null };
+    const rzlt = await fetchRzlt(row.lat, row.lng);
+    return { supported: true, rzlt };
+  });
+
+  // Polygon overlays (zoning, conservation, archaeology, rzlt) as GeoJSON for the current map viewport.
   app.get("/api/overlays/:layer", async (req, reply) => {
     const layer = (req.params as { layer: string }).layer;
     if (!isOverlayLayer(layer)) return reply.code(404).send({ error: "Unknown overlay" });

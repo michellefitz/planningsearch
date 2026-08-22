@@ -7,6 +7,7 @@
  */
 import { NPWS_URL, SAC_URL, SMR_ZONE_URL } from "../overlays.js";
 import { GZT_URL } from "../zoning.js";
+import { RZLT_URL } from "../rzlt.js";
 import { haversineMeters, pointInFeature, type GeoFeature } from "./geo.js";
 
 export const GSI_GWV_URL =
@@ -85,6 +86,7 @@ export const DESIGNATION_MEANING: Record<string, string> = {
   archaeology:
     "Zone of Archaeological Notification — works here must be notified to the National Monuments Service, and an archaeological assessment may be required.",
   aca: "Architectural Conservation Area — external works that would normally be exempt development usually need permission here, and design standards are higher.",
+  rzlt: "This land is on the RZLT Final Map — identified as vacant or idle serviced residential land, liable for the Residential Zoned Land Tax. It signals development potential and may indicate the local authority considers the site underused.",
   flood:
     "Indicative flood extent — a Site-Specific Flood Risk Assessment may be required, and some uses are restricted under the Flood Risk Management Guidelines.",
   groundwater_high:
@@ -178,6 +180,26 @@ export async function getDesignations(lat: number, lng: number, deps: PointDeps)
           detail: "",
           meaning: DESIGNATION_MEANING.archaeology,
         }));
+      },
+    },
+    {
+      label: "rzlt",
+      async run() {
+        const feats = await features(
+          deps,
+          pointQueryUrl(RZLT_URL, lat, lng, "PARCEL_ID,LOCAL_AUTHORITY_NAME,ZONE_GZT,GZT_DESC,ZONE_ORIG,SITE_AREA")
+        );
+        return feats.map((f) => {
+          const p = f.properties ?? {};
+          const zone = str(p.GZT_DESC) || str(p.ZONE_ORIG) || "Residential";
+          const area = typeof p.SITE_AREA === "number" ? `${Math.round((p.SITE_AREA as number) * 1000) / 1000} ha` : "";
+          return {
+            kind: "RZLT",
+            name: `RZLT parcel ${str(p.PARCEL_ID) || "(on map)"}`,
+            detail: [zone, area, str(p.LOCAL_AUTHORITY_NAME)].filter(Boolean).join(" · "),
+            meaning: DESIGNATION_MEANING.rzlt,
+          };
+        });
       },
     },
     {
