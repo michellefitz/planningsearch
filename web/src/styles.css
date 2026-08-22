@@ -2269,6 +2269,7 @@ body {
   border-left: 1px solid var(--line-strong);
   box-shadow: -1px 0 0 rgba(23, 25, 30, 0.02), -16px 0 40px rgba(23, 25, 30, 0.1);
   overflow-y: auto;
+  overflow-anchor: none;
   padding: 1.1rem 1.75rem 1.5rem;
   animation: sheet-in 260ms var(--ease);
   /* Exit mirrors the entry: the closing class slides it back out before

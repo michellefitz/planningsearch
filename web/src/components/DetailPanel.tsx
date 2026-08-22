@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   api,
   fmtDate,
@@ -2327,6 +2327,62 @@ function useIsMobile(): boolean {
   return m;
 }
 
+/**
+ * Keep the visible content stable when async sections load above the viewport.
+ *
+ * When a section above the scroll position grows (conditions load, AI summary
+ * appears, documents expand), the browser pushes everything below it down —
+ * the content the user is reading jumps off screen. This measures each child's
+ * top edge before and after a resize and compensates scrollTop so the visible
+ * content stays put.
+ */
+function useScrollAnchor(ref: React.RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const heights = new Map<Element, number>();
+
+    const observer = new ResizeObserver((entries) => {
+      let adjust = 0;
+      for (const entry of entries) {
+        const child = entry.target;
+        const prev = heights.get(child);
+        const now = entry.borderBoxSize?.[0]?.blockSize ?? child.getBoundingClientRect().height;
+        heights.set(child, now);
+        if (prev === undefined) continue;
+        const delta = now - prev;
+        if (delta <= 0) continue;
+        const childTop = child.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+        if (childTop < el.scrollTop) {
+          adjust += delta;
+        }
+      }
+      if (adjust > 0 && el.scrollTop > 0) {
+        el.scrollTop += adjust;
+      }
+    });
+
+    const wire = () => {
+      observer.disconnect();
+      heights.clear();
+      for (const child of el.children) {
+        heights.set(child, child.getBoundingClientRect().height);
+        observer.observe(child);
+      }
+    };
+    wire();
+
+    const mutation = new MutationObserver(wire);
+    mutation.observe(el, { childList: true });
+
+    return () => {
+      observer.disconnect();
+      mutation.disconnect();
+    };
+  }, [ref]);
+}
+
 export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated, saved, onToggleSave, closing }: Props) {
   const glossary = meta?.glossary ?? {};
   const isMobile = useIsMobile();
@@ -2793,6 +2849,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   // peek height and drags up (expand) / down (dismiss), snapping to peek / full
   // / closed. Desktop is unchanged (a side panel).
   const sheetRef = useRef<HTMLElement>(null);
+  useScrollAnchor(sheetRef);
   const [expanded, setExpanded] = useState(false);
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
