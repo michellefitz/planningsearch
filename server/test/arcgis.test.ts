@@ -52,7 +52,12 @@ describe("authorityIdForNationalName", () => {
   });
   it("rejects out-of-scope authorities", () => {
     expect(authorityIdForNationalName("Carlow County Council")).toBeNull();
-    expect(authorityIdForNationalName("Cork City Council")).toBeNull();
+    expect(authorityIdForNationalName("Leitrim County Council")).toBeNull();
+  });
+  it("resolves the three new Agile councils", () => {
+    expect(authorityIdForNationalName("Cork City Council")).toBe("cork-city");
+    expect(authorityIdForNationalName("Cork County Council")).toBe("cork-county");
+    expect(authorityIdForNationalName("Wexford County Council")).toBe("wexford");
   });
 });
 

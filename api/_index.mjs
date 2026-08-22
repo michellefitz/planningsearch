@@ -542,6 +542,9 @@ const AGILE_CLIENT_BY_AUTHORITY = {
   "dublin-city": "DCC",
   fingal: "FG",
   dlr: "DLR",
+  "cork-city": "CORKCITY",
+  "cork-county": "CORKCOCO",
+  wexford: "WEXFORD",
 };
 
 async function agileGetJson(url, client) {
@@ -1699,6 +1702,9 @@ const AGILE_SLUGS = {
   fingal: "fingal",
   "south-dublin": "southdublin",
   dlr: "dunlaoghaire",
+  "cork-city": "corkcity",
+  "cork-county": "corkcoco",
+  wexford: "wexford",
 };
 const AGILE_BASE = "https://planning.agileapplications.ie";
 

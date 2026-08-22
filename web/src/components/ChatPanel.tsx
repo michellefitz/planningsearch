@@ -31,6 +31,11 @@ const AUTHORITY_SHORT_NAMES: Record<string, string> = {
   dlr: "Dún Laoghaire-Rathdown",
   "south-dublin": "South Dublin",
   kildare: "Kildare",
+  meath: "Meath",
+  wicklow: "Wicklow",
+  "cork-city": "Cork City",
+  "cork-county": "Cork County",
+  wexford: "Wexford",
 };
 
 const TOOL_LABELS: Record<string, string> = {

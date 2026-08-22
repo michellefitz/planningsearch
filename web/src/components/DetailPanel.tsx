@@ -369,7 +369,7 @@ export function conditionGroups(decision: string | null | undefined, superseded 
 // Councils with a structured conditions API — their decision substance comes
 // from the conditions endpoint. Everywhere else (eplanning/iDocs councils)
 // the reasons live only in the scanned decision order.
-const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fingal", "dlr"]);
+const AGILE_CONDITION_AUTHORITIES = new Set(["south-dublin", "dublin-city", "fingal", "dlr", "cork-city", "cork-county", "wexford"]);
 
 const conditionAnchor = (n: number) => `condition-${n}`;
 

@@ -18,6 +18,9 @@ export const AGILE_CLIENT_BY_AUTHORITY: Record<string, string> = {
   "dublin-city": "DCC",
   fingal: "FG",
   dlr: "DLR",
+  "cork-city": "CORKCITY",
+  "cork-county": "CORKCOCO",
+  wexford: "WEXFORD",
 };
 
 function headers(client: string): Record<string, string> {
@@ -409,6 +412,9 @@ export const AGILE_SLUG_BY_AUTHORITY: Record<string, string> = {
   "dublin-city": "dublincity",
   fingal: "fingal",
   dlr: "dunlaoghaire",
+  "cork-city": "corkcity",
+  "cork-county": "corkcoco",
+  wexford: "wexford",
 };
 
 async function getJsonTraced(
