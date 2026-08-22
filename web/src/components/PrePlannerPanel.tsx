@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import { api, fmtDate, type AppSummary } from "../api";
+import { fmtDate } from "../api";
 import {
   preplanApi,
   type PreplanEvent,
@@ -88,7 +88,7 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
   const [intent, setIntent] = useState("");
   const [location, setLocation] = useState<PickedLocation | null>(null);
   const [query, setQuery] = useState("");
-  const [matches, setMatches] = useState<AppSummary[]>([]);
+  const [matches, setMatches] = useState<Array<{ display: string; lat: number; lng: number }>>([]);
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +102,28 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
     }
     setSearching(true);
     try {
-      const res = await api.search(new URLSearchParams({ q: q.trim(), limit: "6" }));
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
+          q: q.trim() + ", Ireland",
+          format: "json",
+          limit: "6",
+          countrycodes: "ie",
+          addressdetails: "1",
+        })}`,
+        { headers: { "User-Agent": "PlanView/0.1" }, signal: AbortSignal.timeout(4000) }
+      );
       if (seq !== searchSeq.current) return;
-      setMatches(res.results.filter((r) => r.lat != null && r.lng != null));
+      if (!res.ok) { setMatches([]); return; }
+      const data = await res.json();
+      setMatches(
+        data
+          .filter((r: { lat: string; lon: string }) => r.lat && r.lon)
+          .map((r: { display_name: string; lat: string; lon: string }) => ({
+            display: r.display_name?.replace(/, Ireland$/, "").replace(/, County.*$/, ", Co. " + (r.display_name.match(/County (\w+)/)?.[1] ?? "")) ?? "",
+            lat: Number(r.lat),
+            lng: Number(r.lon),
+          }))
+      );
     } catch {
       if (seq === searchSeq.current) setMatches([]);
     } finally {
@@ -167,7 +186,7 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
         <div className="pf-field">
           <span>Where is it?</span>
           <p className="pf-hint">
-            Search an address or Eircode from the planning register, or click the map to drop a pin.
+            Search any Irish address, Eircode, or place — or click the map to drop a pin.
           </p>
           <input
             type="search"
@@ -178,22 +197,21 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
           />
           {(matches.length > 0 || searching) && query.trim().length >= 3 && !location && (
             <ul className="pf-matches">
-              {searching && <li className="pf-searching">Searching the register…</li>}
-              {matches.map((m) => (
-                <li key={m.id}>
+              {searching && <li className="pf-searching">Searching…</li>}
+              {matches.map((m, i) => (
+                <li key={i}>
                   <button
                     type="button"
                     onClick={() => {
                       setLocation({
-                        lat: m.lat as number,
-                        lng: m.lng as number,
-                        address: m.address_text ?? m.planning_reference,
-                        eircode: (m as { eircode?: string | null }).eircode ?? null,
+                        lat: m.lat,
+                        lng: m.lng,
+                        address: m.display,
                       });
                       setMatches([]);
                     }}
                   >
-                    {m.address_text ?? m.planning_reference}
+                    {m.display}
                   </button>
                 </li>
               ))}
