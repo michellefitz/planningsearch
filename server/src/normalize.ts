@@ -256,7 +256,7 @@ export function normalizeApplicationType(raw: string | null | undefined): Canoni
   if (/consequent|consq|on foot of outline|following grant of outline/.test(s))
     return "permission_consequent";
   if (/outline/.test(s)) return "outline";
-  if (/extension\s+of\s+duration|extend.*duration/.test(s)) return "extension_of_duration";
+  if (/ext(?:ension|ention)\s+of\s+duration|extend.*duration/.test(s)) return "extension_of_duration";
   if (/section\s*179a|part\s*(8|10)\b/.test(s)) return "council_development";
   if (/section\s*5|declaration of exemption|exemption/.test(s)) return "exemption_declaration";
   if (/\bshd|\blrd|\bsdz|strategic housing|strategic infrastructure/.test(s)) return "strategic";

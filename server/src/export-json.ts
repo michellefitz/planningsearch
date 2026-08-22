@@ -19,6 +19,7 @@ import {
 import { buildPprIndex, lookupPpr } from "./ingest/ppr.js";
 import { fillMissingCoordinates } from "./coordinates.js";
 import { fetchKildareRecent, eplanningItemToRecord } from "./ingest/eplanning-list.js";
+import { fetchKccBackfill } from "./ingest/kcc-backfill.js";
 import { ACP_AUTHORITY, fetchAcpDirectRecords } from "./ingest/acp.js";
 import { buildCommencementIndex, lookupCommencement } from "./ingest/bcms.js";
 import type { ApplicationRecord } from "./db.js";
@@ -172,6 +173,29 @@ async function main() {
     officer_name?: string | null;
   };
   const now = new Date().toISOString();
+
+  // Kildare backfill: KCC's own ArcGIS service reaches back to 1955 while the
+  // national feed starts at 2017. Best-effort — a failure must not sink the
+  // deploy.
+  if (dataSource === "live") {
+    try {
+      console.log("Fetching Kildare backfill (KCC ArcGIS, ~51k records to 1955) …");
+      const kccRecords = await fetchKccBackfill(console.log);
+      const have = new Set(
+        records.filter((r) => r.authority_id === "kildare").map((r) => r.planning_reference)
+      );
+      let added = 0;
+      for (const rec of kccRecords) {
+        if (have.has(rec.planning_reference)) continue;
+        have.add(rec.planning_reference);
+        records.push(rec);
+        added++;
+      }
+      console.log(`Kildare backfill: added ${added} pre-national-feed records (${kccRecords.length - added} overlap with national).`);
+    } catch (err) {
+      console.error("Kildare backfill failed (national data unaffected):", err);
+    }
+  }
 
   // Kildare live top-up: the national DHLGH feed trails Kildare by ~months, so
   // pull the last 42 days straight off the council register (eplanning list
