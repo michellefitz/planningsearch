@@ -138,13 +138,13 @@ export default function ReportView({
   return (
     <article className="report">
       <header className="report-head">
-        <p className=”report-kicker”>{report.intent ? “Pre-planning research report” : “Planning history report”} · #{report.id}</p>
+        <p className="report-kicker">{report.intent ? "Pre-planning research report" : "Planning history report"} &middot; #{report.id}</p>
         <h2>{report.label}</h2>
-        <p className=”report-sub”>
+        <p className="report-sub">
           {report.address}
-          {report.eircode ? ` · ${report.eircode}` : “”} · generated {fmtDate(report.generated_at)}
+          {report.eircode ? ` · ${report.eircode}` : ""} · generated {fmtDate(report.generated_at)}
         </p>
-        {report.intent && <p className=”report-intent”>”{report.intent}”</p>}
+        {report.intent && <p className="report-intent">"{report.intent}"</p>}
         <PropertyMedia lat={report.lat} lng={report.lng} address={report.address} />
         {report.status === "error" && (
           <p className="report-unavailable">

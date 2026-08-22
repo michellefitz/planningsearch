@@ -2668,15 +2668,6 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         </div>
       </header>
 
-      {stillLive && submissionsBy && !isPast(submissionsBy) && (
-        <p className="observations-callout">
-          Public observations accepted until <strong>{fmtDate(submissionsBy)}</strong>
-          {daysUntil(submissionsBy) <= 14 && (
-            <> — {daysUntil(submissionsBy)} day{daysUntil(submissionsBy) === 1 ? "" : "s"} left</>
-          )}
-        </p>
-      )}
-
       {/* Timeline first: it is the chronology the decision is the end of,
           so reading the outcome and then scrolling back to how it got there
           ran the story backwards. */}
