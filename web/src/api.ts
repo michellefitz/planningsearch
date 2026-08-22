@@ -112,6 +112,20 @@ export interface AppDetail extends AppSummary {
     received_date: string | null;
     decision_date: string | null;
   }>;
+  /** Applications and appeals this one names in its own description. `id` is
+   *  null for the ones we do not hold — the register's older history — and
+   *  those carry a link to the council's own portal instead. */
+  cited?: Array<{
+    reference: string;
+    kind: "application" | "appeal";
+    id: number | null;
+    planning_reference?: string;
+    description?: string | null;
+    status?: string;
+    received_date?: string | null;
+    decision_date?: string | null;
+    portal_url?: string | null;
+  }>;
 }
 
 export interface ConditionItem {

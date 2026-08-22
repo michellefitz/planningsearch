@@ -16,6 +16,7 @@ import {
 } from "./normalize.js";
 import { search, suggest, type SearchFilters } from "./search.js";
 import { boundsOf, sameSite } from "../../api/_related/footprint.mjs";
+import { citationPortalUrl, extractCitations, referenceKey } from "../../api/_related/citations.mjs";
 import {
   countObjectionFiles,
   deriveScannedFilesUrl,
@@ -899,6 +900,30 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       }
     }
 
+    // The applications this one names in its own description — the register's
+    // history that address matching cannot reach. See _related/citations.
+    const cites = extractCitations(
+      row.description as string | null,
+      String(row.authority_id),
+      String(row.planning_reference)
+    ) as Array<{ reference: string; kind: string }>;
+    const authority = AUTHORITY_BY_ID.get(String(row.authority_id));
+    const cited = cites.map(({ reference, kind }) => {
+      const held = db
+        .prepare(
+          `SELECT id, planning_reference, description, status, received_date, decision_date
+           FROM applications WHERE authority_id = ? AND UPPER(REPLACE(REPLACE(planning_reference, ' ', ''), '.', '')) = ?`
+        )
+        .get(row.authority_id, referenceKey(reference)) as Record<string, unknown> | undefined;
+      if (held) return { reference, kind, ...held };
+      return {
+        reference,
+        kind,
+        id: null,
+        portal_url: kind === "appeal" ? null : citationPortalUrl(authority, reference),
+      };
+    });
+
     // Slow upstream work (AI summary, party backfill) lives on /enrich so
     // the sheet renders immediately; cached values still come through here.
     return {
@@ -906,6 +931,7 @@ export function registerRoutes(app: FastifyInstance, db: Database.Database) {
       ai_summary: (row.ai_summary as string | null) ?? null,
       documents,
       related,
+      cited,
     };
   });
 

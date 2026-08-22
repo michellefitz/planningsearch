@@ -811,6 +811,7 @@ function RelatedCard({
   receivedDate,
   decisionDate,
   note,
+  noteTone = "action",
   onOpen,
   href,
 }: {
@@ -821,24 +822,31 @@ function RelatedCard({
   decisionDate?: string | null;
   /** Why this one is here, when we can say something better than "same address". */
   note?: ReactNode;
+  /** A note that highlights (the default) against one that merely explains.
+   *  Provenance notes are long and are not the point of the card, and inside a
+   *  link the accent colour reads as a second link. */
+  noteTone?: "action" | "quiet";
   /** Opens the application in this sheet. */
   onOpen?: () => void;
   /** Only for a related application the register knows and we do not hold — it
    *  genuinely leaves the app, and only then does it get the arrow. */
   href?: string;
 }) {
+  // With no description the title falls back to the reference, and printing it
+  // again in the meta line just says the same thing twice.
+  const title = description?.trim() || reference;
   const body = (
     <>
       <span className="related-card-top">
         <span className="related-card-title">
-          {description?.trim() || reference}
+          {title}
         </span>
         {status && STATUS_STYLE[status] && (
           <StatusBadge status={status} label={STATUS_STYLE[status].label} />
         )}
       </span>
       <span className="related-card-meta">
-        <span className="ref">{reference}</span>
+        {title !== reference && <span className="ref">{reference}</span>}
         {decisionDate ? (
           <span>decided {fmtDate(decisionDate)}</span>
         ) : receivedDate ? (
@@ -846,7 +854,11 @@ function RelatedCard({
         ) : null}
         {href && <span className="related-card-out">opens {new URL(href).hostname} ↗</span>}
       </span>
-      {note && <span className="related-card-note">{note}</span>}
+      {note && (
+        <span className={`related-card-note${noteTone === "quiet" ? " related-card-note-quiet" : ""}`}>
+          {note}
+        </span>
+      )}
     </>
   );
   if (href) {
@@ -2121,6 +2133,87 @@ export function relatedNarrative(
   return `${later} more recent and ${plural(earlier, "prior application")} ${where}`;
 }
 
+/**
+ * The applications and appeals this one names in its own description.
+ *
+ * Its own section rather than folded into "at this address", because the
+ * provenance is different and stronger: the council wrote this link into the
+ * text itself, where the address list is our inference from a string. It sits
+ * above the address list for the same reason.
+ *
+ * The ones we do not hold still appear. 8-16 Annamoe Road names a 2015
+ * permission and its 2020 extension of duration, and we hold neither — the
+ * first predates our Dublin City records, the second is a type Dublin City
+ * never publishes nationally. Naming them and pointing at the council's own
+ * register is worth far more than silently dropping them, which is what sent
+ * someone to look it up by hand.
+ */
+function CitedApplications({
+  cited,
+  authorityName,
+  onSelectRelated,
+}: {
+  cited: NonNullable<AppDetail["cited"]>;
+  authorityName: string;
+  onSelectRelated: (id: number) => void;
+}) {
+  if (!cited || cited.length === 0) return null;
+  return (
+    <section aria-labelledby="cited-h">
+      <h3 id="cited-h">Named in this application</h3>
+      <ul className="related-list">
+        {cited.map((c) => {
+          if (c.id != null) {
+            return (
+              <RelatedCard
+                key={c.reference}
+                reference={c.planning_reference ?? c.reference}
+                description={c.description ?? null}
+                status={c.status ?? null}
+                receivedDate={c.received_date ?? null}
+                decisionDate={c.decision_date ?? null}
+                note={
+                  c.kind === "appeal"
+                    ? "The appeal named in this application's description"
+                    : "Named in this application's description"
+                }
+                noteTone="quiet"
+                onOpen={() => onSelectRelated(c.id!)}
+              />
+            );
+          }
+          // We do not hold it. Say which of the two reasons applies only where
+          // we know — otherwise state the fact, which is that it is not in our
+          // records, and hand over to the council's.
+          const note =
+            c.kind === "appeal"
+              ? "An Coimisiún Pleanála case named in the description — not in our records"
+              : `Named in the description — not in our records of ${authorityName}'s register`;
+          return c.portal_url ? (
+            <RelatedCard
+              key={c.reference}
+              reference={c.reference}
+              description={null}
+              note={note}
+              noteTone="quiet"
+              href={c.portal_url}
+            />
+          ) : (
+            <li key={c.reference} className="related-item">
+              <span className="related-card related-card-flat">
+                <span className="related-card-top">
+                  <span className="related-card-title">{c.reference}</span>
+                </span>
+                <span className="related-card-note">{note}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 type EplanningRelatedItem = {
   id: number | null;
   planning_reference: string;
@@ -2229,7 +2322,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
    * puts the heading under the sticky top rather than level with it.
    */
   const scrollToRelated = useCallback(() => {
-    const heading = sheetRef.current?.querySelector("#related-h");
+    const heading =
+      sheetRef.current?.querySelector("#cited-h") ?? sheetRef.current?.querySelector("#related-h");
     if (!heading) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     heading.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
@@ -2237,6 +2331,16 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const narrative = isEplanning
     ? relatedNarrative(eplanningRelated ?? [], d.received_date, "linked to this one")
     : relatedNarrative(d.related, d.received_date, "at this address");
+  /**
+   * Applications named in the description are counted separately from the
+   * address list and stated separately, because they are a different claim.
+   * The address list is our inference; this is the council's own sentence.
+   */
+  const citedCount = d.cited?.length ?? 0;
+  const citedClause =
+    citedCount === 0
+      ? null
+      : `${citedCount} named in the description`;
   const [conditions, setConditions] = useState<DecisionConditions | null>(null);
   const [conditionsLoading, setConditionsLoading] = useState(false);
   // A council portal that didn't answer must never look like a permission with
@@ -2761,10 +2865,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             </span>
           )}
         </p>
-        {narrative && (
+        {(narrative || citedClause) && (
           <button type="button" className="related-lead" onClick={scrollToRelated}>
             <HistoryIcon size={12} />
-            <span>{narrative}</span>
+            <span>{[narrative, citedClause].filter(Boolean).join(" · ")}</span>
             <span className="related-lead-go" aria-hidden="true">See them</span>
           </button>
         )}
@@ -3006,6 +3110,12 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
         zones={zones}
         flood={flood}
         eircode={d.eircode ?? enrich?.eircode ?? null}
+      />
+
+      <CitedApplications
+        cited={d.cited ?? []}
+        authorityName={d.authority_name}
+        onSelectRelated={onSelectRelated}
       />
 
       {isEplanning ? (

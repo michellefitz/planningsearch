@@ -30,6 +30,11 @@ import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached, versionedKind } from 
 import { descriptionKey } from "./_ai/descriptions.mjs";
 import { closeTruncatedJson } from "./_ai/json.mjs";
 import { sameSite } from "./_related/footprint.mjs";
+import {
+  citationPortalUrl,
+  extractCitations,
+  referenceKey,
+} from "./_related/citations.mjs";
 import { idfOver, queryHouseNumbers, relevanceScore } from "./_search/relevance.mjs";
 import {
   ANCHOR_RE,
@@ -217,6 +222,61 @@ function addressIndex() {
     else ADDRESS_INDEX.set(key, [a.id]);
   }
   return ADDRESS_INDEX;
+}
+
+/** authority_id + normalised reference -> application, for resolving the
+ *  references an application names in its own text. Built once per cold start,
+ *  from data already in memory. */
+let REFERENCE_INDEX = null;
+function referenceIndex() {
+  if (REFERENCE_INDEX) return REFERENCE_INDEX;
+  REFERENCE_INDEX = new Map();
+  for (const a of BUNDLE.applications) {
+    if (!a.planning_reference) continue;
+    REFERENCE_INDEX.set(a.authority_id + "|" + referenceKey(a.planning_reference), a);
+  }
+  return REFERENCE_INDEX;
+}
+
+/**
+ * The applications this one names in its description, resolved where we hold
+ * them and pointed at the council's own register where we do not.
+ *
+ * Both outcomes matter. Half the citations sampled pointed at applications we
+ * already had and were not showing, because they were only ever linked by
+ * address. The rest are the register's older history — 8-16 Annamoe Road cites
+ * a 2015 permission and its 2020 extension of duration, and we hold neither:
+ * one predates our Dublin City records, and Dublin City publishes no
+ * extension-of-duration applications to the national dataset at all.
+ */
+function citationsFor(app) {
+  const cites = extractCitations(app.description, app.authority_id, app.planning_reference);
+  if (cites.length === 0) return [];
+  const index = referenceIndex();
+  const authority = AUTH.get(app.authority_id);
+  return cites.map(({ reference, kind }) => {
+    const held = index.get(app.authority_id + "|" + referenceKey(reference));
+    if (held) {
+      return {
+        reference,
+        kind,
+        id: held.id,
+        planning_reference: held.planning_reference,
+        description: held.description ?? null,
+        status: held.status,
+        received_date: held.received_date ?? null,
+        decision_date: held.decision_date ?? null,
+      };
+    }
+    return {
+      reference,
+      kind,
+      id: null,
+      // An appeal reference is not a council application, so a keyword search
+      // of the council's register would not find it.
+      portal_url: kind === "appeal" ? null : citationPortalUrl(authority, reference),
+    };
+  });
 }
 
 function haversineKm(aLat, aLng, bLat, bLng) {
@@ -3886,6 +3946,7 @@ const readableReason = (doc, content) => {
       ai_summary: bakedSummary(app.description) ?? AI_SUMMARY_CACHE.get(app.description) ?? null,
       documents: [],
       related,
+      cited: citationsFor(app),
     });
   }
 
