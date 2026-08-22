@@ -29,6 +29,7 @@ import { appealOutcome, bestAppealDecision, contradictsOutcome } from "./_condit
 import { AI_CACHE_KINDS, aiCacheGet, aiCachePut, aiCached, versionedKind } from "./_ai/store.mjs";
 import { descriptionKey } from "./_ai/descriptions.mjs";
 import { closeTruncatedJson } from "./_ai/json.mjs";
+import { nearEnoughToRelate } from "./_related/distance.mjs";
 import { idfOver, queryHouseNumbers, relevanceScore } from "./_search/relevance.mjs";
 import {
   ANCHOR_RE,
@@ -3837,12 +3838,12 @@ const readableReason = (doc, content) => {
     const relatedIds =
       app.authority_id === "kildare" || !app.address_text
         ? []
-        : (addressIndex().get(app.authority_id + "|" + addressKey(app.address_text)) ?? []);
+        : new Set(addressIndex().get(app.authority_id + "|" + addressKey(app.address_text)) ?? []);
     const related =
-      relatedIds.length === 0
+      !relatedIds || relatedIds.size === 0
         ? []
         : BUNDLE.applications
-            .filter((a) => a.id !== id && relatedIds.includes(a.id))
+            .filter((a) => a.id !== id && relatedIds.has(a.id) && nearEnoughToRelate(app, a))
             .sort((x, y) => (y.received_date ?? "").localeCompare(x.received_date ?? ""))
             .slice(0, 10)
             .map((a) => ({
