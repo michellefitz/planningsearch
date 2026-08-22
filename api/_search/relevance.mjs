@@ -126,6 +126,19 @@ export function idfOver(rows, tokens, textOf) {
  * Mirrors the BM25 column weights the SQLite backend uses — without it, exact
  * matches came back in bundle order, so a road-name search was arbitrary.
  */
+/**
+ * Recency boost: recent applications score higher than old ones with identical
+ * keyword matches. A 2024 application gets ~6 points; a 2014 one gets ~1.
+ * Scaled so it acts as a tiebreaker between equally-relevant results, not so
+ * strong that a weak match from last week beats a strong one from 2018.
+ */
+function recencyBonus(receivedDate) {
+  if (!receivedDate) return 0;
+  const ms = Date.now() - new Date(`${receivedDate.slice(0, 10)}T00:00:00`).getTime();
+  const years = ms / (365.25 * 24 * 60 * 60 * 1000);
+  return Math.max(0, 6 * Math.exp(-years / 5));
+}
+
 export function relevanceScore(app, tokens, idf, wanted) {
   const reference = String(app.planning_reference ?? "").toLowerCase();
   const address = String(app.address_text ?? "").toLowerCase();
@@ -134,9 +147,6 @@ export function relevanceScore(app, tokens, idf, wanted) {
     const numeric = NUMERIC_TOKEN.test(t);
     const re = boundaryRe(t);
     const weight = idf?.get(t) ?? 1;
-    // Ordered by what the token is worth in each field, so a numeric token is
-    // credited to the address rather than to the reference it also happens to
-    // appear in — "22" in "22 Rathgar Road" outweighs "22" in "4034/22".
     const fields = numeric
       ? [[address, 8], [reference, 3], [String(app.applicant_name ?? "").toLowerCase(), 4],
          [String(app.description ?? "").toLowerCase(), 1]]
@@ -145,7 +155,7 @@ export function relevanceScore(app, tokens, idf, wanted) {
     for (const [text, fieldWeight] of fields) {
       if (re.test(text) || (!numeric && text.includes(t))) {
         score += fieldWeight * weight;
-        break; // strongest field wins for this token
+        break;
       }
     }
   }
@@ -153,15 +163,13 @@ export function relevanceScore(app, tokens, idf, wanted) {
   if (tokens.length > 1) {
     const aw = addressWords(app.address_text);
     const { run, atStart } = longestRun(tokens, aw);
-    // Two words of the query running together in the address is the street;
-    // three is the street and the number.
     if (run > 1) score += 12 * run;
-    // The strongest signal an address search has: this application is filed at
-    // the number that was typed, on the street that was typed.
     if (run > 1 && atStart && wanted?.length) {
       const at = houseNumbers(app.address_text);
       if (at.some((n) => wanted.includes(n))) score += 40;
     }
   }
+
+  score += recencyBonus(app.received_date);
   return score;
 }

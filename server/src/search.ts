@@ -414,7 +414,7 @@ function ftsOrderClause(
     case "distance": // applied in JS once coordinates are known
     case "relevance":
     default:
-      return `ORDER BY ${rank}`;
+      return `ORDER BY ${rank}, a.received_date DESC`;
   }
 }
 

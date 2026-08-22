@@ -117,4 +117,11 @@ describe("ranking an address search", () => {
     const order = rank("Rathgar Road");
     expect(order.indexOf("3379/19")).toBeLessThan(order.indexOf("4513/22"));
   });
+
+  it("breaks keyword ties toward recent applications", () => {
+    const recent = { id: 20, planning_reference: "1111/24", address_text: "10 Oak Drive, Naas", description: "Extension", received_date: "2025-06-01" };
+    const old = { id: 21, planning_reference: "2222/14", address_text: "10 Oak Drive, Naas", description: "Extension", received_date: "2014-06-01" };
+    const order = rank("Oak Drive Naas", [recent, old]);
+    expect(order[0]).toBe("1111/24");
+  });
 });
