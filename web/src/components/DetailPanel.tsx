@@ -2092,7 +2092,7 @@ function PropertyContext({
  *
  * It splits the list on the reading application's own received date rather
  * than just counting, because the two directions mean opposite things. An
- * earlier application is the site's history — what was asked for and what the
+ * prior application is the site's history — what was asked for and what the
  * council said. A *later* one is the thing the reader has probably come for
  * and cannot see: a refusal followed six months on by a resubmission, or a
  * permission already superseded by a revised scheme. Reading the older
@@ -2101,7 +2101,7 @@ function PropertyContext({
  *
  * Anything we cannot date, we do not place. If any related application is
  * missing a received date — or this one is — the sentence falls back to a
- * plain count, because "3 earlier applications" would be a claim about
+ * plain count, because "3 prior applications" would be a claim about
  * chronology we cannot actually make.
  */
 export function relatedNarrative(
@@ -2116,9 +2116,9 @@ export function relatedNarrative(
   if (!datable) return `${plural(n, "other application")} ${where}`;
   const later = related.filter((r) => (r.received_date as string) > receivedDate).length;
   const earlier = n - later;
-  if (later === 0) return `${plural(earlier, "earlier application")} ${where}`;
+  if (later === 0) return `${plural(earlier, "prior application")} ${where}`;
   if (earlier === 0) return `${plural(later, "more recent application")} ${where}`;
-  return `${later} more recent and ${plural(earlier, "earlier application")} ${where}`;
+  return `${later} more recent and ${plural(earlier, "prior application")} ${where}`;
 }
 
 type EplanningRelatedItem = {
@@ -2215,7 +2215,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   // so it is fetched here and shared with the section that draws it below.
   const eplanningRelated = useEplanningRelated(d.id, isEplanning);
   /**
-   * "3 earlier applications at this address", under the address itself.
+   * "3 prior applications at this address", under the address itself.
    *
    * Two different lists feed it, and they mean different things. Everywhere
    * but Kildare it is other applications on this site, matched by address and
