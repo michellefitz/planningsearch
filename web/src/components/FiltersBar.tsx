@@ -282,7 +282,7 @@ export default function FiltersBar({ meta, state, onChange, total }: Props) {
       <fieldset>
         <legend>Status</legend>
         <MultiSelect
-          allLabel="All statuses"
+          allLabel="All statuses (excl. invalid)"
           ariaLabel="Filter by status"
           options={STATUS_OPTIONS}
           selected={statusSelection}

@@ -5434,6 +5434,16 @@ p.loading-line {
   text-decoration-color: currentColor;
 }
 
+.observations-callout {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--ink);
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: var(--r-md);
+}
+
 /* QA page: embed DetailPanel inline instead of as a fixed overlay */
 .qa-panel-embed .detail-sheet {
   position: static;
