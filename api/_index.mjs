@@ -3985,7 +3985,7 @@ const readableReason = (doc, content) => {
     // meaningless — its real related applications load on demand from /related.
     const relatedIds =
       app.authority_id === "kildare" || !app.address_text
-        ? []
+        ? new Set()
         : new Set(addressIndex().get(app.authority_id + "|" + addressKey(app.address_text)) ?? []);
     // Read only once there is something to compare, so a detail view with no
     // address matches never touches the sidecar.
