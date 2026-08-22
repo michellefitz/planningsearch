@@ -1,22 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { releasePanel, revealPanel } from "../revealPanel";
 
-/**
- * Received-date range picker (PRD F2): one control that sets both ends of the
- * range in a single flow — preset chips for the common "what's popped up
- * recently" looks, and a hotel-style calendar underneath (first tap starts the
- * range, second tap ends it, with a hover preview between). Expands inline
- * rather than floating so it works in the narrow filter column and the mobile
- * bottom sheet without clipping.
- */
-
 interface Props {
-  from: string; // YYYY-MM-DD or ""
-  to: string; // YYYY-MM-DD or ""
+  from: string;
+  to: string;
   onChange: (from: string, to: string) => void;
 }
 
-/** Local-time YYYY-MM-DD (toISOString would shift the day across UTC). */
 function fmt(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -32,38 +22,35 @@ const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+const MONTHS_SHORT = MONTHS.map((m) => m.slice(0, 3));
 
-/** "12 Jun 2026" — or without the year when it can be inferred from context. */
 function shortDate(s: string, withYear = true): string {
   const d = parse(s);
   if (!d) return s;
-  const base = `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
+  const base = `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
   return withYear ? `${base} ${d.getFullYear()}` : base;
 }
 
 interface Preset {
   label: string;
-  /** Start of the range; the end stays open ("since …"). */
   from: () => Date;
+  to?: () => Date;
 }
 
 const PRESETS: Preset[] = [
   { label: "Last week", from: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d; } },
   { label: "Last month", from: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d; } },
   { label: "Last 3 months", from: () => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d; } },
-  { label: "This year", from: () => new Date(new Date().getFullYear(), 0, 1) },
+  { label: "Last year", from: () => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d; } },
 ];
 
-/**
- * Always the dates themselves, never a preset's name.
- *
- * "Last month" is ambiguous — the 1st to the 31st, or the 15th to the 15th? —
- * and the two readings pick out different applications. The chips used to
- * carry their resolved range as a second line to answer that, which cost most
- * of the panel's width. Since a chip now just fills the calendar in, the
- * answer is visible in the calendar and here, and the chips can be one word
- * again.
- */
+function yearPresets(): Array<{ label: string; year: number }> {
+  const now = new Date().getFullYear();
+  const out = [];
+  for (let y = now; y >= now - 8; y--) out.push({ label: String(y), year: y });
+  return out;
+}
+
 function triggerLabel(from: string, to: string): string {
   if (from && to) {
     const sameYear = from.slice(0, 4) === to.slice(0, 4);
@@ -74,30 +61,33 @@ function triggerLabel(from: string, to: string): string {
   return "Any dates";
 }
 
+type View = "calendar" | "year" | "month";
+
 export default function DateRangePicker({ from, to, onChange }: Props) {
   const [open, setOpen] = useState(false);
-  // Month shown in the calendar (first of month). Follows the range start so
-  // reopening lands where the user was looking.
+  const [view, setView] = useState<View>("calendar");
   const [month, setMonth] = useState<Date>(() => {
     const d = parse(from) ?? new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [hover, setHover] = useState<string | null>(null);
+  const [fromInput, setFromInput] = useState(from);
+  const [toInput, setToInput] = useState(to);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // After paint, so the calendar has its real height before anything is
-  // measured against the room available for it.
+  useEffect(() => { setFromInput(from); }, [from]);
+  useEffect(() => { setToInput(to); }, [to]);
+
   useLayoutEffect(() => {
     if (open) revealPanel(panelRef.current);
     else releasePanel(panelRef.current);
   }, [open]);
 
   useEffect(() => {
-    // Drop any hover preview when the panel closes — a stale hovered day would
-    // otherwise paint a phantom range the next time it opens.
     if (!open) {
       setHover(null);
+      setView("calendar");
       return;
     }
     const onKey = (e: KeyboardEvent) => {
@@ -115,12 +105,24 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
   }, [open]);
 
   const today = fmt(new Date());
+
   const activePreset =
-    PRESETS.find((p) => from === fmt(p.from()) && to === today)?.label ?? null;
+    PRESETS.find((p) => {
+      const pf = fmt(p.from());
+      const pt = p.to ? fmt(p.to()) : today;
+      return from === pf && to === pt;
+    })?.label ?? null;
+
+  const activeYear =
+    from && to && from.slice(5) === "01-01" &&
+    (to.slice(5) === "12-31" || to === today) &&
+    from.slice(0, 4) === to.slice(0, 4)
+      ? Number(from.slice(0, 4))
+      : from && to && from.slice(5) === "01-01" && to === today
+        ? Number(from.slice(0, 4))
+        : null;
 
   const pickDay = (day: string) => {
-    // Hotel-selector flow: first tap starts the range, second tap ends it (and
-    // closes); tapping before the start restarts from that day instead.
     if (!from || (from && to)) {
       onChange(day, "");
     } else if (day < from) {
@@ -131,27 +133,57 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
     }
   };
 
-  /**
-   * A shortcut for two taps on the calendar, and nothing more. It used to
-   * apply an open-ended range and close the panel, which made the chips a
-   * second, parallel way of setting dates — with their own labels to reconcile
-   * against whatever the calendar showed. Now they fill both ends in and leave
-   * the panel open, so the calendar is the single answer to "what is selected"
-   * and the range is still there to adjust by hand.
-   */
   const applyPreset = (p: Preset) => {
     const start = p.from();
-    onChange(fmt(start), today);
-    // Land on the month holding the end of the range: it is today's month for
-    // every preset, so the view stays put as you try them.
-    const end = new Date();
+    const end = p.to ? p.to() : new Date();
+    onChange(fmt(start), fmt(end));
     setMonth(new Date(end.getFullYear(), end.getMonth(), 1));
   };
 
-  // Calendar grid for the shown month, weeks starting Monday.
+  const applyYear = (year: number) => {
+    const thisYear = new Date().getFullYear();
+    const f = `${year}-01-01`;
+    const t = year === thisYear ? today : `${year}-12-31`;
+    onChange(f, t);
+    setMonth(new Date(year, 0, 1));
+  };
+
+  const commitFromInput = () => {
+    const d = parse(fromInput);
+    if (d) {
+      onChange(fromInput, to);
+      setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    } else if (!fromInput.trim()) {
+      onChange("", to);
+    } else {
+      setFromInput(from);
+    }
+  };
+
+  const commitToInput = () => {
+    const d = parse(toInput);
+    if (d) {
+      onChange(from, toInput);
+    } else if (!toInput.trim()) {
+      onChange(from, "");
+    } else {
+      setToInput(to);
+    }
+  };
+
+  const pickYear = (year: number) => {
+    setMonth(new Date(year, month.getMonth(), 1));
+    setView("month");
+  };
+
+  const pickMonth = (m: number) => {
+    setMonth(new Date(month.getFullYear(), m, 1));
+    setView("calendar");
+  };
+
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-  const leading = (first.getDay() + 6) % 7; // Mon=0 … Sun=6
+  const leading = (first.getDay() + 6) % 7;
   const cells: Array<string | null> = [
     ...Array.from({ length: leading }, () => null),
     ...Array.from({ length: daysInMonth }, (_, i) =>
@@ -160,8 +192,10 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
   ];
   const atCurrentMonth =
     month.getFullYear() === new Date().getFullYear() && month.getMonth() === new Date().getMonth();
-  // The range highlight previews to the hovered day while the end is unpicked.
   const rangeEnd = to || (from && hover && hover > from ? hover : "");
+
+  const nowYear = new Date().getFullYear();
+  const yearGridStart = Math.floor(month.getFullYear() / 12) * 12;
 
   return (
     <div className="daterange" ref={rootRef}>
@@ -188,67 +222,192 @@ export default function DateRangePicker({ from, to, onChange }: Props) {
               </button>
             ))}
           </div>
+          <div className="chip-row">
+            {yearPresets().map((y) => (
+              <button
+                key={y.year}
+                type="button"
+                className={`chip ${activeYear === y.year ? "chip-on" : ""}`}
+                onClick={() => applyYear(y.year)}
+              >
+                {y.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="dr-inputs">
+            <label>
+              <span>From</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="YYYY-MM-DD"
+                value={fromInput}
+                onChange={(e) => setFromInput(e.target.value)}
+                onBlur={commitFromInput}
+                onKeyDown={(e) => { if (e.key === "Enter") commitFromInput(); }}
+              />
+            </label>
+            <span className="dr-dash">–</span>
+            <label>
+              <span>To</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="YYYY-MM-DD"
+                value={toInput}
+                onChange={(e) => setToInput(e.target.value)}
+                onBlur={commitToInput}
+                onKeyDown={(e) => { if (e.key === "Enter") commitToInput(); }}
+              />
+            </label>
+            {from && !to && (
+              <button
+                type="button"
+                className="dr-today-btn"
+                onClick={() => onChange(from, today)}
+              >
+                Today
+              </button>
+            )}
+          </div>
+
           <div className="dr-cal" role="application" aria-label="Choose a date range">
             <div className="dr-nav">
+              {view === "calendar" && (
+                <button
+                  type="button"
+                  className="dr-navbtn"
+                  aria-label="Previous month"
+                  onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+                >
+                  ‹
+                </button>
+              )}
+              {view === "year" && (
+                <button
+                  type="button"
+                  className="dr-navbtn"
+                  aria-label="Previous years"
+                  onClick={() => setMonth(new Date(month.getFullYear() - 12, month.getMonth(), 1))}
+                >
+                  ‹
+                </button>
+              )}
               <button
                 type="button"
-                className="dr-navbtn"
-                aria-label="Previous month"
-                onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+                className="dr-month dr-month-btn"
+                onClick={() => setView(view === "calendar" ? "year" : "calendar")}
+                aria-label="Pick year and month"
               >
-                ‹
+                {view === "year"
+                  ? `${yearGridStart} – ${yearGridStart + 11}`
+                  : view === "month"
+                    ? String(month.getFullYear())
+                    : `${MONTHS[month.getMonth()]} ${month.getFullYear()}`}
               </button>
-              <span className="dr-month">
-                {MONTHS[month.getMonth()]} {month.getFullYear()}
-              </span>
-              <button
-                type="button"
-                className="dr-navbtn"
-                aria-label="Next month"
-                disabled={atCurrentMonth}
-                onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-              >
-                ›
-              </button>
-            </div>
-            <div className="dr-grid" onMouseLeave={() => setHover(null)}>
-              {["M", "T", "W", "T", "F", "S", "S"].map((w, i) => (
-                <span key={`w${i}`} className="dr-wd" aria-hidden="true">
-                  {w}
-                </span>
-              ))}
-              {cells.map((day, i) =>
-                day === null ? (
-                  <span key={`b${i}`} />
-                ) : (
-                  <button
-                    key={day}
-                    type="button"
-                    className={[
-                      "dr-day",
-                      day === from ? "dr-start" : "",
-                      day === rangeEnd && rangeEnd ? "dr-end" : "",
-                      from && rangeEnd && day > from && day < rangeEnd ? "dr-in" : "",
-                      day === today ? "dr-today" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    disabled={day > today}
-                    aria-label={shortDate(day)}
-                    aria-pressed={day === from || day === to}
-                    onClick={() => pickDay(day)}
-                    onMouseEnter={() => setHover(day)}
-                  >
-                    {Number(day.slice(8))}
-                  </button>
-                )
+              {view === "calendar" && (
+                <button
+                  type="button"
+                  className="dr-navbtn"
+                  aria-label="Next month"
+                  disabled={atCurrentMonth}
+                  onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+                >
+                  ›
+                </button>
+              )}
+              {view === "year" && (
+                <button
+                  type="button"
+                  className="dr-navbtn"
+                  aria-label="Next years"
+                  disabled={yearGridStart + 12 > nowYear}
+                  onClick={() => setMonth(new Date(month.getFullYear() + 12, month.getMonth(), 1))}
+                >
+                  ›
+                </button>
               )}
             </div>
+
+            {view === "calendar" && (
+              <div className="dr-grid" onMouseLeave={() => setHover(null)}>
+                {["M", "T", "W", "T", "F", "S", "S"].map((w, i) => (
+                  <span key={`w${i}`} className="dr-wd" aria-hidden="true">
+                    {w}
+                  </span>
+                ))}
+                {cells.map((day, i) =>
+                  day === null ? (
+                    <span key={`b${i}`} />
+                  ) : (
+                    <button
+                      key={day}
+                      type="button"
+                      className={[
+                        "dr-day",
+                        day === from ? "dr-start" : "",
+                        day === rangeEnd && rangeEnd ? "dr-end" : "",
+                        from && rangeEnd && day > from && day < rangeEnd ? "dr-in" : "",
+                        day === today ? "dr-today" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      disabled={day > today}
+                      aria-label={shortDate(day)}
+                      aria-pressed={day === from || day === to}
+                      onClick={() => pickDay(day)}
+                      onMouseEnter={() => setHover(day)}
+                    >
+                      {Number(day.slice(8))}
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+
+            {view === "year" && (
+              <div className="dr-year-grid">
+                {Array.from({ length: 12 }, (_, i) => yearGridStart + i).map((y) => (
+                  <button
+                    key={y}
+                    type="button"
+                    className={`dr-year-cell ${y === month.getFullYear() ? "dr-year-active" : ""}`}
+                    disabled={y > nowYear}
+                    onClick={() => pickYear(y)}
+                  >
+                    {y}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {view === "month" && (
+              <div className="dr-month-grid">
+                {MONTHS_SHORT.map((m, i) => {
+                  const isFuture = month.getFullYear() === nowYear && i > new Date().getMonth();
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`dr-month-cell ${i === month.getMonth() ? "dr-month-active" : ""}`}
+                      disabled={isFuture}
+                      onClick={() => pickMonth(i)}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="dr-foot">
               <span className="hint">
-                {from && !to
-                  ? "Now pick the end date — or leave it open"
-                  : "Tap a start date, then an end date"}
+                {view !== "calendar"
+                  ? "Pick a year, then a month"
+                  : from && !to
+                    ? "Now pick the end date — or leave it open"
+                    : "Tap a start date, then an end date"}
               </span>
               {(from || to) && (
                 <button
