@@ -2500,6 +2500,52 @@ body {
   margin: 0.7rem 0 0;
 }
 
+/* The "3 earlier applications at this address" line, under the address.
+   Deliberately not a tinted callout: it sits between the address and the AI
+   summary, and a filled box there would outrank both. A hairline rule and the
+   quieter ink read as a note about the page rather than a banner on it — the
+   count itself carries full ink, since that is the fact being reported. */
+.related-lead {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin: 0.55rem 0 0;
+  padding: 0.42rem 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.related-lead > svg {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.related-lead > span:first-of-type {
+  color: var(--ink);
+  font-weight: 550;
+}
+
+/* Pushed to the far end so the sentence reads on its own and the affordance
+   sits where a "go" control is expected, rather than trailing the words. */
+.related-lead-go {
+  margin-left: auto;
+  color: var(--action);
+  font-weight: 550;
+}
+
+.related-lead:hover .related-lead-go,
+.related-lead:focus-visible .related-lead-go {
+  text-decoration: underline;
+}
+
 /* Graceful "couldn't summarise" state — muted, not the blue AI card. */
 .summary-empty {
   color: var(--ink-3);

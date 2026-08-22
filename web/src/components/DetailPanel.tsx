@@ -12,7 +12,7 @@ import {
   type SourceDocument,
 } from "../api";
 import PropertyMedia, { GMAPS_KEY, MapLinks } from "./PropertyMedia";
-import { XIcon } from "./icons";
+import { HistoryIcon, XIcon } from "./icons";
 import { SecondaryPills, StatusBadge } from "./ResultsList";
 import { STATUS_STYLE } from "../statusStyle";
 import SaveStar from "./SaveStar";
@@ -2087,39 +2087,90 @@ function PropertyContext({
 }
 
 /**
- * Kildare's own "Related Applications", fetched on demand from the eplanning
- * detail page. Ones already in our register open in place; the rest deep-link
- * to eplanning. Renders nothing while loading or when there are none.
+ * The one-line count that sits under the address, telling the reader there is
+ * more history here before they scroll two screens to find it.
+ *
+ * It splits the list on the reading application's own received date rather
+ * than just counting, because the two directions mean opposite things. An
+ * earlier application is the site's history — what was asked for and what the
+ * council said. A *later* one is the thing the reader has probably come for
+ * and cannot see: a refusal followed six months on by a resubmission, or a
+ * permission already superseded by a revised scheme. Reading the older
+ * application and never learning the newer one exists is the failure this
+ * line is for.
+ *
+ * Anything we cannot date, we do not place. If any related application is
+ * missing a received date — or this one is — the sentence falls back to a
+ * plain count, because "3 earlier applications" would be a claim about
+ * chronology we cannot actually make.
  */
-function EplanningRelated({
-  detail: d,
-  onSelectRelated,
-}: {
-  detail: AppDetail;
-  onSelectRelated: (id: number) => void;
-}) {
-  const [items, setItems] = useState<
-    Array<{
-      id: number | null;
-      planning_reference: string;
-      description: string | null;
-      address: string | null;
-      received_date: string | null;
-      status: string | null;
-      eplanning_url: string;
-    }> | null
-  >(null);
+export function relatedNarrative(
+  related: ReadonlyArray<{ received_date?: string | null }>,
+  receivedDate: string | null | undefined,
+  where: string
+): string | null {
+  const n = related.length;
+  if (n === 0) return null;
+  const plural = (k: number, noun: string) => `${k} ${noun}${k === 1 ? "" : "s"}`;
+  const datable = receivedDate && related.every((r) => r.received_date);
+  if (!datable) return `${plural(n, "other application")} ${where}`;
+  const later = related.filter((r) => (r.received_date as string) > receivedDate).length;
+  const earlier = n - later;
+  if (later === 0) return `${plural(earlier, "earlier application")} ${where}`;
+  if (earlier === 0) return `${plural(later, "more recent application")} ${where}`;
+  return `${later} more recent and ${plural(earlier, "earlier application")} ${where}`;
+}
+
+type EplanningRelatedItem = {
+  id: number | null;
+  planning_reference: string;
+  description: string | null;
+  address: string | null;
+  received_date: string | null;
+  status: string | null;
+  eplanning_url: string;
+};
+
+/**
+ * Kildare's related applications, fetched on demand from the eplanning detail
+ * page.
+ *
+ * Held here rather than inside the section that draws it because the count
+ * belongs in the header too, and a fetch owned by a component two screens down
+ * cannot be counted at the top. Null means "still asking" — distinct from the
+ * empty array, which means the council listed none.
+ */
+function useEplanningRelated(id: number, enabled: boolean): EplanningRelatedItem[] | null {
+  const [items, setItems] = useState<EplanningRelatedItem[] | null>(null);
   useEffect(() => {
+    if (!enabled) {
+      setItems(null);
+      return;
+    }
     let alive = true;
     setItems(null);
     api
-      .related(d.id)
+      .related(id)
       .then((r) => alive && setItems(r.related ?? []))
       .catch(() => alive && setItems([]));
     return () => {
       alive = false;
     };
-  }, [d.id]);
+  }, [id, enabled]);
+  return items;
+}
+
+/**
+ * Ones already in our register open in place; the rest deep-link to eplanning.
+ * Renders nothing while loading or when there are none.
+ */
+function EplanningRelated({
+  items,
+  onSelectRelated,
+}: {
+  items: EplanningRelatedItem[] | null;
+  onSelectRelated: (id: number) => void;
+}) {
   if (!items || items.length === 0) return null;
   return (
     <section aria-labelledby="related-h">
@@ -2160,6 +2211,32 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   const isMobile = useIsMobile();
   const isEplanning =
     meta?.authorities.find((a) => a.id === d.authority_id)?.source_system === "eplanning";
+  // Kildare's list arrives from the council rather than from address matching,
+  // so it is fetched here and shared with the section that draws it below.
+  const eplanningRelated = useEplanningRelated(d.id, isEplanning);
+  /**
+   * "3 earlier applications at this address", under the address itself.
+   *
+   * Two different lists feed it, and they mean different things. Everywhere
+   * but Kildare it is other applications on this site, matched by address and
+   * now settled on the site boundary. In Kildare it is what the council itself
+   * publishes as related, which need not share an address at all — so the
+   * sentence says "linked to this one" rather than claiming they are here.
+   */
+  /**
+   * Jump to the list the line is talking about. The sheet is its own scroll
+   * container, so this scrolls within it rather than the page; `block: "start"`
+   * puts the heading under the sticky top rather than level with it.
+   */
+  const scrollToRelated = useCallback(() => {
+    const heading = sheetRef.current?.querySelector("#related-h");
+    if (!heading) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    heading.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  }, []);
+  const narrative = isEplanning
+    ? relatedNarrative(eplanningRelated ?? [], d.received_date, "linked to this one")
+    : relatedNarrative(d.related, d.received_date, "at this address");
   const [conditions, setConditions] = useState<DecisionConditions | null>(null);
   const [conditionsLoading, setConditionsLoading] = useState(false);
   // A council portal that didn't answer must never look like a permission with
@@ -2684,6 +2761,13 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             </span>
           )}
         </p>
+        {narrative && (
+          <button type="button" className="related-lead" onClick={scrollToRelated}>
+            <HistoryIcon size={12} />
+            <span>{narrative}</span>
+            <span className="related-lead-go" aria-hidden="true">See them</span>
+          </button>
+        )}
         {aiSummary ? (
           <p className="ai-summary lead-summary">✦ {aiSummary}</p>
         ) : enrichLoading ? (
@@ -2927,7 +3011,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
       {isEplanning ? (
         // Kildare (eplanning): its own "Related Applications", since townland
         // addresses make same-address matching meaningless.
-        <EplanningRelated detail={d} onSelectRelated={onSelectRelated} />
+        <EplanningRelated items={eplanningRelated} onSelectRelated={onSelectRelated} />
       ) : (
         <section aria-labelledby="related-h">
           <h3 id="related-h">Other applications at this address</h3>
