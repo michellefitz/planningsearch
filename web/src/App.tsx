@@ -397,29 +397,27 @@ export default function App() {
     return m;
   }, [me]);
 
+  const selectSeqRef = useRef(0);
   const select = useCallback(async (id: number) => {
     if (sheetCloseTimer.current != null) {
       window.clearTimeout(sheetCloseTimer.current);
       sheetCloseTimer.current = null;
       setSheetClosing(false);
     }
+    const seq = ++selectSeqRef.current;
     setSelectedId(id);
     try {
       const d = await api.detail(id);
+      if (selectSeqRef.current !== seq) return;
       posthog.capture("application_viewed", {
         authority_id: d.authority_id,
         application_type: d.application_type,
         status: d.status,
       });
       setDetail(d);
-      // Give the open application its own history entry so it can be linked,
-      // bookmarked and dismissed with the browser's Back button.
       const url = appPath(d.authority_id, d.planning_reference);
       if (applyingUrl.current) history.replaceState(null, "", url);
       else if (window.location.pathname !== url) history.pushState(null, "", url);
-      // The sheet is about to cover the bottom (phone) or right (desktop) of
-      // the map, so aim for the middle of what stays visible — centring on
-      // the canvas put the pin you just tapped underneath the sheet.
       if (d.lat != null && d.lng != null)
         setFlyTo({ lat: d.lat, lng: d.lng, avoidSheet: true });
       const save = savedByKey.get(saveKey(d.authority_id, d.planning_reference));
@@ -427,7 +425,7 @@ export default function App() {
         accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
       }
     } catch {
-      setError("Could not load that application.");
+      if (selectSeqRef.current === seq) setError("Could not load that application.");
     }
   }, [savedByKey, refreshMe]);
 
