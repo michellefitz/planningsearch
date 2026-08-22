@@ -239,11 +239,11 @@ describe("parseFileListHtml", () => {
     );
     expect(files).toEqual([
       {
-        title: "Managers Order Published — 2026-03-30",
+        title: "2026-03-30 — Managers Order Published",
         url: "https://webapps.dublincity.ie/PublicAccess_Live/Document/ViewDocument?id=228338593A614A7FBA4A353C83C2738B",
       },
       {
-        title: "Decision Notices — 2026-03-30",
+        title: "2026-03-30 — Decision Notices",
         url: "https://webapps.dublincity.ie/PublicAccess_Live/Document/ViewDocument?id=F06DC4AA56484B678665D1D4361AF880",
       },
     ]);
@@ -265,11 +265,11 @@ describe("parseFileListHtml", () => {
       html,
       "https://webapps.dublincity.ie/PublicAccess_Live/SearchResult/RunThirdPartySearch?FileSystemId=PL&Folder1_Ref=2615/21"
     );
-    expect(files[0].title).toBe("Elevations — Proposed — 2021-04-19");
-    expect(files[1].title).toBe("Elevations — Existing — 2021-04-19");
-    expect(files[2].title).toBe("Decision Notices — 2021-06-16");
-    expect(files[3].title).toBe("Comments on application — TII — 2021-05-24");
-    expect(files[4].title).toBe("Floor Plans — 2021-04-19");
+    expect(files[0].title).toBe("2021-04-19 — Elevations — Proposed");
+    expect(files[1].title).toBe("2021-04-19 — Elevations — Existing");
+    expect(files[2].title).toBe("2021-06-16 — Decision Notices");
+    expect(files[3].title).toBe("2021-05-24 — Comments on application — TII");
+    expect(files[4].title).toBe("2021-04-19 — Floor Plans");
   });
 
   it("collects document-looking anchors and resolves relative URLs", () => {

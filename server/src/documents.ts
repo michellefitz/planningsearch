@@ -145,7 +145,7 @@ export function parsePublicAccessModel(html: string, baseUrl: string): ScannedFi
         const label = qualifier ? `${docType} — ${qualifier}` : docType;
         const date = publicAccessDate(r.Date_Received);
         return {
-          title: date ? `${label} — ${date}` : label,
+          title: date ? `${date} — ${label}` : label,
           url: `${base.origin}/${appRoot}/Document/ViewDocument?id=${r.Guid}`,
         };
       });
