@@ -278,11 +278,50 @@ async function main() {
   // A record with no pin is invisible on the map however well it reads in the
   // list. See coordinates.ts for why this is needed and why it is exact.
   const borrowed = fillMissingCoordinates(records);
-  const stillUnlocated = records.filter((r) => r.lat == null).length;
+  let stillUnlocated = records.filter((r) => r.lat == null).length;
   console.log(
     `Coordinates: ${borrowed} taken from another application at the same address; ` +
       `${stillUnlocated} records still have no pin.`
   );
+
+  // Apply cached Google geocodes for records that fillMissingCoordinates
+  // couldn't help (e.g. Cork backfill with no same-address national record).
+  // The cache is populated by scripts/geocode-backfill.mjs.
+  if (dataSource === "live" && process.env.DATABASE_URL && stillUnlocated > 0) {
+    try {
+      const geoRows = await neonSql(
+        `select authority_id, address_key, lat, lng from geocoded_coordinates where lat is not null`
+      );
+      if (geoRows.length > 0) {
+        const geoCache = new Map<string, { lat: number; lng: number }>();
+        for (const r of geoRows) {
+          geoCache.set(`${r.authority_id}|${r.address_key}`, {
+            lat: r.lat as number,
+            lng: r.lng as number,
+          });
+        }
+        const geoNorm = (s: string) =>
+          s.toLowerCase().replace(/[.,;()]/g, " ").replace(/\s+/g, " ").trim();
+        let geoFilled = 0;
+        for (const r of records) {
+          if (r.lat != null || !r.address_text) continue;
+          const key = `${r.authority_id}|${geoNorm(r.address_text)}`;
+          const hit = geoCache.get(key);
+          if (hit) {
+            r.lat = hit.lat;
+            r.lng = hit.lng;
+            geoFilled++;
+          }
+        }
+        stillUnlocated -= geoFilled;
+        console.log(
+          `Geocode cache: ${geoRows.length} cached, applied ${geoFilled}; ${stillUnlocated} still unlocated.`
+        );
+      }
+    } catch (err) {
+      console.error("Geocode cache read failed (records unaffected):", err);
+    }
+  }
 
   const apps: BundledApp[] = records.map((r, i) => ({ id: i + 1, ...r }));
 
