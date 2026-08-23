@@ -88,10 +88,19 @@ Applications **between ~20m and 1km** (neighbours, not the property itself). Sam
 
 Within each group, show the applications as compact cards (same format as section 4 but briefer — no conditions detail unless refused or appealed).
 
-After the cards, AI-written theme summaries:
-- "**Common grant conditions:** Most extensions required matching external finishes, surface water management via soakaway, and connection to public sewer."
-- "**Refusal themes:** Two refusals within 200m cited overlooking of neighbouring properties and overbearing visual impact."
-- "**Appeal outcomes:** One appeal succeeded — An Coimisiun Pleanala removed a condition restricting dormer scale, finding it would accord with the Development Plan."
+After the cards, AI-written **condition themes with cited examples**. State the theme, then list the specific applications that evidence it with a one-line summary of the relevant condition:
+
+- **Matching external finishes** — required on most grants in this area
+  - 062690 (19 Glen Easton Gardens) — external finishes must match existing dwelling
+  - 22506 (22 Glen Easton Gardens) — 11 conditions imposed; schedule not available
+- **Surface water management** — soakaway or on-site attenuation required
+  - 062690 (19 Glen Easton Gardens) — surface water via soakaways or water system to BS 8301:1985
+- **Joint occupation** — extensions must remain part of the original dwelling
+  - 062690 (19 Glen Easton Gardens) — must be jointly occupied as single housing unit, not sold or let separately
+- **Appeal outcomes**
+  - 24134 (19 Glen Easton Gardens) — An Coimisiun Pleanala removed a condition restricting dormer scale, finding it would accord with the Development Plan
+
+Each theme is a heading the reader can scan, and each example is a specific application they can look up. This gives the specificity a solicitor needs — a thematic summary alone could oversimplify or miss a condition that matters for their particular case.
 
 This replaces both the raw precedent list and the "From the decision documents" section.
 
