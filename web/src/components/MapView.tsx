@@ -45,6 +45,7 @@ const DERELICT_REGISTER_URL: Record<string, string> = {
   "south-dublin": "https://www.sdcc.ie/en/services/planning-building-control/derelict-sites/",
   dlr: "https://www.dlrcoco.ie/property-management/derelict-sites",
   wicklow: "https://www.wicklow.ie/Living/Services/Planning/Derelict-Vacant-Sites/Derelict-Sites",
+  kildare: "https://kildarecoco.ie/AllServices/Housing/DerelictSites/",
 };
 
 /** Re-exported so existing map-side imports keep working; the definition

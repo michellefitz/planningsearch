@@ -81,7 +81,7 @@ land the local authority considers underused.
 
 DERELICT SITES: Some properties are on the statutory Derelict Sites Register (Derelict Sites Act 1990). This is a \
 formal designation by the local authority — distinct from merely appearing neglected. Being on the register means \
-the council has served notices and may levy charges. Coverage: Dublin City, South Dublin, DLR, Wicklow only.
+the council has served notices and may levy charges. Coverage: Dublin City, South Dublin, DLR, Wicklow, Kildare only.
 
 FORMAT: Short paragraphs and **bold** for key facts only — no headings, no numbered section titles, no tables, no \
 links, no long essays. Do NOT use bullet lists to present applications: write each property as a short paragraph — \

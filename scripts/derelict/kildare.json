@@ -1,0 +1,314 @@
+[
+  {
+    "ref": "DS-2007-K02",
+    "date": "2011-06-22",
+    "address": "Mary Hickeys Sweet Shop, Church Street, Kilcock",
+    "district": "Clane - Maynooth",
+    "lat": 53.403958,
+    "lng": -6.672224
+  },
+  {
+    "ref": "DS-2015-Naas13",
+    "date": "2015-04-24",
+    "address": "Market House, Naas",
+    "district": "Naas",
+    "lat": 53.221468,
+    "lng": -6.657409
+  },
+  {
+    "ref": "DS-2007-N03",
+    "date": "2016-02-12",
+    "address": "Old Band Hall, Cutlery Road, Newbridge",
+    "district": "Kildare - Newbridge",
+    "lat": 53.178432,
+    "lng": -6.797469
+  },
+  {
+    "ref": "DS-2007-A27",
+    "date": "2016-05-27",
+    "address": "30 Woodstock Street, Athy",
+    "district": "Athy",
+    "lat": 52.996719,
+    "lng": -6.993051
+  },
+  {
+    "ref": "DS-2007-A28",
+    "date": "2016-05-27",
+    "address": "31 Woodstock Street, Athy",
+    "district": "Athy",
+    "lat": 52.996746,
+    "lng": -6.993101
+  },
+  {
+    "ref": "DS-2011-R04",
+    "date": "2017-02-06",
+    "address": "Grove Lane, Robertstown",
+    "district": "Clane - Maynooth",
+    "lat": 53.269734,
+    "lng": -6.817361
+  },
+  {
+    "ref": "DS-2016-Newbridge01",
+    "date": "2019-12-05",
+    "address": "2198 Highfield Estate, Newbridge",
+    "district": "Kildare - Newbridge",
+    "lat": 53.177616,
+    "lng": -6.811203
+  },
+  {
+    "ref": "DS-2010-A1",
+    "date": "2019-12-05",
+    "address": "Barrack Lane, Athy",
+    "district": "Athy",
+    "lat": 52.99456,
+    "lng": -6.989489
+  },
+  {
+    "ref": "DS-2018-02",
+    "date": "2021-11-04",
+    "address": "Leinster Street, Rathangan",
+    "district": "Kildare - Newbridge",
+    "lat": 53.224746,
+    "lng": -7.003684
+  },
+  {
+    "ref": "DS-2020-02",
+    "date": "2021-11-04",
+    "address": "19 Emily Square, Athy",
+    "district": "Athy",
+    "lat": 52.992036,
+    "lng": -6.983403
+  },
+  {
+    "ref": "DS-2017-Celbridge01",
+    "date": "2022-10-14",
+    "address": "Bungalow, Hazelhatch Road, Celbridge",
+    "district": "Celbridge - Leixlip",
+    "lat": 53.334281,
+    "lng": -6.531141
+  },
+  {
+    "ref": "DS-2015-Naas-10",
+    "date": "2023-03-28",
+    "address": "3 Abbey Road, Naas",
+    "district": "Naas",
+    "lat": 53.219056,
+    "lng": -6.665421
+  },
+  {
+    "ref": "DS-2021-08",
+    "date": "2023-04-24",
+    "address": "Skirteen, Monasterevin, Co Kildare",
+    "district": "Kildare - Newbridge",
+    "lat": 53.138716,
+    "lng": -7.070817
+  },
+  {
+    "ref": "DS-2022-27",
+    "date": "2023-05-22",
+    "address": "Lions House Pub, Kilcock",
+    "district": "Clane - Maynooth",
+    "lat": 53.399043,
+    "lng": -6.668858
+  },
+  {
+    "ref": "DS-2021-19",
+    "date": "2023-06-20",
+    "address": "33 Main Street, Leixlip",
+    "district": "Celbridge - Leixlip",
+    "lat": 53.363814,
+    "lng": -6.489943
+  },
+  {
+    "ref": "DS-2022-08",
+    "date": "2023-06-20",
+    "address": "2 Abbey Road, Naas",
+    "district": "Naas",
+    "lat": 53.219056,
+    "lng": -6.665421
+  },
+  {
+    "ref": "DS-2023-16",
+    "date": "2023-09-07",
+    "address": "Cutlery Road, Newbridge",
+    "district": "Kildare - Newbridge",
+    "lat": 53.178432,
+    "lng": -6.797469
+  },
+  {
+    "ref": "DS-2020-Naas07",
+    "date": "2023-09-07",
+    "address": "41 St. Corban's Place, Naas",
+    "district": "Naas",
+    "lat": 53.222638,
+    "lng": -6.656894
+  },
+  {
+    "ref": "DS-2022-11",
+    "date": "2023-09-25",
+    "address": "Bargain Store, Kildare Town, Co. Kildare",
+    "district": "Kildare-Newbridge",
+    "lat": 53.156895,
+    "lng": -6.910627
+  },
+  {
+    "ref": "DS-2023-06",
+    "date": "2023-09-25",
+    "address": "1 & 2, Ralph Square, Leixlip",
+    "district": "Celbridge - Leixlip",
+    "lat": 53.363944,
+    "lng": -6.487709
+  },
+  {
+    "ref": "DS-2023-18",
+    "date": "2023-09-15",
+    "address": "Ralph Square, Leixlip",
+    "district": "Celbridge - Leixlip",
+    "lat": 53.363944,
+    "lng": -6.487709
+  },
+  {
+    "ref": "DS-2018-Celbridge01",
+    "date": "2023-09-25",
+    "address": "Property 1 at Hazelhatch Train Station, Celbridge",
+    "district": "Celbridge - Leixlip",
+    "lat": 53.323612,
+    "lng": -6.523286
+  },
+  {
+    "ref": "DS-2018-Celbridge02",
+    "date": "2023-09-25",
+    "address": "Property 2 at Hazelhatch Train Station, Celbridge",
+    "district": "Celbridge - Leixlip",
+    "lat": 53.323612,
+    "lng": -6.523286
+  },
+  {
+    "ref": "DS-2018-Celbridge03",
+    "date": "2023-09-25",
+    "address": "Property 3 at Hazelhatch Train Station, Celbridge",
+    "district": "Celbridge - Leixlip",
+    "lat": 53.323612,
+    "lng": -6.523286
+  },
+  {
+    "ref": "DS-2024-02",
+    "date": "2024-05-02",
+    "address": "19 Duke Street, Athy",
+    "district": "Athy",
+    "lat": 52.991422,
+    "lng": -6.987257
+  },
+  {
+    "ref": "DS-2024-03",
+    "date": "2024-05-02",
+    "address": "130 Lakelands, Naas",
+    "district": "Naas",
+    "lat": 53.215599,
+    "lng": -6.658135
+  },
+  {
+    "ref": "DS-2024-04",
+    "date": "2024-05-02",
+    "address": "7 Stanhope Street, Athy",
+    "district": "Athy",
+    "lat": 52.992955,
+    "lng": -6.983796
+  },
+  {
+    "ref": "DS-2024-05",
+    "date": "2024-05-02",
+    "address": "16/17 Leinster Street, Athy",
+    "district": "Athy",
+    "lat": 52.992142,
+    "lng": -6.984279
+  },
+  {
+    "ref": "DS-2023-10",
+    "date": "2024-05-08",
+    "address": "617 Castlesize, Sallins, Co Kildare",
+    "district": "Naas",
+    "lat": 53.254556,
+    "lng": -6.673705
+  },
+  {
+    "ref": "DS-2023-28",
+    "date": "2024-08-08",
+    "address": "Former Garda Station, Leinster Street, Rathangan, Co.Kildare",
+    "district": "Kildare-Newbridge",
+    "lat": 53.222184,
+    "lng": -6.997498
+  },
+  {
+    "ref": "DS-2024-16",
+    "date": "2024-09-09",
+    "address": "Hennessy Garage, Main Street, Castledermot",
+    "district": "Athy",
+    "lat": 52.910883,
+    "lng": -6.837276
+  },
+  {
+    "ref": "DS-2015-N09",
+    "date": "2025-02-05",
+    "address": "107 Monread Heights, Naas",
+    "district": "Naas",
+    "lat": 53.228648,
+    "lng": -6.656842
+  },
+  {
+    "ref": "DS-2024-24",
+    "date": "2025-02-17",
+    "address": "30 Duke Street, Athy",
+    "district": "Athy",
+    "lat": 52.991306,
+    "lng": -6.988497
+  },
+  {
+    "ref": "DS-2024-35",
+    "date": "2025-05-28",
+    "address": "Eyre Street, Newbridge",
+    "district": "Kildare-Newbridge",
+    "lat": 53.18253,
+    "lng": -6.796766
+  },
+  {
+    "ref": "DS-2024-37",
+    "date": "2025-08-18",
+    "address": "Former Grand Canal Hotel, Robertstown",
+    "district": "Clane-Maynooth",
+    "lat": 53.269067,
+    "lng": -6.814615
+  },
+  {
+    "ref": "DS-2023-26",
+    "date": "2025-09-09",
+    "address": "Main Street, Castledermot",
+    "district": "Athy",
+    "lat": 52.910883,
+    "lng": -6.837276
+  },
+  {
+    "ref": "DS-2025-35",
+    "date": "2025-09-29",
+    "address": "82 Hazelmere, Naas",
+    "district": "Naas",
+    "lat": 53.210934,
+    "lng": -6.651411
+  },
+  {
+    "ref": "DS-2025-38",
+    "date": "2026-01-23",
+    "address": "Main Street, Castledermot",
+    "district": "Athy",
+    "lat": 52.910883,
+    "lng": -6.837276
+  },
+  {
+    "ref": "DS-2024-22",
+    "date": "2024-09-16",
+    "address": "36 Leinster Street, Athy",
+    "district": "Athy",
+    "lat": 52.992213,
+    "lng": -6.983987
+  }
+]

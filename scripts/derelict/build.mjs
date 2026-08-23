@@ -197,6 +197,30 @@ async function fetchWicklow() {
   console.log(`  Wicklow: ${count} sites`);
 }
 
+// --- Kildare: geocoded from PDF, curated in kildare.json ---
+async function loadKildare() {
+  const { readFileSync } = await import("fs");
+  const sites = JSON.parse(readFileSync(join(__dirname, "kildare.json"), "utf8"));
+  let count = 0;
+  for (const s of sites) {
+    add(
+      { type: "Point", coordinates: [s.lng, s.lat] },
+      {
+        address: s.address,
+        reference: s.ref,
+        council: "kildare",
+        council_label: "Kildare County Council",
+        date_added: s.date,
+        valuation: null,
+        on_register: true,
+        protected_structure: false,
+      }
+    );
+    count++;
+  }
+  console.log(`  Kildare: ${count} sites (geocoded from PDF, ${sites.length} of ~63 addresses resolved)`);
+}
+
 // --- Main ---
 console.log("Fetching derelict sites registers...");
 const results = await Promise.allSettled([fetchSdcc(), fetchDcc(), fetchDlr(), fetchWicklow()]);
@@ -205,6 +229,7 @@ for (const [i, r] of results.entries()) {
     console.error(`  FAILED [${["SDCC", "DCC", "DLR", "Wicklow"][i]}]:`, r.reason?.message ?? r.reason);
   }
 }
+await loadKildare();
 
 const fc = { type: "FeatureCollection", features };
 writeFileSync(OUT, JSON.stringify(fc));
