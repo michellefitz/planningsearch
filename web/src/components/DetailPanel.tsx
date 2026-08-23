@@ -133,7 +133,8 @@ const ENDED_WITHOUT_DECISION: Record<string, string> = {
 export function buildTimeline(
   d: AppDetail,
   submissionsBy?: string | null,
-  liveStatus?: string | null
+  liveStatus?: string | null,
+  conditions?: { further_info?: boolean; decision_date?: string | null } | null
 ): TimelineStep[] {
   const decided = Boolean(d.decision_date);
   const ended = decided ? null : ENDED_WITHOUT_DECISION[liveStatus ?? d.status] ?? null;
@@ -141,10 +142,13 @@ export function buildTimeline(
   const steps: TimelineStep[] = [
     { label: "Received", date: d.received_date, state: d.received_date ? "done" : "future" },
   ];
-  if (d.further_info_requested_date) {
+  const fiRequested =
+    d.further_info_requested_date ??
+    (conditions?.further_info ? conditions.decision_date ?? null : null);
+  if (fiRequested) {
     steps.push({
       label: "Further information requested",
-      date: d.further_info_requested_date,
+      date: fiRequested,
       state: d.further_info_received_date || decided ? "done" : "current",
     });
     if (d.further_info_received_date) {
@@ -2517,7 +2521,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   // weeks where it does not — see submissionsDeadline.
   const submissions = submissionsDeadline(d, enrich?.submissions_by_date);
   const submissionsBy = submissions?.date ?? null;
-  const timeline = buildTimeline(d, enrich?.submissions_by_date, liveStatus);
+  const timeline = buildTimeline(d, enrich?.submissions_by_date, liveStatus, conditions);
   /**
    * Whether the council asked this applicant for more, ever.
    *
