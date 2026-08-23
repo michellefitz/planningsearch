@@ -53,6 +53,7 @@ export interface PrecedentItem {
   status: string | null;
   decision: string | null;
   decision_date: string | null;
+  received_date?: string | null;
   address_text: string | null;
   lat?: number | null;
   lng?: number | null;
@@ -60,6 +61,39 @@ export interface PrecedentItem {
   keyword_hits: string[];
   appeal_reference?: string | null;
   appeal_decision?: string | null;
+  work_type?: string;
+  officer_name?: string | null;
+  commencement_date?: string | null;
+  completion_date?: string | null;
+  further_info_requested_date?: string | null;
+  score?: number;
+}
+
+export interface ConditionThemeExample {
+  reference: string;
+  address: string;
+  summary: string;
+}
+export interface ConditionTheme {
+  theme: string;
+  examples: ConditionThemeExample[];
+}
+export interface AppealDetail {
+  reference: string;
+  address: string;
+  proposal: string;
+  council_decision: string;
+  appeal_outcome: string;
+  what_changed: string;
+}
+export interface FIThemeExample {
+  reference: string;
+  address: string;
+}
+export interface FITheme {
+  theme: string;
+  count: number;
+  examples: FIThemeExample[];
 }
 
 export interface DeepDive {
@@ -79,7 +113,36 @@ export interface RateBlock {
   median_decision_days: number | null;
 }
 
+export interface SiteConstraints {
+  designations: { items: DesignationHit[]; checked: string[]; failed: string[] };
+  heritage: { niah: HeritageItem[] | Unavailable; smr: HeritageItem[] | Unavailable };
+  flood: {
+    flood: { at_risk: boolean; scenarios: string[] } | Unavailable;
+    groundwater: { category: string; description: string; meaning: string } | null | Unavailable;
+    radon: Unavailable;
+  };
+}
+
+export interface NearbySection {
+  items: PrecedentItem[];
+  officers: Array<{ name: string; count: number }>;
+  appeals: AppealDetail[];
+  fi_count: number;
+  condition_themes: ConditionTheme[];
+  fi_themes: FITheme[];
+}
+
 export interface ReportSections {
+  /** New merged section — designations + heritage + flood in one object. */
+  site_constraints?: SiteConstraints | Unavailable;
+  /** Applications at the exact address (within 20m). */
+  address_history?: { items: PrecedentItem[] } | Unavailable;
+  /** Nearby applications (beyond 20m) with enrichments. */
+  nearby?: NearbySection | Unavailable;
+  /** AI-generated 2-3 sentence summary. */
+  at_a_glance?: string;
+
+  /** Legacy keys for backward compatibility. */
   designations?: { items: DesignationHit[]; checked: string[]; failed: string[] } | Unavailable;
   heritage_points?: { niah: HeritageItem[] | Unavailable; smr: HeritageItem[] | Unavailable } | Unavailable;
   flood_ground?:
@@ -90,6 +153,7 @@ export interface ReportSections {
       }
     | Unavailable;
   precedents?: { items: PrecedentItem[]; deep_dives: DeepDive[] } | Unavailable;
+
   area_stats?: { authority: RateBlock; within_2km: RateBlock } | Unavailable;
   local_plan?: { authority_id: string; name: string; url: string } | Unavailable;
   /** Only present when the proposal is to build a house on a site. */
