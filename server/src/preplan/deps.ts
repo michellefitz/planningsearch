@@ -38,7 +38,8 @@ async function loadStaticGeojson(name: "aca" | "flood" | "derelict"): Promise<St
 
 const ROW_COLUMNS =
   "id, authority_id, planning_reference, description, ai_summary, source_url, status, decision, " +
-  "decision_date, received_date, address_text, lat, lng, appeal_reference";
+  "decision_date, received_date, address_text, lat, lng, appeal_reference, " +
+  "officer_name, commencement_date, completion_date, further_info_requested_date";
 
 type DbRow = PrecedentSourceRow & { id: number };
 

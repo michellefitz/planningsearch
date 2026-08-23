@@ -80,6 +80,8 @@ export const DESIGNATION_MEANING = {
     "Zone of Archaeological Notification — works here must be notified to the National Monuments Service, and an archaeological assessment may be required.",
   aca: "Architectural Conservation Area — external works that would normally be exempt development usually need permission here, and design standards are higher.",
   rzlt: "This land is on the RZLT Final Map — identified as vacant or idle serviced residential land, liable for the Residential Zoned Land Tax. It signals development potential and may indicate the local authority considers the site underused.",
+  derelict:
+    "This site is on a local authority's statutory Derelict Sites Register (Derelict Sites Act 1990). The council has formally designated it as derelict and may have served notices or levied charges. Adjacent derelict sites are material to a planning application — they affect the character and amenity of the area.",
   flood:
     "Indicative flood extent — a Site-Specific Flood Risk Assessment may be required, and some uses are restricted under the Flood Risk Management Guidelines.",
   groundwater_high:
@@ -328,6 +330,30 @@ export async function getFloodGround(lat, lng, deps) {
   };
 }
 
+// ---------- work-type classifier ----------
+
+export function classifyWorkType(description) {
+  if (!description) return "other";
+  const d = description.toLowerCase();
+  if (/\battic\b.*\b(conver|storage|room|bedroom)|convert.*\battic\b|dormer/.test(d)) return "attic_conversion";
+  if (/\b(extension|extend)\b(?!.*\bduration\b)/i.test(d)) return "extension";
+  if (/\b(new|erect|construct|build)\b.*\b(dwell|house|home|bungalow|apartment|unit)/i.test(d)) return "new_dwelling";
+  if (/\bchange\s+of\s+use\b/i.test(d)) return "change_of_use";
+  if (/\bdemoli/i.test(d)) return "demolition";
+  if (/\bretention\s+of\b/i.test(d)) return "retention";
+  return "other";
+}
+
+export const WORK_TYPE_LABELS = {
+  extension: "Extensions & conversions",
+  attic_conversion: "Attic conversions",
+  new_dwelling: "New dwellings",
+  change_of_use: "Change of use",
+  demolition: "Demolition",
+  retention: "Retention",
+  other: "Other",
+};
+
 // ---------- precedents & stats ----------
 
 const STOPWORDS = new Set([
@@ -379,7 +405,7 @@ export function selectPrecedents(rows, lat, lng, intent, limit = 8) {
     if (distance_m > effectiveRadius) continue;
     const desc = (row.description ?? "").toLowerCase();
     const hits = tokens.filter((t) => desc.includes(t));
-    scored.push({ ...row, distance_m, score: hits.length * 2 + (1 - distance_m / effectiveRadius), keyword_hits: hits });
+    scored.push({ ...row, distance_m, score: hits.length * 2 + (1 - distance_m / effectiveRadius), keyword_hits: hits, work_type: classifyWorkType(row.description) });
   }
   return scored.sort((a, b) => b.score - a.score).slice(0, effectiveLimit);
 }
