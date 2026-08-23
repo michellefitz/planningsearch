@@ -2472,6 +2472,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     status?: string | null;
     status_raw?: string | null;
     status_label?: string | null;
+    cited_urls?: Record<string, string>;
   } | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
@@ -2673,7 +2674,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     // AI summary + party backfill need upstream calls, so the detail
     // endpoint returns without them and they stream in here.
     let enrichDone: Promise<unknown> = Promise.resolve();
-    if (!d.ai_summary || !d.applicant_name || !d.agent_name) {
+    const hasUnresolvedCitations = d.cited?.some((c) => c.id === null && c.portal_url);
+    if (!d.ai_summary || !d.applicant_name || !d.agent_name || hasUnresolvedCitations) {
       setEnrichLoading(true);
       enrichDone = api
         .enrich(d.id)
@@ -3269,7 +3271,10 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
       />
 
       <CitedApplications
-        cited={d.cited ?? []}
+        cited={(d.cited ?? []).map((c) => {
+          const resolved = enrich?.cited_urls?.[c.reference];
+          return resolved ? { ...c, portal_url: resolved } : c;
+        })}
         authorityName={d.authority_name}
         onSelectRelated={onSelectRelated}
       />

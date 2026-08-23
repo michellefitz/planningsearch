@@ -279,6 +279,25 @@ function citationsFor(app) {
   });
 }
 
+async function resolveCitedUrls(app) {
+  const client = AGILE_CLIENT_BY_AUTHORITY[app.authority_id];
+  if (!client) return {};
+  const cites = citationsFor(app);
+  const unresolved = cites.filter((c) => c.id === null && c.kind !== "appeal" && c.portal_url);
+  if (unresolved.length === 0) return {};
+  const authority = AUTH.get(app.authority_id);
+  const base = authority?.portal_base_url ?? null;
+  if (!base) return {};
+  const urls = {};
+  await Promise.all(
+    unresolved.map(async (c) => {
+      const agileId = await resolveAgileId(client, null, c.reference);
+      if (agileId) urls[c.reference] = `${base}/application-details/${agileId}`;
+    })
+  );
+  return urls;
+}
+
 function haversineKm(aLat, aLng, bLat, bLng) {
   const R = 6371;
   const dLat = ((bLat - aLat) * Math.PI) / 180;
@@ -3160,6 +3179,8 @@ export default async function handler(req, res) {
             status: r.status,
             authority_id: r.authority_id,
             address: r.address_text,
+            received_date: r.received_date ?? null,
+            description: r.description ?? null,
             is_domestic_guess: Boolean(r.is_domestic_guess),
           },
         })),
@@ -4212,6 +4233,7 @@ const readableReason = (doc, content) => {
       status: useLiveStatus ? liveStatus : null,
       status_raw: useLiveStatus ? liveRaw : null,
       status_label: useLiveStatus ? STATUS_LABELS[liveStatus] : null,
+      cited_urls: await resolveCitedUrls(app),
     });
   }
 

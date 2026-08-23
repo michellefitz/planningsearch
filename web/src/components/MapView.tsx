@@ -293,20 +293,25 @@ export default function MapView({
         if (items[0]?.id != null) onSelectRef.current(Number(items[0].id));
         return;
       }
+      items.sort((a, b) => (b.received_date ?? "").localeCompare(a.received_date ?? ""));
       const rows = items.slice(0, 20).map((p) => {
         const style = STATUS_STYLE[p.status as keyof typeof STATUS_STYLE];
         const color = style?.color ?? "#64748b";
         const letter = style?.letter ?? "?";
         const ref = escapeHtml(p.reference ?? "");
-        const addr = escapeHtml(
-          ((p.address as string) ?? "").length > 50
-            ? (p.address as string).slice(0, 47) + "…"
-            : (p.address ?? "")
+        const date = p.received_date ? escapeHtml(p.received_date.slice(0, 10)) : "";
+        const desc = escapeHtml(
+          ((p.description as string) ?? "").length > 80
+            ? (p.description as string).slice(0, 77) + "…"
+            : (p.description ?? "")
         );
         return (
           `<button class="stack-item" data-id="${p.id}">` +
           `<span class="stack-dot" style="background:${color}">${letter}</span>` +
-          `<span class="stack-text"><strong>${ref}</strong> ${addr}</span>` +
+          `<span class="stack-text">` +
+          `<span class="stack-line"><strong>${ref}</strong>${date ? ` <span class="stack-date">${date}</span>` : ""}</span>` +
+          `<span class="stack-desc">${desc}</span>` +
+          `</span>` +
           `</button>`
         );
       }).join("");
@@ -314,7 +319,7 @@ export default function MapView({
         `<div class="stack-popup">` +
         `<div class="stack-title">${items.length} applications here</div>` +
         `${rows}</div>`;
-      const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "300px" })
+      const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "360px" })
         .setLngLat(lngLat)
         .setHTML(html)
         .addTo(m);
