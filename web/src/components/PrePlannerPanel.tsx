@@ -139,7 +139,6 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
         if (r?.lat != null && r?.lng != null) {
           setLocation({ lat: r.lat, lng: r.lng, address: r.display || match.display });
           setMatches([]);
-          return;
         }
       }
     } catch { /* fall through */ }
