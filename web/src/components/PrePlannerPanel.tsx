@@ -188,11 +188,14 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
           <input
             type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (location) setLocation(null);
+            }}
             placeholder="Address or Eircode…"
             aria-label="Search an address"
           />
-          {(matches.length > 0 || searching) && query.trim().length >= 3 && !location && (
+          {(matches.length > 0 || searching) && query.trim().length >= 3 && (
             <ul className="pf-matches">
               {searching && <li className="pf-searching">Searching…</li>}
               {matches.map((m, i) => (
