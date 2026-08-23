@@ -21,6 +21,7 @@ import { boundsOf } from "../../api/_related/footprint.mjs";
 import { fillMissingCoordinates } from "./coordinates.js";
 import { fetchKildareRecent, eplanningItemToRecord } from "./ingest/eplanning-list.js";
 import { fetchKccBackfill } from "./ingest/kcc-backfill.js";
+import { fetchCorkCityBackfill } from "./ingest/cork-city-backfill.js";
 import { ACP_AUTHORITY, fetchAcpDirectRecords } from "./ingest/acp.js";
 import { buildCommencementIndex, lookupCommencement } from "./ingest/bcms.js";
 import type { ApplicationRecord } from "./db.js";
@@ -211,6 +212,29 @@ async function main() {
     }
   }
 
+  // Cork City backfill: the council's open data CSV (data.corkcity.ie) has
+  // ~9,000 records from 2014–2025; the national feed starts at 2017, so this
+  // adds ~2,400 pre-national records. Best-effort.
+  if (dataSource === "live") {
+    try {
+      console.log("Fetching Cork City backfill (open data CSV, ~9k records to 2014) …");
+      const corkRecords = await fetchCorkCityBackfill(console.log);
+      const have = new Set(
+        records.filter((r) => r.authority_id === "cork-city").map((r) => r.planning_reference)
+      );
+      let added = 0;
+      for (const rec of corkRecords) {
+        if (have.has(rec.planning_reference)) continue;
+        have.add(rec.planning_reference);
+        records.push(rec);
+        added++;
+      }
+      console.log(`Cork City backfill: added ${added} pre-national-feed records (${corkRecords.length - added} overlap with national).`);
+    } catch (err) {
+      console.error("Cork City backfill failed (national data unaffected):", err);
+    }
+  }
+
   // Kildare live top-up: the national DHLGH feed trails Kildare by ~months, so
   // pull the last 42 days straight off the council register (eplanning list
   // search) and add any not yet in the feed. Best-effort — a failure must not
@@ -281,8 +305,8 @@ async function main() {
     const nowYear = new Date().getFullYear();
     const years = [];
     for (let y = sinceYear; y <= nowYear; y++) years.push(y);
-    console.log(`Fetching Property Price Register (Dublin, Kildare; ${sinceYear}–now) …`);
-    const ppr = await buildPprIndex(["Dublin", "Kildare"], years, console.log);
+    console.log(`Fetching Property Price Register (Dublin, Kildare, Cork; ${sinceYear}–now) …`);
+    const ppr = await buildPprIndex(["Dublin", "Kildare", "Cork"], years, console.log);
     let matched = 0;
     for (const app of apps) {
       // Eircode first (unique per property, works for apartments), then a
