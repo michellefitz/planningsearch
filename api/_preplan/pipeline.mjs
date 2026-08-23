@@ -652,14 +652,52 @@ export async function* generateReport(input, deps) {
       )
     );
 
-  track("designations", deps.getDesignations(input.lat, input.lng), "designation services did not respond");
-  track("heritage_points", deps.getHeritagePoints(input.lat, input.lng), "heritage services did not respond");
-  track("flood_ground", deps.getFloodGround(input.lat, input.lng), "flood and ground services did not respond");
   track(
-    "precedents",
-    rowsPromise.then((rows) => {
-      if (!rows) throw new Error("rows unavailable");
-      return { items: selectPrecedents(rows.nearby, input.lat, input.lng, input.intent), deep_dives: [] };
+    "site_constraints",
+    Promise.all([
+      deps.getDesignations(input.lat, input.lng),
+      deps.getHeritagePoints(input.lat, input.lng),
+      deps.getFloodGround(input.lat, input.lng),
+    ]).then(([designations, heritage, flood]) => ({ designations, heritage, flood })),
+    "site data services did not respond"
+  );
+
+  const ADDRESS_RADIUS_M = 20;
+  const precedentsPromise = rowsPromise.then((rows) => {
+    if (!rows) throw new Error("rows unavailable");
+    return selectPrecedents(rows.nearby, input.lat, input.lng, input.intent);
+  });
+
+  track(
+    "address_history",
+    precedentsPromise.then((items) => ({
+      items: items.filter((p) => p.distance_m != null && p.distance_m <= ADDRESS_RADIUS_M),
+    })),
+    "the planning register could not be searched"
+  );
+  track(
+    "nearby",
+    precedentsPromise.then((items) => {
+      const nearbyItems = items.filter((p) => p.distance_m == null || p.distance_m > ADDRESS_RADIUS_M);
+      const officerCounts = new Map();
+      for (const p of nearbyItems) {
+        if (p.officer_name) officerCounts.set(p.officer_name, (officerCounts.get(p.officer_name) ?? 0) + 1);
+      }
+      const officers = [...officerCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, count]) => ({ name, count }));
+      const appeals = nearbyItems
+        .filter((p) => p.appeal_reference)
+        .map((p) => ({
+          reference: p.planning_reference,
+          address: p.address_text,
+          description: p.description,
+          status: p.status,
+          appeal_reference: p.appeal_reference,
+        }));
+      const fi_count = nearbyItems.filter((p) => p.further_info_requested_date).length;
+      return { items: nearbyItems, officers, appeals, fi_count, condition_themes: [], deep_dives: [] };
     }),
     "the planning register could not be searched"
   );
@@ -688,9 +726,15 @@ export async function* generateReport(input, deps) {
     yield { type: "section", name: done.name, data: done.data };
   }
 
-  const precedents = sections.precedents;
-  if (Array.isArray(precedents?.items) && precedents.items.length) {
-    const unsummarised = precedents.items.filter((p) => !p.ai_summary && p.description);
+  const addressHistory = sections.address_history;
+  const nearby = sections.nearby;
+  const allPrecedentItems = [
+    ...(Array.isArray(addressHistory?.items) ? addressHistory.items : []),
+    ...(Array.isArray(nearby?.items) ? nearby.items : []),
+  ];
+
+  if (allPrecedentItems.length) {
+    const unsummarised = allPrecedentItems.filter((p) => !p.ai_summary && p.description);
     if (unsummarised.length && deps.summarisePrecedents) {
       yield { type: "progress", step: "Summarising the nearby applications…" };
       try {
@@ -701,13 +745,14 @@ export async function* generateReport(input, deps) {
           const s = summaries?.[p.planning_reference];
           if (typeof s === "string" && s.trim()) p.ai_summary = s.trim();
         }
-        yield { type: "section", name: "precedents", data: precedents };
+        yield { type: "section", name: "address_history", data: addressHistory };
+        yield { type: "section", name: "nearby", data: nearby };
       } catch {
         // Raw descriptions still render; a failed summary batch only costs polish.
       }
     }
     const dives = [];
-    for (const cand of deepDiveCandidates(precedents.items)) {
+    for (const cand of deepDiveCandidates(allPrecedentItems)) {
       yield { type: "progress", step: `Reading the decision documents for ${cand.planning_reference}…` };
       try {
         const read = await deps.readPrecedentDocument(cand, DEEP_DIVE_QUESTION);
@@ -723,9 +768,11 @@ export async function* generateReport(input, deps) {
         // One unreadable document never sinks the report.
       }
     }
-    precedents.deep_dives = dives;
-    sections.precedents = precedents;
-    yield { type: "section", name: "precedents", data: precedents };
+    if (nearby) {
+      nearby.deep_dives = dives;
+      sections.nearby = nearby;
+    }
+    yield { type: "section", name: "nearby", data: nearby };
   }
 
   // Rural housing: only for a proposal to build a house, and only where the
