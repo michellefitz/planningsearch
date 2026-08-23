@@ -80,6 +80,8 @@ export const DESIGNATION_MEANING = {
     "Zone of Archaeological Notification — works here must be notified to the National Monuments Service, and an archaeological assessment may be required.",
   aca: "Architectural Conservation Area — external works that would normally be exempt development usually need permission here, and design standards are higher.",
   rzlt: "This land is on the RZLT Final Map — identified as vacant or idle serviced residential land, liable for the Residential Zoned Land Tax. It signals development potential and may indicate the local authority considers the site underused.",
+  derelict:
+    "This site is on a local authority's statutory Derelict Sites Register (Derelict Sites Act 1990). The council has formally designated it as derelict and may have served notices or levied charges. Adjacent derelict sites are material to a planning application — they affect the character and amenity of the area.",
   flood:
     "Indicative flood extent — a Site-Specific Flood Risk Assessment may be required, and some uses are restricted under the Flood Risk Management Guidelines.",
   groundwater_high:
@@ -328,6 +330,30 @@ export async function getFloodGround(lat, lng, deps) {
   };
 }
 
+// ---------- work-type classifier ----------
+
+export function classifyWorkType(description) {
+  if (!description) return "other";
+  const d = description.toLowerCase();
+  if (/\battic\b.*\b(conver|storage|room|bedroom)|convert.*\battic\b|dormer/.test(d)) return "attic_conversion";
+  if (/\b(extension|extend)\b(?!.*\bduration\b)/i.test(d)) return "extension";
+  if (/\b(new|erect|construct|build)\b.*\b(dwell|house|home|bungalow|apartment|unit)/i.test(d)) return "new_dwelling";
+  if (/\bchange\s+of\s+use\b/i.test(d)) return "change_of_use";
+  if (/\bdemoli/i.test(d)) return "demolition";
+  if (/\bretention\s+of\b/i.test(d)) return "retention";
+  return "other";
+}
+
+export const WORK_TYPE_LABELS = {
+  extension: "Extensions & conversions",
+  attic_conversion: "Attic conversions",
+  new_dwelling: "New dwellings",
+  change_of_use: "Change of use",
+  demolition: "Demolition",
+  retention: "Retention",
+  other: "Other",
+};
+
 // ---------- precedents & stats ----------
 
 const STOPWORDS = new Set([
@@ -379,7 +405,7 @@ export function selectPrecedents(rows, lat, lng, intent, limit = 8) {
     if (distance_m > effectiveRadius) continue;
     const desc = (row.description ?? "").toLowerCase();
     const hits = tokens.filter((t) => desc.includes(t));
-    scored.push({ ...row, distance_m, score: hits.length * 2 + (1 - distance_m / effectiveRadius), keyword_hits: hits });
+    scored.push({ ...row, distance_m, score: hits.length * 2 + (1 - distance_m / effectiveRadius), keyword_hits: hits, work_type: classifyWorkType(row.description) });
   }
   return scored.sort((a, b) => b.score - a.score).slice(0, effectiveLimit);
 }
@@ -569,13 +595,30 @@ export const LOCAL_PLANS = {
   },
 };
 
-export const DEEP_DIVE_QUESTION =
-  "Answer with exactly this structure and nothing else — no preamble, no closing remarks. " +
-  "**Outcome**: one sentence — what was decided and the core reason. " +
-  "**Key conditions**: at most 5 short bullets naming the themes of the conditions imposed, not verbatim " +
-  "clauses; always call out any condition concerning flood risk, heritage/conservation or ground/site " +
-  "conditions specifically. " +
-  "**Refusal reasons**: short bullets — include this heading only if the application was refused or split.";
+export const CONDITION_THEMES_PROMPT = `You are analysing nearby planning applications to extract themes for a pre-planning report.
+
+Given an array of nearby planning applications with their descriptions, decisions, and appeal status, extract:
+
+1. "condition_themes" — the 3-6 most common conditions imposed on grants in this area. Each theme has a short label and specific examples citing the application reference and address.
+
+2. "appeal_details" — for each appealed application: what was proposed, what the council decided, what An Coimisiún Pleanála decided, and what changed.
+
+3. "fi_themes" — common types of Further Information requests (what the council asks for before deciding). Each theme has a label, count, and example applications.
+
+Return valid JSON matching this shape:
+{
+  "condition_themes": [
+    { "theme": "Matching external finishes", "examples": [{ "reference": "062690", "address": "19 Glen Easton Gardens", "summary": "External finishes must match existing dwelling" }] }
+  ],
+  "appeal_details": [
+    { "reference": "24134", "address": "19 Glen Easton Gardens", "proposal": "Attic conversion with rear dormer", "council_decision": "Granted with conditions", "appeal_outcome": "Modified — condition 2 removed", "what_changed": "Board found dormer scale acceptable" }
+  ],
+  "fi_themes": [
+    { "theme": "Shadow/daylight analysis", "count": 2, "examples": [{ "reference": "123", "address": "5 Main St" }] }
+  ]
+}
+
+Only include condition themes with 2+ examples. Be specific — cite actual conditions, not vague categories. If there are no appeals or F.I. requests, return empty arrays for those fields.`;
 
 export const PRECEDENT_SUMMARY_PROMPT = `You are given a JSON array of nearby planning applications, each with a
 planning_reference and a description copied verbatim from an Irish planning register.
@@ -583,30 +626,26 @@ For each one write a 1-2 sentence plain-English summary of what was applied for 
 no legalese, no register boilerplate, no addresses.
 Reply with only a JSON object mapping each planning_reference to its summary. No other text.`;
 
-export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Considerations" section of a planning research report
-for a member of the public in Ireland. You are given a JSON evidence pack gathered
-for their site. If an "intent" is provided, the report is a pre-planning assessment
-for that project; if intent is null, this is a planning history report — summarise
-what has happened at this property.
+export const AT_A_GLANCE_PROMPT = `Write a 2-3 sentence summary of this property's planning context for a professional reader (solicitor, architect, or homeowner).
 
-Rules:
-- Ground every statement in the evidence pack. Never invent designations,
-  precedents or statistics. If a section was unavailable, you may note it was
-  not checked.
-- You are NOT predicting a decision and NOT giving professional advice. Never
-  state or imply a likelihood of permission.
-- When intent is provided, structure as: **Overview** (2-3 sentences: the headline
-  of what this research found for this site and intent), **Site constraints**
-  (what the designations mean for this intent), **What nearby decisions show**
-  (themes from precedents and their documents, cited by planning reference),
-  **Likely condition themes**, **Worth checking before applying**.
-- When intent is null (history report), structure as: **Overview** (2-3 sentences:
-  what the planning record shows for this property), **Planning history**
-  (each application at this address, cited by reference, with outcome and key
-  conditions), **Site context** (designations, flood, heritage), **Implementation
-  status** (commencement, completion, expiry where known).
-- Plain English, no legalese. 350-550 words. Markdown with the bold
-  headings above only.`;
+Sentence 1: What the zoning allows at this location.
+Sentence 2: Any notable constraints — flood risk, heritage designations, RZLT, derelict site status. If none, say so.
+Sentence 3: The pattern of nearby planning decisions — are similar works commonly granted? Any notable refusals or appeals?
+
+Be factual and specific. No advice, no predictions, no caveats. Use plain language.`;
+
+export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Considerations" section of a pre-planning report for a property in Ireland.
+The report already shows site constraints, planning history at the address, nearby precedents grouped by work type, and condition themes with cited examples. Do NOT repeat that information.
+
+Write 200-400 words. Use **bold** headings. Structure:
+
+**What nearby decisions suggest** — what does the pattern of grants, refusals, and appeals mean for someone at this location?
+
+**What to prepare for** — based on condition themes and Further Information patterns, what should an applicant have ready?
+
+If the evidence pack includes an intent, add: **How this relates to the proposed works** — connect the evidence to the stated intent.
+
+Ground every statement in the evidence pack. No generic planning advice.`;
 
 const unavailable = (reason) => ({ unavailable: true, reason });
 
@@ -626,14 +665,52 @@ export async function* generateReport(input, deps) {
       )
     );
 
-  track("designations", deps.getDesignations(input.lat, input.lng), "designation services did not respond");
-  track("heritage_points", deps.getHeritagePoints(input.lat, input.lng), "heritage services did not respond");
-  track("flood_ground", deps.getFloodGround(input.lat, input.lng), "flood and ground services did not respond");
   track(
-    "precedents",
-    rowsPromise.then((rows) => {
-      if (!rows) throw new Error("rows unavailable");
-      return { items: selectPrecedents(rows.nearby, input.lat, input.lng, input.intent), deep_dives: [] };
+    "site_constraints",
+    Promise.all([
+      deps.getDesignations(input.lat, input.lng),
+      deps.getHeritagePoints(input.lat, input.lng),
+      deps.getFloodGround(input.lat, input.lng),
+    ]).then(([designations, heritage, flood]) => ({ designations, heritage, flood })),
+    "site data services did not respond"
+  );
+
+  const ADDRESS_RADIUS_M = 20;
+  const precedentsPromise = rowsPromise.then((rows) => {
+    if (!rows) throw new Error("rows unavailable");
+    return selectPrecedents(rows.nearby, input.lat, input.lng, input.intent);
+  });
+
+  track(
+    "address_history",
+    precedentsPromise.then((items) => ({
+      items: items.filter((p) => p.distance_m != null && p.distance_m <= ADDRESS_RADIUS_M),
+    })),
+    "the planning register could not be searched"
+  );
+  track(
+    "nearby",
+    precedentsPromise.then((items) => {
+      const nearbyItems = items.filter((p) => p.distance_m == null || p.distance_m > ADDRESS_RADIUS_M);
+      const officerCounts = new Map();
+      for (const p of nearbyItems) {
+        if (p.officer_name) officerCounts.set(p.officer_name, (officerCounts.get(p.officer_name) ?? 0) + 1);
+      }
+      const officers = [...officerCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, count]) => ({ name, count }));
+      const appeals = nearbyItems
+        .filter((p) => p.appeal_reference)
+        .map((p) => ({
+          reference: p.planning_reference,
+          address: p.address_text,
+          description: p.description,
+          status: p.status,
+          appeal_reference: p.appeal_reference,
+        }));
+      const fi_count = nearbyItems.filter((p) => p.further_info_requested_date).length;
+      return { items: nearbyItems, officers, appeals, fi_count, condition_themes: [], fi_themes: [] };
     }),
     "the planning register could not be searched"
   );
@@ -662,9 +739,15 @@ export async function* generateReport(input, deps) {
     yield { type: "section", name: done.name, data: done.data };
   }
 
-  const precedents = sections.precedents;
-  if (Array.isArray(precedents?.items) && precedents.items.length) {
-    const unsummarised = precedents.items.filter((p) => !p.ai_summary && p.description);
+  const addressHistory = sections.address_history;
+  const nearby = sections.nearby;
+  const allPrecedentItems = [
+    ...(Array.isArray(addressHistory?.items) ? addressHistory.items : []),
+    ...(Array.isArray(nearby?.items) ? nearby.items : []),
+  ];
+
+  if (allPrecedentItems.length) {
+    const unsummarised = allPrecedentItems.filter((p) => !p.ai_summary && p.description);
     if (unsummarised.length && deps.summarisePrecedents) {
       yield { type: "progress", step: "Summarising the nearby applications…" };
       try {
@@ -675,31 +758,68 @@ export async function* generateReport(input, deps) {
           const s = summaries?.[p.planning_reference];
           if (typeof s === "string" && s.trim()) p.ai_summary = s.trim();
         }
-        yield { type: "section", name: "precedents", data: precedents };
+        yield { type: "section", name: "address_history", data: addressHistory };
+        yield { type: "section", name: "nearby", data: nearby };
       } catch {
         // Raw descriptions still render; a failed summary batch only costs polish.
       }
     }
-    const dives = [];
-    for (const cand of deepDiveCandidates(precedents.items)) {
-      yield { type: "progress", step: `Reading the decision documents for ${cand.planning_reference}…` };
+    if (deps.extractThemes) {
+      yield { type: "progress", step: "Extracting condition themes from nearby decisions…" };
       try {
-        const read = await deps.readPrecedentDocument(cand, DEEP_DIVE_QUESTION);
-        if (read) {
-          dives.push({
-            planning_reference: cand.planning_reference,
-            authority_id: cand.authority_id,
-            document: read.document,
-            extract: read.answer,
-          });
+        const evidencePack = allPrecedentItems
+          .filter((p) => p.status !== "invalid" && p.status !== "incomplete")
+          .map((p) => ({
+            reference: p.planning_reference,
+            address: p.address_text,
+            description: p.ai_summary ?? p.description,
+            status: p.status,
+            decision: p.decision,
+            decision_date: p.decision_date,
+            appeal_reference: p.appeal_reference ?? null,
+            further_info_requested: Boolean(p.further_info_requested_date),
+            officer_name: p.officer_name ?? null,
+          }));
+        const raw = await deps.extractThemes(CONDITION_THEMES_PROMPT, JSON.stringify(evidencePack));
+        if (raw) {
+          const match = raw.match(/\{[\s\S]*\}/);
+          if (match) {
+            const parsed = JSON.parse(match[0]);
+            if (nearby) {
+              if (Array.isArray(parsed.condition_themes)) nearby.condition_themes = parsed.condition_themes;
+              if (Array.isArray(parsed.appeal_details)) nearby.appeals = parsed.appeal_details;
+              if (Array.isArray(parsed.fi_themes)) nearby.fi_themes = parsed.fi_themes;
+              sections.nearby = nearby;
+            }
+          }
         }
       } catch {
-        // One unreadable document never sinks the report.
+        // Theme extraction is additive; the report still works without it.
       }
     }
-    precedents.deep_dives = dives;
-    sections.precedents = precedents;
-    yield { type: "section", name: "precedents", data: precedents };
+    yield { type: "section", name: "nearby", data: nearby };
+  }
+
+  // At a glance: a 2-3 sentence summary from the resolved sections.
+  if (deps.extractThemes) {
+    yield { type: "progress", step: "Writing the at-a-glance summary…" };
+    try {
+      const glancePack = {
+        designations: sections.site_constraints?.designations?.items ?? [],
+        flood: sections.site_constraints?.flood,
+        precedent_count: (sections.address_history?.items?.length ?? 0) +
+          (sections.nearby?.items?.length ?? 0),
+        grant_rate: sections.area_stats?.within_2km?.grant_rate,
+        appeals: sections.nearby?.appeals?.length ?? 0,
+      };
+      const glanceText = await deps.extractThemes(AT_A_GLANCE_PROMPT, JSON.stringify(glancePack));
+      if (glanceText) {
+        sections.at_a_glance = glanceText;
+        yield { type: "section", name: "at_a_glance", data: glanceText };
+      }
+    } catch {
+      // At a glance is additive; the report still works without it.
+    }
   }
 
   // Rural housing: only for a proposal to build a house, and only where the

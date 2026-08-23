@@ -2,7 +2,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { buildToolExecutor } from "../agent/execute.js";
 import { STATUS_LABELS } from "../normalize.js";
 import { callClaude } from "../summarize.js";
 import {
@@ -12,7 +11,7 @@ import {
   type PointDeps,
   type StaticGeojson,
 } from "./point-data.js";
-import { PRECEDENT_RADIUS_M, type PrecedentSourceRow, type ScoredPrecedent } from "./precedents.js";
+import { PRECEDENT_RADIUS_M, type PrecedentSourceRow } from "./precedents.js";
 import { PRECEDENT_SUMMARY_PROMPT, PREPLAN_SYNTHESIS_PROMPT, type ReportDeps } from "./report.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
@@ -38,14 +37,13 @@ async function loadStaticGeojson(name: "aca" | "flood" | "derelict"): Promise<St
 
 const ROW_COLUMNS =
   "id, authority_id, planning_reference, description, ai_summary, source_url, status, decision, " +
-  "decision_date, received_date, address_text, lat, lng, appeal_reference";
+  "decision_date, received_date, address_text, lat, lng, appeal_reference, " +
+  "officer_name, commencement_date, completion_date, further_info_requested_date";
 
 type DbRow = PrecedentSourceRow & { id: number };
 
 export function buildReportDeps(db: Database.Database): ReportDeps {
   const pointDeps: PointDeps = { fetchJson, loadStaticGeojson };
-  const executeTool = buildToolExecutor(db);
-
   return {
     getDesignations: (lat, lng) => getDesignations(lat, lng, pointDeps),
     getHeritagePoints: (lat, lng) => getHeritagePoints(lat, lng, pointDeps),
@@ -75,24 +73,13 @@ export function buildReportDeps(db: Database.Database): ReportDeps {
       return { nearby: nearby.map(label), authority, authority_id: authorityId ?? null };
     },
 
-    async readPrecedentDocument(p: ScoredPrecedent, question: string) {
-      const id = (p as Partial<DbRow>).id;
-      if (!Number.isFinite(id)) return null;
-      const tool = p.appeal_reference ? "read_appeal_document" : "read_document";
-      const input: Record<string, unknown> = { application_id: id, question };
-      if (!p.appeal_reference) input.title = "decision";
-      const result = (await executeTool(tool, input)) as
-        | { document?: string; answer?: string; error?: string }
-        | null;
-      if (!result || result.error || !result.document || !result.answer) return null;
-      return { document: result.document, answer: result.answer };
-    },
-
     async summarisePrecedents(items) {
       const raw = await callClaude(PRECEDENT_SUMMARY_PROMPT, JSON.stringify(items), 1000, 30_000);
       const match = raw?.match(/\{[\s\S]*\}/);
       return match ? (JSON.parse(match[0]) as Record<string, string>) : null;
     },
+
+    extractThemes: (prompt, data) => callClaude(prompt, data, 1500, 45_000),
 
     synthesise: (packJson) => callClaude(PREPLAN_SYNTHESIS_PROMPT, packJson, 900, 60_000),
   };

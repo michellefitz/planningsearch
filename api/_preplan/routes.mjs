@@ -113,14 +113,6 @@ function buildDeps(host, ctx) {
       });
       return { nearby: nearby.map(label), authority, authority_id: authorityId ?? null };
     },
-    async readPrecedentDocument(p, question) {
-      const tool = p.appeal_reference ? "read_appeal_document" : "read_document";
-      const input = { application_id: p.id, question };
-      if (!p.appeal_reference) input.title = "decision";
-      const result = await ctx.executeAgentTool(tool, input);
-      if (!result || result.error || !result.document || !result.answer) return null;
-      return { document: result.document, answer: result.answer };
-    },
     /**
      * Why a refused application was refused, in the council's own words.
      *
@@ -153,6 +145,7 @@ function buildDeps(host, ctx) {
       const match = raw?.match(/\{[\s\S]*\}/);
       return match ? JSON.parse(match[0]) : null;
     },
+    extractThemes: (prompt, data) => ctx.callClaude(prompt, data, 1500, 45000),
     synthesise: (packJson) => ctx.callClaude(PREPLAN_SYNTHESIS_PROMPT, packJson, 900, 60000),
   };
 }

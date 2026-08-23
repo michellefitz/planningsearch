@@ -2,6 +2,7 @@
  * Precedent selection and area statistics for the pre-planner. Pure
  * functions over application rows — no IO, callers supply the rows.
  */
+import { classifyWorkType } from "./classify.js";
 import { haversineMeters } from "./geo.js";
 
 export interface PrecedentSourceRow {
@@ -21,12 +22,17 @@ export interface PrecedentSourceRow {
   lng: number | null;
   appeal_reference?: string | null;
   appeal_decision?: string | null;
+  officer_name?: string | null;
+  commencement_date?: string | null;
+  completion_date?: string | null;
+  further_info_requested_date?: string | null;
 }
 
 export interface ScoredPrecedent extends PrecedentSourceRow {
   distance_m: number;
   score: number;
   keyword_hits: string[];
+  work_type: string;
 }
 
 const STOPWORDS = new Set([
@@ -74,7 +80,7 @@ export function selectPrecedents(
     const distance_m = Math.round(haversineMeters(lat, lng, row.lat, row.lng));
     if (distance_m > PRECEDENT_RADIUS_M) continue;
     const { score, hits } = scorePrecedent(row, tokens, distance_m);
-    scored.push({ ...row, distance_m, score, keyword_hits: hits });
+    scored.push({ ...row, distance_m, score, keyword_hits: hits, work_type: classifyWorkType(row.description ?? "") });
   }
   return scored.sort((a, b) => b.score - a.score).slice(0, limit);
 }
