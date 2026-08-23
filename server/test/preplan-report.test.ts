@@ -35,7 +35,11 @@ function deps(over: Partial<ReportDeps> = {}): ReportDeps {
       authority: [row({})],
       authority_id: "kildare",
     }),
-    readPrecedentDocument: async () => ({ document: "Inspector's report", answer: "Recommended grant." }),
+    extractThemes: async () => JSON.stringify({
+      condition_themes: [{ theme: "Matching finishes", examples: [{ reference: "23/1", address: "Maynooth", summary: "Match existing" }, { reference: "23/2", address: "Maynooth", summary: "Match existing" }] }],
+      appeal_details: [{ reference: "23/2", address: "Maynooth", proposal: "Rear extension", council_decision: "Granted", appeal_outcome: "Upheld", what_changed: "No change" }],
+      fi_themes: [],
+    }),
     synthesise: async () => "**Site constraints**\n\nNone of note.",
     ...over,
   };
@@ -48,11 +52,11 @@ async function collect(d: ReportDeps): Promise<PreplanEvent[]> {
 }
 
 describe("generateReport", () => {
-  it("emits progress, all six sections, narrative, done — in a valid order", async () => {
+  it("emits progress, all sections, narrative, done — in a valid order", async () => {
     const events = await collect(deps());
     expect(events[0]).toMatchObject({ type: "progress" });
     const sectionNames = events.filter((e) => e.type === "section").map((e) => (e as { name: string }).name);
-    for (const name of ["designations", "heritage_points", "flood_ground", "precedents", "area_stats", "local_plan"]) {
+    for (const name of ["site_constraints", "address_history", "nearby", "area_stats", "local_plan"]) {
       expect(sectionNames).toContain(name);
     }
     const last = events[events.length - 1];
@@ -60,12 +64,11 @@ describe("generateReport", () => {
     const done = last as Extract<PreplanEvent, { type: "done" }>;
     expect(done.narrative).toContain("Site constraints");
     expect(Object.keys(done.sections).sort()).toEqual([
+      "address_history",
       "area_stats",
-      "designations",
-      "flood_ground",
-      "heritage_points",
       "local_plan",
-      "precedents",
+      "nearby",
+      "site_constraints",
     ]);
     expect(done.sections.local_plan).toMatchObject({ authority_id: "kildare", url: expect.stringContaining("kildare") });
   });
@@ -80,34 +83,31 @@ describe("generateReport", () => {
     expect(done.sections.local_plan).toMatchObject({ unavailable: true });
   });
 
-  it("attaches deep-dive extracts to the precedents section", async () => {
+  it("attaches condition themes and appeal details to the nearby section", async () => {
     const events = await collect(deps());
     const done = events[events.length - 1] as Extract<PreplanEvent, { type: "done" }>;
-    const prec = done.sections.precedents as { deep_dives: Array<{ extract: string }> };
-    expect(prec.deep_dives.length).toBeGreaterThan(0);
-    expect(prec.deep_dives[0].extract).toBe("Recommended grant.");
-    // Progress mentioned the reference being read.
-    expect(events.some((e) => e.type === "progress" && /Reading the decision documents/.test(e.step))).toBe(true);
+    const nearby = done.sections.nearby as {
+      condition_themes: Array<{ theme: string }>;
+      appeals: Array<{ reference: string }>;
+      fi_themes: unknown[];
+    };
+    expect(nearby.condition_themes.length).toBeGreaterThan(0);
+    expect(nearby.condition_themes[0].theme).toBe("Matching finishes");
+    expect(nearby.appeals).toHaveLength(1);
+    expect(nearby.appeals[0].reference).toBe("23/2");
+    expect(events.some((e) => e.type === "progress" && /Extracting condition themes/.test((e as { step: string }).step))).toBe(true);
   });
 
-  it("caps deep dives at 3 and survives a reader that throws", async () => {
-    const nearby = Array.from({ length: 6 }, (_, i) =>
-      row({ planning_reference: `23/${i}`, description: "rear extension" })
-    );
-    let reads = 0;
+  it("survives a throwing extractThemes gracefully", async () => {
     const events = await collect(
       deps({
-        getRows: async () => ({ nearby, authority: nearby }),
-        readPrecedentDocument: async () => {
-          reads++;
-          if (reads === 2) throw new Error("boom");
-          return { document: "Decision order", answer: "ok" };
-        },
+        extractThemes: async () => { throw new Error("boom"); },
       })
     );
-    expect(reads).toBe(3);
     const done = events[events.length - 1] as Extract<PreplanEvent, { type: "done" }>;
-    expect((done.sections.precedents as { deep_dives: unknown[] }).deep_dives).toHaveLength(2);
+    const nearby = done.sections.nearby as { condition_themes: unknown[] };
+    expect(nearby.condition_themes).toEqual([]);
+    expect(done.type).toBe("done");
   });
 
   it("a rejecting gatherer becomes an unavailable section, not a crash", async () => {
@@ -122,8 +122,8 @@ describe("generateReport", () => {
       })
     );
     const done = events[events.length - 1] as Extract<PreplanEvent, { type: "done" }>;
-    expect(done.sections.designations).toMatchObject({ unavailable: true });
-    expect(done.sections.precedents).toMatchObject({ unavailable: true });
+    expect(done.sections.site_constraints).toMatchObject({ unavailable: true });
+    expect(done.sections.nearby).toMatchObject({ unavailable: true });
     expect(done.sections.area_stats).toMatchObject({ unavailable: true });
   });
 
@@ -135,8 +135,8 @@ describe("generateReport", () => {
       })
     );
     const done = events[events.length - 1] as Extract<PreplanEvent, { type: "done" }>;
-    const prec = done.sections.precedents as { items: Array<{ ai_summary?: string | null }> };
-    expect(prec.items.every((p) => p.ai_summary === "A short summary.")).toBe(true);
+    const nearby = done.sections.nearby as { items: Array<{ ai_summary?: string | null }> };
+    expect(nearby.items.every((p) => p.ai_summary === "A short summary.")).toBe(true);
   });
 
   it("a throwing summariser leaves items untouched and never sinks the report", async () => {
@@ -148,8 +148,8 @@ describe("generateReport", () => {
       })
     );
     const done = events[events.length - 1] as Extract<PreplanEvent, { type: "done" }>;
-    const prec = done.sections.precedents as { items: Array<{ ai_summary?: string | null }> };
-    expect(prec.items.every((p) => p.ai_summary == null)).toBe(true);
+    const nearby = done.sections.nearby as { items: Array<{ ai_summary?: string | null }> };
+    expect(nearby.items.every((p) => p.ai_summary == null)).toBe(true);
     expect(done.type).toBe("done");
   });
 

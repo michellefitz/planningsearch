@@ -595,13 +595,30 @@ export const LOCAL_PLANS = {
   },
 };
 
-export const DEEP_DIVE_QUESTION =
-  "Answer with exactly this structure and nothing else — no preamble, no closing remarks. " +
-  "**Outcome**: one sentence — what was decided and the core reason. " +
-  "**Key conditions**: at most 5 short bullets naming the themes of the conditions imposed, not verbatim " +
-  "clauses; always call out any condition concerning flood risk, heritage/conservation or ground/site " +
-  "conditions specifically. " +
-  "**Refusal reasons**: short bullets — include this heading only if the application was refused or split.";
+export const CONDITION_THEMES_PROMPT = `You are analysing nearby planning applications to extract themes for a pre-planning report.
+
+Given an array of nearby planning applications with their descriptions, decisions, and appeal status, extract:
+
+1. "condition_themes" — the 3-6 most common conditions imposed on grants in this area. Each theme has a short label and specific examples citing the application reference and address.
+
+2. "appeal_details" — for each appealed application: what was proposed, what the council decided, what An Coimisiún Pleanála decided, and what changed.
+
+3. "fi_themes" — common types of Further Information requests (what the council asks for before deciding). Each theme has a label, count, and example applications.
+
+Return valid JSON matching this shape:
+{
+  "condition_themes": [
+    { "theme": "Matching external finishes", "examples": [{ "reference": "062690", "address": "19 Glen Easton Gardens", "summary": "External finishes must match existing dwelling" }] }
+  ],
+  "appeal_details": [
+    { "reference": "24134", "address": "19 Glen Easton Gardens", "proposal": "Attic conversion with rear dormer", "council_decision": "Granted with conditions", "appeal_outcome": "Modified — condition 2 removed", "what_changed": "Board found dormer scale acceptable" }
+  ],
+  "fi_themes": [
+    { "theme": "Shadow/daylight analysis", "count": 2, "examples": [{ "reference": "123", "address": "5 Main St" }] }
+  ]
+}
+
+Only include condition themes with 2+ examples. Be specific — cite actual conditions, not vague categories. If there are no appeals or F.I. requests, return empty arrays for those fields.`;
 
 export const PRECEDENT_SUMMARY_PROMPT = `You are given a JSON array of nearby planning applications, each with a
 planning_reference and a description copied verbatim from an Irish planning register.
@@ -697,7 +714,7 @@ export async function* generateReport(input, deps) {
           appeal_reference: p.appeal_reference,
         }));
       const fi_count = nearbyItems.filter((p) => p.further_info_requested_date).length;
-      return { items: nearbyItems, officers, appeals, fi_count, condition_themes: [], deep_dives: [] };
+      return { items: nearbyItems, officers, appeals, fi_count, condition_themes: [], fi_themes: [] };
     }),
     "the planning register could not be searched"
   );
@@ -751,26 +768,38 @@ export async function* generateReport(input, deps) {
         // Raw descriptions still render; a failed summary batch only costs polish.
       }
     }
-    const dives = [];
-    for (const cand of deepDiveCandidates(allPrecedentItems)) {
-      yield { type: "progress", step: `Reading the decision documents for ${cand.planning_reference}…` };
+    if (deps.extractThemes) {
+      yield { type: "progress", step: "Extracting condition themes from nearby decisions…" };
       try {
-        const read = await deps.readPrecedentDocument(cand, DEEP_DIVE_QUESTION);
-        if (read) {
-          dives.push({
-            planning_reference: cand.planning_reference,
-            authority_id: cand.authority_id,
-            document: read.document,
-            extract: read.answer,
-          });
+        const evidencePack = allPrecedentItems
+          .filter((p) => p.status !== "invalid" && p.status !== "incomplete")
+          .map((p) => ({
+            reference: p.planning_reference,
+            address: p.address_text,
+            description: p.ai_summary ?? p.description,
+            status: p.status,
+            decision: p.decision,
+            decision_date: p.decision_date,
+            appeal_reference: p.appeal_reference ?? null,
+            further_info_requested: Boolean(p.further_info_requested_date),
+            officer_name: p.officer_name ?? null,
+          }));
+        const raw = await deps.extractThemes(CONDITION_THEMES_PROMPT, JSON.stringify(evidencePack));
+        if (raw) {
+          const match = raw.match(/\{[\s\S]*\}/);
+          if (match) {
+            const parsed = JSON.parse(match[0]);
+            if (nearby) {
+              if (Array.isArray(parsed.condition_themes)) nearby.condition_themes = parsed.condition_themes;
+              if (Array.isArray(parsed.appeal_details)) nearby.appeals = parsed.appeal_details;
+              if (Array.isArray(parsed.fi_themes)) nearby.fi_themes = parsed.fi_themes;
+              sections.nearby = nearby;
+            }
+          }
         }
       } catch {
-        // One unreadable document never sinks the report.
+        // Theme extraction is additive; the report still works without it.
       }
-    }
-    if (nearby) {
-      nearby.deep_dives = dives;
-      sections.nearby = nearby;
     }
     yield { type: "section", name: "nearby", data: nearby };
   }
