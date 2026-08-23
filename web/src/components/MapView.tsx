@@ -280,6 +280,55 @@ export default function MapView({
       "top-right"
     );
 
+    const showStackPopup = (m: maplibregl.Map, lngLat: maplibregl.LngLat, features: any[]) => {
+      const seen = new Set<number>();
+      const items: any[] = [];
+      for (const f of features) {
+        const id = f.properties?.id;
+        if (id == null || seen.has(Number(id))) continue;
+        seen.add(Number(id));
+        items.push(f.properties);
+      }
+      if (items.length <= 1) {
+        if (items[0]?.id != null) onSelectRef.current(Number(items[0].id));
+        return;
+      }
+      const rows = items.slice(0, 20).map((p) => {
+        const style = STATUS_STYLE[p.status as keyof typeof STATUS_STYLE];
+        const color = style?.color ?? "#64748b";
+        const letter = style?.letter ?? "?";
+        const ref = escapeHtml(p.reference ?? "");
+        const addr = escapeHtml(
+          ((p.address as string) ?? "").length > 50
+            ? (p.address as string).slice(0, 47) + "…"
+            : (p.address ?? "")
+        );
+        return (
+          `<button class="stack-item" data-id="${p.id}">` +
+          `<span class="stack-dot" style="background:${color}">${letter}</span>` +
+          `<span class="stack-text"><strong>${ref}</strong> ${addr}</span>` +
+          `</button>`
+        );
+      }).join("");
+      const html =
+        `<div class="stack-popup">` +
+        `<div class="stack-title">${items.length} applications here</div>` +
+        `${rows}</div>`;
+      const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "300px" })
+        .setLngLat(lngLat)
+        .setHTML(html)
+        .addTo(m);
+      popup.getElement().addEventListener("click", (ev) => {
+        const btn = (ev.target as HTMLElement).closest(".stack-item") as HTMLElement | null;
+        if (!btn) return;
+        const id = btn.dataset.id;
+        if (id != null) {
+          onSelectRef.current(Number(id));
+          popup.remove();
+        }
+      });
+    };
+
     map.on("load", () => {
       // Constraint overlays first, so application pins always draw on top.
       const zoneColorExpr = [
@@ -604,11 +653,27 @@ export default function MapView({
         const clusterId = feature.properties?.cluster_id;
         const source = map.getSource("apps") as maplibregl.GeoJSONSource;
         const zoom = await source.getClusterExpansionZoom(clusterId);
-        map.easeTo({ center: (feature.geometry as any).coordinates, zoom });
+        if (zoom <= map.getZoom()) {
+          // Cluster can't expand further — show the leaves in a list popup
+          const leaves = await source.getClusterLeaves(clusterId, 20, 0);
+          if (leaves.length === 1) {
+            const id = (leaves[0] as any).properties?.id;
+            if (id != null) onSelectRef.current(Number(id));
+          } else if (leaves.length > 1) {
+            showStackPopup(map, e.lngLat, leaves as any[]);
+          }
+        } else {
+          map.easeTo({ center: (feature.geometry as any).coordinates, zoom });
+        }
       });
       map.on("click", "pins", (e) => {
-        const f = e.features?.[0];
-        if (f?.properties?.id != null) onSelectRef.current(Number(f.properties.id));
+        const hits = map.queryRenderedFeatures(e.point, { layers: ["pins"] });
+        if (hits.length <= 1) {
+          const f = hits[0] ?? e.features?.[0];
+          if (f?.properties?.id != null) onSelectRef.current(Number(f.properties.id));
+        } else {
+          showStackPopup(map, e.lngLat, hits);
+        }
       });
       for (const layer of ["pins", "clusters"]) {
         map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));

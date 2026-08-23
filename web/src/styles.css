@@ -3327,6 +3327,65 @@ a.ov-pop-sub {
   text-decoration: underline;
 }
 
+.stack-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.stack-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-subtle);
+  padding: 0 0 0.2rem;
+}
+
+.stack-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.3rem 0.25rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--ink);
+  width: 100%;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.stack-item:hover {
+  background: var(--bg-hover);
+}
+
+.stack-dot {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 0.08rem;
+}
+
+.stack-text {
+  min-width: 0;
+}
+
+.stack-text strong {
+  font-weight: 600;
+  margin-right: 0.3em;
+}
+
 .legend {
   position: absolute;
   left: 0.6rem;
