@@ -3309,22 +3309,55 @@ export default async function handler(req, res) {
     if (!gKey) return send(res, 503, { error: "Geocoding not configured" });
     const q = p.get("q");
     if (!q || q.trim().length < 3) return send(res, 200, { results: [] });
-    const params = new URLSearchParams({
-      address: q.trim(),
-      components: "country:IE",
-      key: gKey,
-    });
+    const placeId = p.get("placeId");
+    if (placeId) {
+      try {
+        const dRes = await fetch(
+          `https://places.googleapis.com/v1/places/${placeId}?languageCode=en`,
+          {
+            headers: { "X-Goog-Api-Key": gKey, "X-Goog-FieldMask": "location,formattedAddress" },
+            signal: AbortSignal.timeout(5000),
+          }
+        );
+        if (!dRes.ok) return send(res, 200, { results: [] });
+        const place = await dRes.json();
+        const loc = place.location;
+        if (!loc) return send(res, 200, { results: [] });
+        return send(res, 200, {
+          results: [{
+            display: (place.formattedAddress ?? "").replace(/, Ireland$/i, ""),
+            lat: loc.latitude,
+            lng: loc.longitude,
+          }],
+        });
+      } catch {
+        return send(res, 200, { results: [] });
+      }
+    }
     try {
-      const gRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${params}`, {
+      const acRes = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": gKey,
+        },
+        body: JSON.stringify({
+          input: q.trim(),
+          includedRegionCodes: ["ie"],
+          languageCode: "en",
+        }),
         signal: AbortSignal.timeout(5000),
       });
-      if (!gRes.ok) return send(res, 200, { results: [] });
-      const data = await gRes.json();
-      const results = (data.results ?? []).slice(0, 6).map((r) => ({
-        display: (r.formatted_address ?? "").replace(/, Ireland$/i, "").replace(/, Éire$/i, ""),
-        lat: r.geometry?.location?.lat,
-        lng: r.geometry?.location?.lng,
-      })).filter((r) => r.lat != null);
+      if (!acRes.ok) return send(res, 200, { results: [] });
+      const data = await acRes.json();
+      const results = (data.suggestions ?? []).slice(0, 6).map((s) => {
+        const pp = s.placePrediction;
+        if (!pp) return null;
+        return {
+          display: (pp.text?.text ?? "").replace(/, Ireland$/i, ""),
+          placeId: pp.placeId,
+        };
+      }).filter(Boolean);
       return send(res, 200, { results });
     } catch {
       return send(res, 200, { results: [] });

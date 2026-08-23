@@ -88,8 +88,9 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
   const [intent, setIntent] = useState("");
   const [location, setLocation] = useState<PickedLocation | null>(null);
   const [query, setQuery] = useState("");
-  const [matches, setMatches] = useState<Array<{ display: string; lat: number; lng: number }>>([]);
+  const [matches, setMatches] = useState<Array<{ display: string; placeId?: string }>>([]);
   const [searching, setSearching] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchSeq = useRef(0);
@@ -103,8 +104,6 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
     }
     setSearching(true);
     try {
-      const results: Array<{ display: string; lat: number; lng: number }> = [];
-
       const gRes = await fetch(
         `/api/geocode?${new URLSearchParams({ q: trimmed })}`,
         { signal: AbortSignal.timeout(6000) }
@@ -112,20 +111,39 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
       if (seq !== searchSeq.current) return;
       if (gRes.ok) {
         const data = await gRes.json();
-        for (const r of data.results ?? []) {
-          if (r.lat != null && r.lng != null) {
-            results.push({ display: r.display, lat: r.lat, lng: r.lng });
-          }
-        }
+        const results = (data.results ?? [])
+          .filter((r: { display?: string }) => r.display)
+          .slice(0, 6);
+        setMatches(results);
+      } else {
+        setMatches([]);
       }
-
-      if (seq !== searchSeq.current) return;
-      setMatches(results.slice(0, 6));
     } catch {
       if (seq === searchSeq.current) setMatches([]);
     } finally {
       if (seq === searchSeq.current) setSearching(false);
     }
+  }, []);
+
+  const resolvePlace = useCallback(async (match: { display: string; placeId?: string }) => {
+    if (!match.placeId) return;
+    setResolving(true);
+    try {
+      const res = await fetch(
+        `/api/geocode?${new URLSearchParams({ q: match.display, placeId: match.placeId })}`,
+        { signal: AbortSignal.timeout(6000) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const r = data.results?.[0];
+        if (r?.lat != null && r?.lng != null) {
+          setLocation({ lat: r.lat, lng: r.lng, address: r.display || match.display });
+          setMatches([]);
+          return;
+        }
+      }
+    } catch { /* fall through */ }
+    setResolving(false);
   }, []);
 
   useEffect(() => {
@@ -195,21 +213,14 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
             placeholder="Address or Eircode…"
             aria-label="Search an address"
           />
-          {(matches.length > 0 || searching) && query.trim().length >= 3 && (
+          {(matches.length > 0 || searching || resolving) && query.trim().length >= 3 && (
             <ul className="pf-matches">
-              {searching && <li className="pf-searching">Searching…</li>}
+              {(searching || resolving) && <li className="pf-searching">{resolving ? "Locating…" : "Searching…"}</li>}
               {matches.map((m, i) => (
                 <li key={i}>
                   <button
                     type="button"
-                    onClick={() => {
-                      setLocation({
-                        lat: m.lat,
-                        lng: m.lng,
-                        address: m.display,
-                      });
-                      setMatches([]);
-                    }}
+                    onClick={() => resolvePlace(m)}
                   >
                     {m.display}
                   </button>
