@@ -222,7 +222,13 @@ export function buildTimeline(
       steps.push({ label: "Completion certified", date: d.completion_date, state: "done" });
     }
   }
-  return steps;
+  // Steps are built in a fixed logical order, but dates from different sources
+  // (national feed vs conditions endpoint) can arrive out of sequence. Sort
+  // dated steps chronologically while keeping undated ones at the end.
+  const dated = steps.filter((s) => s.date);
+  const undated = steps.filter((s) => !s.date);
+  dated.sort((a, b) => a.date!.localeCompare(b.date!));
+  return [...dated, ...undated];
 }
 
 /**
