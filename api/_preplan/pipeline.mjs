@@ -626,30 +626,26 @@ For each one write a 1-2 sentence plain-English summary of what was applied for 
 no legalese, no register boilerplate, no addresses.
 Reply with only a JSON object mapping each planning_reference to its summary. No other text.`;
 
-export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Considerations" section of a planning research report
-for a member of the public in Ireland. You are given a JSON evidence pack gathered
-for their site. If an "intent" is provided, the report is a pre-planning assessment
-for that project; if intent is null, this is a planning history report — summarise
-what has happened at this property.
+export const AT_A_GLANCE_PROMPT = `Write a 2-3 sentence summary of this property's planning context for a professional reader (solicitor, architect, or homeowner).
 
-Rules:
-- Ground every statement in the evidence pack. Never invent designations,
-  precedents or statistics. If a section was unavailable, you may note it was
-  not checked.
-- You are NOT predicting a decision and NOT giving professional advice. Never
-  state or imply a likelihood of permission.
-- When intent is provided, structure as: **Overview** (2-3 sentences: the headline
-  of what this research found for this site and intent), **Site constraints**
-  (what the designations mean for this intent), **What nearby decisions show**
-  (themes from precedents and their documents, cited by planning reference),
-  **Likely condition themes**, **Worth checking before applying**.
-- When intent is null (history report), structure as: **Overview** (2-3 sentences:
-  what the planning record shows for this property), **Planning history**
-  (each application at this address, cited by reference, with outcome and key
-  conditions), **Site context** (designations, flood, heritage), **Implementation
-  status** (commencement, completion, expiry where known).
-- Plain English, no legalese. 350-550 words. Markdown with the bold
-  headings above only.`;
+Sentence 1: What the zoning allows at this location.
+Sentence 2: Any notable constraints — flood risk, heritage designations, RZLT, derelict site status. If none, say so.
+Sentence 3: The pattern of nearby planning decisions — are similar works commonly granted? Any notable refusals or appeals?
+
+Be factual and specific. No advice, no predictions, no caveats. Use plain language.`;
+
+export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Considerations" section of a pre-planning report for a property in Ireland.
+The report already shows site constraints, planning history at the address, nearby precedents grouped by work type, and condition themes with cited examples. Do NOT repeat that information.
+
+Write 200-400 words. Use **bold** headings. Structure:
+
+**What nearby decisions suggest** — what does the pattern of grants, refusals, and appeals mean for someone at this location?
+
+**What to prepare for** — based on condition themes and Further Information patterns, what should an applicant have ready?
+
+If the evidence pack includes an intent, add: **How this relates to the proposed works** — connect the evidence to the stated intent.
+
+Ground every statement in the evidence pack. No generic planning advice.`;
 
 const unavailable = (reason) => ({ unavailable: true, reason });
 
@@ -802,6 +798,28 @@ export async function* generateReport(input, deps) {
       }
     }
     yield { type: "section", name: "nearby", data: nearby };
+  }
+
+  // At a glance: a 2-3 sentence summary from the resolved sections.
+  if (deps.extractThemes) {
+    yield { type: "progress", step: "Writing the at-a-glance summary…" };
+    try {
+      const glancePack = {
+        designations: sections.site_constraints?.designations?.items ?? [],
+        flood: sections.site_constraints?.flood,
+        precedent_count: (sections.address_history?.items?.length ?? 0) +
+          (sections.nearby?.items?.length ?? 0),
+        grant_rate: sections.area_stats?.within_2km?.grant_rate,
+        appeals: sections.nearby?.appeals?.length ?? 0,
+      };
+      const glanceText = await deps.extractThemes(AT_A_GLANCE_PROMPT, JSON.stringify(glancePack));
+      if (glanceText) {
+        sections.at_a_glance = glanceText;
+        yield { type: "section", name: "at_a_glance", data: glanceText };
+      }
+    } catch {
+      // At a glance is additive; the report still works without it.
+    }
   }
 
   // Rural housing: only for a proposal to build a house, and only where the

@@ -128,26 +128,26 @@ For each one write a 1-2 sentence plain-English summary of what was applied for 
 no legalese, no register boilerplate, no addresses.
 Reply with only a JSON object mapping each planning_reference to its summary. No other text.`;
 
-export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Considerations" section of a pre-planning research report
-for a member of the public in Ireland. You are given a JSON evidence pack gathered
-for their site plus their stated intention.
+export const AT_A_GLANCE_PROMPT = `Write a 2-3 sentence summary of this property's planning context for a professional reader (solicitor, architect, or homeowner).
 
-Rules:
-- Ground every statement in the evidence pack. Never invent designations,
-  precedents or statistics. If a section was unavailable, you may note it was
-  not checked.
-- You are NOT predicting a decision and NOT giving professional advice. Never
-  state or imply a likelihood of permission.
-- Structure: **Overview** (2-3 sentences: the headline of what this research
-  found for this site and intent — a person should get the gist from this
-  alone), **Site constraints** (what the designations mean for this intent),
-  **What nearby decisions show** (themes from precedents and their documents,
-  cited by planning reference), **Likely condition themes**, **Worth checking
-  before applying** (exempt-development thresholds, a pre-planning meeting with
-  the council, and the specific chapters of the local development plan named in
-  the evidence pack that bear on this proposal).
-- Plain English, no legalese. 350-550 words. Markdown with the five bold
-  headings above only.`;
+Sentence 1: What the zoning allows at this location.
+Sentence 2: Any notable constraints — flood risk, heritage designations, RZLT, derelict site status. If none, say so.
+Sentence 3: The pattern of nearby planning decisions — are similar works commonly granted? Any notable refusals or appeals?
+
+Be factual and specific. No advice, no predictions, no caveats. Use plain language.`;
+
+export const PREPLAN_SYNTHESIS_PROMPT = `You are writing the "Considerations" section of a pre-planning report for a property in Ireland.
+The report already shows site constraints, planning history at the address, nearby precedents grouped by work type, and condition themes with cited examples. Do NOT repeat that information.
+
+Write 200-400 words. Use **bold** headings. Structure:
+
+**What nearby decisions suggest** — what does the pattern of grants, refusals, and appeals mean for someone at this location?
+
+**What to prepare for** — based on condition themes and Further Information patterns, what should an applicant have ready?
+
+If the evidence pack includes an intent, add: **How this relates to the proposed works** — connect the evidence to the stated intent.
+
+Ground every statement in the evidence pack. No generic planning advice.`;
 
 const unavailable = (reason: string) => ({ unavailable: true as const, reason });
 
@@ -311,6 +311,28 @@ export async function* generateReport(input: PreplanInput, deps: ReportDeps): As
       }
     }
     yield { type: "section", name: "nearby", data: nearby };
+  }
+
+  // At a glance: a 2-3 sentence summary from the resolved sections.
+  if (deps.extractThemes) {
+    yield { type: "progress", step: "Writing the at-a-glance summary…" };
+    try {
+      const glancePack = {
+        designations: (sections.site_constraints as { designations?: { items?: unknown[] } })?.designations?.items ?? [],
+        flood: (sections.site_constraints as { flood?: unknown })?.flood,
+        precedent_count: ((sections.address_history as { items?: unknown[] })?.items?.length ?? 0) +
+          ((sections.nearby as { items?: unknown[] })?.items?.length ?? 0),
+        grant_rate: (sections.area_stats as { within_2km?: { grant_rate?: number } })?.within_2km?.grant_rate,
+        appeals: (sections.nearby as { appeals?: unknown[] })?.appeals?.length ?? 0,
+      };
+      const glanceText = await deps.extractThemes(AT_A_GLANCE_PROMPT, JSON.stringify(glancePack));
+      if (glanceText) {
+        sections.at_a_glance = glanceText;
+        yield { type: "section", name: "at_a_glance", data: glanceText };
+      }
+    } catch {
+      // At a glance is additive; the report still works without it.
+    }
   }
 
   yield { type: "progress", step: "Writing the considerations…" };
