@@ -102,6 +102,18 @@ After the cards, AI-written **condition themes with cited examples**. State the 
 
 Each theme is a heading the reader can scan, and each example is a specific application they can look up. This gives the specificity a solicitor needs — a thematic summary alone could oversimplify or miss a condition that matters for their particular case.
 
+**Appeals in the area** — explicitly called out as a subsection. For each appeal:
+- Which application, what was proposed, what the council decided
+- Why it was appealed (applicant appeal of refusal/conditions, or third-party appeal of a grant)
+- What An Coimisiun Pleanala decided and why (from the board order summary)
+- What changed — conditions added, removed, or modified
+
+Appeals are the strongest signal of what the council gets wrong in an area and what the Commission considers acceptable. A reader planning similar work needs this front and centre.
+
+**Further Information requests** — themed like conditions. When the council asks for F.I., the request reveals what they're concerned about before they decide. Common F.I. themes in the area (e.g. "shadow analysis requested on 3 of 8 applications", "traffic survey required for change-of-use proposals") help a reader anticipate what their own application will be asked for and prepare it upfront.
+
+**Case officers** — list the officers who handled the most recent nearby decisions (from `officer_name`, baked via the nightly agile harvest). A simple line: "Recent applications in this area were assessed by [Officer A] (4 decisions) and [Officer B] (2 decisions)." This gives the reader an indication of who they may be dealing with. No commentary on individual officers — just the names and counts.
+
 This replaces both the raw precedent list and the "From the decision documents" section.
 
 ### 6. How this area decides (keep as-is)
