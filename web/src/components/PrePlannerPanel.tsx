@@ -8,6 +8,7 @@ import {
   type PreplanReport,
 } from "../preplanApi";
 import ReportView from "./ReportView";
+import { GMAPS_KEY } from "./PropertyMedia";
 import { XIcon } from "./icons";
 import { posthog } from "../posthog";
 
@@ -104,62 +105,46 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
     setSearching(true);
     try {
       const results: Array<{ display: string; lat: number; lng: number }> = [];
+      const gKey = GMAPS_KEY;
 
-      // Photon (Komoot) for address typeahead — better than Nominatim for
-      // house-number-level results and incremental typing.
-      const photonRes = await fetch(
-        `https://photon.komoot.io/api/?${new URLSearchParams({
-          q: trimmed,
-          limit: "6",
-          lang: "en",
-          lat: "53.35",
-          lon: "-6.5",
-        })}`,
-        { signal: AbortSignal.timeout(4000) }
-      );
-      if (seq !== searchSeq.current) return;
-      if (photonRes.ok) {
-        const geo = await photonRes.json();
-        for (const f of geo.features ?? []) {
-          const p = f.properties ?? {};
-          const coords = f.geometry?.coordinates;
-          if (!coords) continue;
-          const country = (p.country ?? "").toLowerCase();
-          if (country && !country.includes("ireland") && !country.includes("éire")) continue;
-          const parts = [
-            [p.housenumber, p.street].filter(Boolean).join(" ") || p.name || "",
-            p.city || p.town || p.village || "",
-            p.county || "",
-          ].filter(Boolean);
-          results.push({ display: parts.join(", "), lat: coords[1], lng: coords[0] });
+      if (gKey) {
+        const gRes = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?${new URLSearchParams({
+            address: trimmed,
+            components: "country:IE",
+            key: gKey,
+          })}`,
+          { signal: AbortSignal.timeout(5000) }
+        );
+        if (seq !== searchSeq.current) return;
+        if (gRes.ok) {
+          const data = await gRes.json();
+          for (const r of data.results ?? []) {
+            const loc = r.geometry?.location;
+            if (!loc) continue;
+            const display = (r.formatted_address ?? "")
+              .replace(/, Ireland$/i, "")
+              .replace(/, Éire$/i, "");
+            results.push({ display, lat: loc.lat, lng: loc.lng });
+          }
         }
-      }
-
-      // Nominatim fallback for Eircodes (Photon doesn't index them).
-      if (results.length === 0 || /^[A-Z]\d{2}\s*[A-Z0-9]{4}$/i.test(trimmed)) {
+      } else {
         const nomRes = await fetch(
           `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
             q: trimmed + ", Ireland",
             format: "json",
-            limit: "4",
+            limit: "6",
             countrycodes: "ie",
-            addressdetails: "1",
           })}`,
           { headers: { "User-Agent": "PlanView/0.1" }, signal: AbortSignal.timeout(4000) }
         );
         if (seq !== searchSeq.current) return;
         if (nomRes.ok) {
-          const data = await nomRes.json();
-          const seen = new Set(results.map((r) => `${r.lat.toFixed(3)},${r.lng.toFixed(3)}`));
-          for (const r of data) {
+          for (const r of await nomRes.json()) {
             if (!r.lat || !r.lon) continue;
-            const key = `${Number(r.lat).toFixed(3)},${Number(r.lon).toFixed(3)}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
             const display = (r.display_name ?? "")
               .replace(/, Ireland$/, "")
-              .replace(/, Éire \/ Ireland$/, "")
-              .replace(/, County.*$/, ", Co. " + (r.display_name?.match(/County (\w+)/)?.[1] ?? ""));
+              .replace(/, Éire \/ Ireland$/, "");
             results.push({ display, lat: Number(r.lat), lng: Number(r.lon) });
           }
         }
