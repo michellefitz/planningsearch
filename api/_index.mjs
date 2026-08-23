@@ -3305,7 +3305,7 @@ export default async function handler(req, res) {
   }
 
   if (route === "/api/geocode") {
-    const gKey = process.env.VITE_GOOGLE_MAPS_KEY;
+    const gKey = process.env.GOOGLE_GEOCODING_KEY ?? process.env.VITE_GOOGLE_MAPS_KEY;
     if (!gKey) return send(res, 503, { error: "Geocoding not configured" });
     const q = p.get("q");
     if (!q || q.trim().length < 3) return send(res, 200, { results: [] });
