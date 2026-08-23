@@ -3304,6 +3304,33 @@ export default async function handler(req, res) {
     return send(res, 200, await fetchOverlay(om[1], bbox));
   }
 
+  if (route === "/api/geocode") {
+    const gKey = process.env.VITE_GOOGLE_MAPS_KEY;
+    if (!gKey) return send(res, 503, { error: "Geocoding not configured" });
+    const q = p.get("q");
+    if (!q || q.trim().length < 3) return send(res, 200, { results: [] });
+    const params = new URLSearchParams({
+      address: q.trim(),
+      components: "country:IE",
+      key: gKey,
+    });
+    try {
+      const gRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${params}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!gRes.ok) return send(res, 200, { results: [] });
+      const data = await gRes.json();
+      const results = (data.results ?? []).slice(0, 6).map((r) => ({
+        display: (r.formatted_address ?? "").replace(/, Ireland$/i, "").replace(/, Éire$/i, ""),
+        lat: r.geometry?.location?.lat,
+        lng: r.geometry?.location?.lng,
+      })).filter((r) => r.lat != null);
+      return send(res, 200, { results });
+    } catch {
+      return send(res, 200, { results: [] });
+    }
+  }
+
   const cm = route.match(/^\/api\/applications\/(\d+)\/conditions$/);
   if (cm) {
     const app = BUNDLE.applications.find((a) => a.id === Number(cm[1]));

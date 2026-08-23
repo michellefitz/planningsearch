@@ -8,7 +8,6 @@ import {
   type PreplanReport,
 } from "../preplanApi";
 import ReportView from "./ReportView";
-import { GMAPS_KEY } from "./PropertyMedia";
 import { XIcon } from "./icons";
 import { posthog } from "../posthog";
 
@@ -105,47 +104,17 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
     setSearching(true);
     try {
       const results: Array<{ display: string; lat: number; lng: number }> = [];
-      const gKey = GMAPS_KEY;
 
-      if (gKey) {
-        const gRes = await fetch(
-          `https://maps.googleapis.com/maps/api/geocode/json?${new URLSearchParams({
-            address: trimmed,
-            components: "country:IE",
-            key: gKey,
-          })}`,
-          { signal: AbortSignal.timeout(5000) }
-        );
-        if (seq !== searchSeq.current) return;
-        if (gRes.ok) {
-          const data = await gRes.json();
-          for (const r of data.results ?? []) {
-            const loc = r.geometry?.location;
-            if (!loc) continue;
-            const display = (r.formatted_address ?? "")
-              .replace(/, Ireland$/i, "")
-              .replace(/, Éire$/i, "");
-            results.push({ display, lat: loc.lat, lng: loc.lng });
-          }
-        }
-      } else {
-        const nomRes = await fetch(
-          `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
-            q: trimmed + ", Ireland",
-            format: "json",
-            limit: "6",
-            countrycodes: "ie",
-          })}`,
-          { headers: { "User-Agent": "PlanView/0.1" }, signal: AbortSignal.timeout(4000) }
-        );
-        if (seq !== searchSeq.current) return;
-        if (nomRes.ok) {
-          for (const r of await nomRes.json()) {
-            if (!r.lat || !r.lon) continue;
-            const display = (r.display_name ?? "")
-              .replace(/, Ireland$/, "")
-              .replace(/, Éire \/ Ireland$/, "");
-            results.push({ display, lat: Number(r.lat), lng: Number(r.lon) });
+      const gRes = await fetch(
+        `/api/geocode?${new URLSearchParams({ q: trimmed })}`,
+        { signal: AbortSignal.timeout(6000) }
+      );
+      if (seq !== searchSeq.current) return;
+      if (gRes.ok) {
+        const data = await gRes.json();
+        for (const r of data.results ?? []) {
+          if (r.lat != null && r.lng != null) {
+            results.push({ display: r.display, lat: r.lat, lng: r.lng });
           }
         }
       }
