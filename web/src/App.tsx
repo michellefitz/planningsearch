@@ -689,7 +689,7 @@ export default function App() {
           About
         </button>
         <nav className="app-nav" aria-label="Account" ref={navRef}>
-          {!authChecked ? null : me?.user ? (
+          {me?.user ? (
             <>
               <button
                 type="button"

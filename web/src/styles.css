@@ -785,6 +785,7 @@ body {
   }
   .app-nav {
     gap: 0.5rem;
+    margin-left: auto;
   }
 
   .nav-links .nav-email {
