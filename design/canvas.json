@@ -1,33 +1,31 @@
 {
+  "pages": [
+    { "id": "page-1", "name": "Direction" },
+    { "id": "page-2", "name": "Options considered" }
+  ],
   "artboards": [
-    { "file": "Today.dc.html",   "x": 0,    "y": 0,    "w": 760, "h": 940 },
-    { "file": "OptionA.dc.html", "x": 840,  "y": 0,    "w": 760, "h": 940 },
-    { "file": "Main.dc.html",    "x": 1680, "y": 0,    "w": 760, "h": 940 },
-    { "file": "OptionC.dc.html", "x": 0,    "y": 1070, "w": 760, "h": 940 },
-    { "file": "OptionD.dc.html", "x": 840,  "y": 1070, "w": 760, "h": 940 }
+    { "file": "Main.dc.html",    "x": 0,    "y": 0, "w": 760, "h": 940, "page": "page-1" },
+    { "file": "Today.dc.html",   "x": 0,    "y": 0, "w": 760, "h": 940, "page": "page-2" },
+    { "file": "OptionA.dc.html", "x": 840,  "y": 0, "w": 760, "h": 940, "page": "page-2" },
+    { "file": "OptionC.dc.html", "x": 1680, "y": 0, "w": 760, "h": 940, "page": "page-2" },
+    { "file": "OptionD.dc.html", "x": 2520, "y": 0, "w": 760, "h": 940, "page": "page-2" }
   ],
   "annotations": [
     {
+      "id": "decision",
+      "x": 840,
+      "y": 0,
+      "w": 520,
+      "text": "Chosen 24 Aug.\n\nThe change that carries the most weight: Ask stops being a peer of Search and becomes a layer over whatever you're on, so it can answer about the list, the area or the report in front of you.\n\nTwo things still to decide, both tracked on the issue:\n\n1. Leaving Search must keep the map's position and filters. Today the map stays mounted behind the dashboard — that behaviour has to hold for every destination, or moving between them gets expensive.\n\n2. Drawing an area alert needs the map, so Alerts can't be a destination that leaves it. Either it borrows the Search surface, or it carries its own map."
+    },
+    {
       "id": "brief",
       "x": 0,
-      "y": -230,
+      "y": -210,
       "w": 760,
-      "text": "Four ways to group Search, Ask, Saved lists, Area alerts, Pre-planning and a new My Account.\n\nRead left to right: where we are today, then four directions, each pulling on a different axis. Pick one and I'll build it out properly."
-    },
-    {
-      "id": "recommend",
-      "x": 1680,
-      "y": -230,
-      "w": 760,
-      "text": "My pick: Option B.\n\nThe move that matters most is in B, C and D — Ask stops being a peer of Search and becomes a layer over whatever you're looking at. B is the smallest structure that gets every feature visible and gives the pre-planning report full width.\n\nOption C is where B goes if the personal side keeps growing."
-    },
-    {
-      "id": "next",
-      "x": 1680,
-      "y": 1070,
-      "w": 760,
-      "text": "Whichever we pick, two things need deciding:\n\n1. Does leaving Search keep the map's position and filters? Today the map stays mounted behind the dashboard — that should hold for every destination.\n\n2. Where does drawing an area alert happen? It needs the map, so it can't be a screen that leaves it."
+      "page": "page-2",
+      "text": "The four directions considered, and today's structure for comparison. Kept for the reasoning, not as live work — the chosen direction is on the Direction page."
     }
   ],
-  "launch": { "view": "canvas" }
+  "launch": { "view": "canvas", "page": "page-1" }
 }
