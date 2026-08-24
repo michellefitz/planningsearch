@@ -152,7 +152,7 @@ export function buildTimeline(
       date: fiRequested,
       state: d.further_info_received_date || decided ? "done" : "current",
     });
-    if (d.further_info_received_date) {
+    if (d.further_info_received_date && d.further_info_received_date !== d.received_date) {
       steps.push({ label: "Further information received", date: d.further_info_received_date, state: "done" });
     }
   }
