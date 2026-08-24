@@ -300,17 +300,11 @@ export default function MapView({
         const letter = style?.letter ?? "?";
         const ref = escapeHtml(p.reference ?? "");
         const date = p.received_date ? escapeHtml(p.received_date.slice(0, 10)) : "";
-        const desc = escapeHtml(
-          ((p.description as string) ?? "").length > 80
-            ? (p.description as string).slice(0, 77) + "…"
-            : (p.description ?? "")
-        );
         return (
           `<button class="stack-item" data-id="${p.id}">` +
           `<span class="stack-dot" style="background:${color}">${letter}</span>` +
           `<span class="stack-text">` +
           `<span class="stack-line"><strong>${ref}</strong>${date ? ` <span class="stack-date">${date}</span>` : ""}</span>` +
-          `<span class="stack-desc">${desc}</span>` +
           `</span>` +
           `</button>`
         );

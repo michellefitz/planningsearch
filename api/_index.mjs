@@ -136,7 +136,7 @@ function squashedHaystack() {
 }
 
 /** Map pins per request — see /api/map/applications. */
-const MAP_FEATURE_LIMIT = 2000;
+const MAP_FEATURE_LIMIT = 1000;
 
 function trigrams(s) {
   const set = new Set();
@@ -3255,10 +3255,7 @@ export default async function handler(req, res) {
             reference: r.planning_reference,
             status: r.status,
             authority_id: r.authority_id,
-            address: r.address_text,
             received_date: r.received_date ?? null,
-            description: r.description ?? null,
-            is_domestic_guess: Boolean(r.is_domestic_guess),
           },
         })),
     });

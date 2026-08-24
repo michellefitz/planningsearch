@@ -3409,16 +3409,6 @@ a.ov-pop-sub {
   white-space: nowrap;
 }
 
-.stack-desc {
-  font-size: 0.68rem;
-  color: var(--ink-subtle);
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
 .legend {
   position: absolute;
   left: 0.6rem;
