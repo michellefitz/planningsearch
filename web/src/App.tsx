@@ -123,9 +123,10 @@ export default function App() {
     window.addEventListener("planview:daily-limit", handler);
     return () => window.removeEventListener("planview:daily-limit", handler);
   }, []);
-  const [mode, setMode] = useState<"search" | "ask" | "account" | "preplan" | "about">(
+  const [mode, setMode] = useState<"search" | "saved" | "alerts" | "preplan" | "about" | "account">(
     window.location.pathname === "/about" ? "about" : "search"
   );
+  const [askOpen, setAskOpen] = useState(false);
   // Mobile only: the layout shows one of map / list at a time (a toggle),
   // rather than squishing both. Ignored at ≥768px, where they sit side by side.
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
@@ -658,48 +659,23 @@ export default function App() {
     null
   );
 
-  /**
-   * Search/Ask. Rendered twice and shown once: in the top bar on a phone,
-   * where the row has space the panel does not, and above the panel at
-   * >=768px. One `mode` drives both, so they cannot disagree.
-   */
-  const modeTabs = (variant: string) => (
-    <div className={`mode-tabs ${variant}`} role="tablist" aria-label="Panel mode">
-      <button
-        type="button"
-        role="tab"
-        aria-selected={mode === "search"}
-        className={mode === "search" ? "tab-active" : ""}
-        onClick={() => setMode("search")}
-      >
-        Search
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={mode === "ask"}
-        className={mode === "ask" ? "tab-active" : ""}
-        onClick={() => setMode("ask")}
-      >
-        Ask
-      </button>
-    </div>
-  );
-
   return (
     <div className="app">
       <header className="app-header">
         <h1>
           PlanView <span className="beta">beta</span>
         </h1>
-        {/* Not while drafting a watch: that mode hides the side panel to leave
-            the map alone with the circle, and these tabs used to live in the
-            panel, so they went with it. Now they are up here they have to be
-            withheld deliberately, or Ask would switch a panel nobody can see. */}
-        {(mode === "search" || mode === "ask") && !watchDraft && modeTabs("mode-tabs-top")}
-        {/* Account lives in the top bar, where a web app puts it — not as a
-            third panel tab. Signing in and the dashboard are app-level
-            destinations, not modes of the search panel. */}
+        <nav className="nav-pills" aria-label="Main navigation">
+          <button type="button" className={`nav-pill${mode === "search" ? " nav-pill-on" : ""}`} onClick={() => setMode("search")}>Search</button>
+          <button type="button" className={`nav-pill${mode === "saved" ? " nav-pill-on" : ""}`} onClick={() => setMode("saved")}>
+            Saved
+            {me?.saves.some((s) => s.has_update) ? <span className="nav-dot" /> : null}
+          </button>
+          <button type="button" className={`nav-pill${mode === "alerts" ? " nav-pill-on" : ""}`} onClick={() => setMode("alerts")}>Alerts</button>
+          <button type="button" className={`nav-pill${mode === "preplan" ? " nav-pill-on" : ""}`} onClick={() => setMode("preplan")}>Pre-planning</button>
+        </nav>
+        <div className="nav-spacer" />
+        <button type="button" className={`nav-pill nav-pill-ask${askOpen ? " nav-pill-on" : ""}`} onClick={() => setAskOpen((o) => !o)}>✦ Ask</button>
         <button
           type="button"
           className="nav-about-link"
@@ -713,11 +689,6 @@ export default function App() {
         <nav className="app-nav" aria-label="Account" ref={navRef}>
           {!authChecked ? null : me?.user ? (
             <>
-              {/* Signed in, the top bar carried four controls — two links, the
-                  email and Sign out — which on a phone left no room for
-                  anything else. They collapse behind one avatar button here;
-                  the wrapper is display:contents at ≥768px, so the desktop bar
-                  keeps the same inline row it always had. */}
               <button
                 type="button"
                 className="nav-avatar"
@@ -727,35 +698,15 @@ export default function App() {
                 onClick={() => setNavOpen((o) => !o)}
               >
                 {me.user.email.slice(0, 1).toUpperCase()}
-                {/* The dot has to survive the collapse, or a saved application
-                    with an update becomes invisible until you go looking. */}
-                {me.saves.some((s) => s.has_update) ? <span className="nav-dot nav-dot-avatar" /> : null}
               </button>
               <div className={`nav-links ${navOpen ? "nav-links-open" : ""}`} role="menu">
                 <button
                   type="button"
                   role="menuitem"
                   className={`nav-link ${mode === "account" ? "nav-link-on" : ""}`}
-                  aria-current={mode === "account" ? "page" : undefined}
-                  onClick={() => {
-                    setNavOpen(false);
-                    setMode("account");
-                  }}
+                  onClick={() => { setNavOpen(false); setMode("account"); }}
                 >
-                  Dashboard
-                  {me.saves.some((s) => s.has_update) ? <span className="nav-dot" /> : null}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={`nav-link ${mode === "preplan" ? "nav-link-on" : ""}`}
-                  aria-current={mode === "preplan" ? "page" : undefined}
-                  onClick={() => {
-                    setNavOpen(false);
-                    setMode("preplan");
-                  }}
-                >
-                  Pre-planner
+                  My account
                 </button>
                 <span className="nav-email" title={me.user.email}>
                   {me.user.email}
@@ -764,10 +715,7 @@ export default function App() {
                   type="button"
                   role="menuitem"
                   className="nav-signout"
-                  onClick={() => {
-                    setNavOpen(false);
-                    signOut();
-                  }}
+                  onClick={() => { setNavOpen(false); signOut(); }}
                 >
                   Sign out
                 </button>
@@ -789,11 +737,9 @@ export default function App() {
           behind it (hidden, not unmounted) so returning keeps its position. */}
       <div
         className={`layout ${mode === "search" && (mobileView === "map" || watchDraft) ? "m-map" : "m-panel"}${panelCollapsed ? " panel-collapsed" : ""}${watchDraft ? " watch-mode" : ""}`}
-        hidden={mode === "account" || mode === "preplan" || mode === "about"}
+        hidden={mode === "account" || mode === "saved" || mode === "alerts" || mode === "preplan" || mode === "about"}
       >
         <div className="side-panel" ref={sidePanelRef}>
-          {modeTabs("mode-tabs-panel")}
-
           <div hidden={mode !== "search"} className="search-wrap">
             <SearchBar
               value={state.q}
@@ -893,12 +839,6 @@ export default function App() {
                 sort={state.sort}
               />
             </div>
-          </div>
-
-          <div hidden={mode !== "ask"} className="chat-wrap">
-            <Suspense>
-              <ChatPanel onSelectApp={select} onHoverApp={setHoveredId} onAppsReferenced={showAgentApps} />
-            </Suspense>
           </div>
 
         </div>
@@ -1230,7 +1170,7 @@ export default function App() {
         </main>
       )}
 
-      {mode === "account" && (
+      {(mode === "account" || mode === "saved" || mode === "alerts") && (
         <main className="account-screen">
           <div className="account-screen-inner">
             <button type="button" className="back-to-map" onClick={() => setMode("search")}>
@@ -1244,8 +1184,6 @@ export default function App() {
               onOpenApp={async (authorityId, reference) => {
                 try {
                   const { id } = await api.resolve(authorityId, reference);
-                  // Stay in account mode: the detail sheet slides over the
-                  // dashboard, and closing it lands back on the register.
                   await select(id);
                 } catch {
                   setError("That application is no longer in the current dataset.");
@@ -1261,13 +1199,31 @@ export default function App() {
                 setWatchNotice(null);
                 setWatchView(w);
                 setMode("search");
-                // Zoom so the whole circle fits: 250 m → 15 down to 2 km → 12.
                 setFlyTo({ lat: w.lat, lng: w.lng, zoom: 15 - Math.log2(w.radius_m / 250) });
               }}
             />
             </Suspense>
           </div>
         </main>
+      )}
+
+      {askOpen && (
+        <>
+          <div className="ask-backdrop" onClick={() => setAskOpen(false)} aria-hidden="true" />
+          <aside className="ask-drawer">
+            <div className="ask-drawer-head">
+              <span className="ask-drawer-title">✦ Ask</span>
+              <button type="button" className="ask-drawer-close" onClick={() => setAskOpen(false)} aria-label="Close">
+                <XIcon size={13} />
+              </button>
+            </div>
+            <div className="chat-wrap">
+              <Suspense>
+                <ChatPanel onSelectApp={select} onHoverApp={setHoveredId} onAppsReferenced={showAgentApps} />
+              </Suspense>
+            </div>
+          </aside>
+        </>
       )}
 
       <footer className="app-footer">
