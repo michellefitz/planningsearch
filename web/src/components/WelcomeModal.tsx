@@ -5,28 +5,40 @@ const DISMISSED_KEY = "planview:welcome-dismissed";
 function DataSourcesIllustration() {
   return (
     <svg viewBox="0 0 320 180" fill="none" className="welcome-illustration" aria-hidden="true">
-      {/* Stacked cards representing different data sources */}
-      <rect x="40" y="90" width="110" height="70" rx="6" fill="#eef0f3" stroke="#dcdee4" />
-      <text x="55" y="113" fontSize="9" fontWeight="600" fill="#5a616e">Flood zones</text>
-      <rect x="50" y="97" width="80" height="4" rx="2" fill="#dcdee4" />
+      {/* Central property card */}
+      <rect x="100" y="50" width="120" height="80" rx="6" fill="white" stroke="#dcdee4" strokeWidth="1.5" />
+      <rect x="112" y="62" width="96" height="10" rx="3" fill="#17191e" opacity="0.8" />
+      <text x="112" y="70" fontSize="8" fontWeight="600" fill="white">124 Sweetmount Ave</text>
+      <rect x="112" y="78" width="60" height="4" rx="2" fill="#dcdee4" />
+      <rect x="112" y="86" width="80" height="4" rx="2" fill="#eef0f3" />
+      <rect x="112" y="94" width="50" height="4" rx="2" fill="#eef0f3" />
+      <circle cx="196" cy="68" r="8" fill="#16a34a" opacity="0.9" />
+      <text x="196" y="71" fontSize="7" fill="white" textAnchor="middle" fontWeight="700">G</text>
 
-      <rect x="105" y="60" width="110" height="70" rx="6" fill="#eaf2fe" stroke="#93c5fd" />
-      <text x="120" y="83" fontSize="9" fontWeight="600" fill="#1e40af">Council portals</text>
-      <rect x="115" y="90" width="70" height="4" rx="2" fill="#93c5fd" />
-      <rect x="115" y="99" width="55" height="4" rx="2" fill="#bfdbfe" />
-      <rect x="115" y="108" width="85" height="4" rx="2" fill="#bfdbfe" />
+      {/* Source labels radiating out */}
+      <rect x="10" y="12" width="90" height="22" rx="11" fill="#eaf2fe" stroke="#93c5fd" />
+      <text x="55" y="26" fontSize="7.5" fill="#1e40af" textAnchor="middle" fontWeight="500">Dublin City Council</text>
+      <line x1="100" y1="33" x2="130" y2="55" stroke="#93c5fd" strokeWidth="1" strokeDasharray="3 2" />
 
-      <rect x="170" y="30" width="110" height="70" rx="6" fill="#f0fdf4" stroke="#86efac" />
-      <text x="185" y="53" fontSize="9" fontWeight="600" fill="#166534">An Bord Pleanála</text>
-      <rect x="180" y="60" width="65" height="4" rx="2" fill="#86efac" />
-      <rect x="180" y="69" width="80" height="4" rx="2" fill="#bbf7d0" />
+      <rect x="120" y="4" width="80" height="22" rx="11" fill="#f0fdf4" stroke="#86efac" />
+      <text x="160" y="18" fontSize="7.5" fill="#166534" textAnchor="middle" fontWeight="500">An Bord Pleanála</text>
+      <line x1="160" y1="26" x2="160" y2="50" stroke="#86efac" strokeWidth="1" strokeDasharray="3 2" />
 
-      {/* Arrow converging */}
-      <path d="M85 155 L160 165" stroke="#949aa6" strokeWidth="1.5" strokeDasharray="3 3" />
-      <path d="M160 95 L160 165" stroke="#949aa6" strokeWidth="1.5" strokeDasharray="3 3" />
-      <path d="M235 95 L160 165" stroke="#949aa6" strokeWidth="1.5" strokeDasharray="3 3" />
-      <circle cx="160" cy="168" r="6" fill="#0b62d6" />
-      <text x="160" y="171" fontSize="7" fill="white" textAnchor="middle" fontWeight="700">P</text>
+      <rect x="220" y="12" width="90" height="22" rx="11" fill="#fef3c7" stroke="#fcd34d" />
+      <text x="265" y="26" fontSize="7.5" fill="#92400e" textAnchor="middle" fontWeight="500">Flood zones</text>
+      <line x1="220" y1="33" x2="195" y2="55" stroke="#fcd34d" strokeWidth="1" strokeDasharray="3 2" />
+
+      <rect x="15" y="140" width="75" height="22" rx="11" fill="#fce7f3" stroke="#f9a8d4" />
+      <text x="52" y="154" fontSize="7.5" fill="#9d174d" textAnchor="middle" fontWeight="500">Price Register</text>
+      <line x1="90" y1="145" x2="120" y2="125" stroke="#f9a8d4" strokeWidth="1" strokeDasharray="3 2" />
+
+      <rect x="120" y="148" width="80" height="22" rx="11" fill="#ede9fe" stroke="#c4b5fd" />
+      <text x="160" y="162" fontSize="7.5" fill="#5b21b6" textAnchor="middle" fontWeight="500">Zoning maps</text>
+      <line x1="160" y1="148" x2="160" y2="130" stroke="#c4b5fd" strokeWidth="1" strokeDasharray="3 2" />
+
+      <rect x="225" y="140" width="85" height="22" rx="11" fill="#f1f5f9" stroke="#cbd5e1" />
+      <text x="267" y="154" fontSize="7.5" fill="#475569" textAnchor="middle" fontWeight="500">Derelict sites</text>
+      <line x1="230" y1="145" x2="200" y2="125" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3 2" />
     </svg>
   );
 }
@@ -34,58 +46,47 @@ function DataSourcesIllustration() {
 function AiSummariesIllustration() {
   return (
     <svg viewBox="0 0 320 180" fill="none" className="welcome-illustration" aria-hidden="true">
-      {/* Document with highlighted summary */}
-      <rect x="70" y="15" width="180" height="150" rx="6" fill="white" stroke="#dcdee4" />
+      {/* Application card */}
+      <rect x="45" y="10" width="230" height="160" rx="6" fill="white" stroke="#dcdee4" />
 
-      {/* Document lines */}
-      <rect x="85" y="32" width="100" height="5" rx="2" fill="#dcdee4" />
-      <rect x="85" y="42" width="150" height="4" rx="2" fill="#eef0f3" />
-      <rect x="85" y="50" width="130" height="4" rx="2" fill="#eef0f3" />
-      <rect x="85" y="58" width="145" height="4" rx="2" fill="#eef0f3" />
+      {/* Header with reference */}
+      <rect x="58" y="22" width="90" height="5" rx="2" fill="#17191e" opacity="0.7" />
+      <rect x="58" y="31" width="140" height="4" rx="2" fill="#dcdee4" />
 
-      {/* AI summary highlight box */}
-      <rect x="82" y="72" width="156" height="50" rx="5" fill="#eaf2fe" stroke="#93c5fd" strokeDasharray="3 2" />
-      <text x="92" y="85" fontSize="7" fontWeight="600" fill="#1e40af" letterSpacing="0.5">AI SUMMARY</text>
-      <rect x="92" y="92" width="130" height="4" rx="2" fill="#60a5fa" opacity="0.5" />
-      <rect x="92" y="100" width="110" height="4" rx="2" fill="#60a5fa" opacity="0.5" />
-      <rect x="92" y="108" width="120" height="4" rx="2" fill="#60a5fa" opacity="0.4" />
+      {/* Summary block */}
+      <rect x="55" y="44" width="210" height="38" rx="5" fill="#eaf2fe" stroke="#93c5fd" strokeDasharray="3 2" />
+      <text x="65" y="55" fontSize="7" fontWeight="600" fill="#1e40af" letterSpacing="0.5">SUMMARY</text>
+      <rect x="65" y="60" width="185" height="3.5" rx="1.5" fill="#60a5fa" opacity="0.4" />
+      <rect x="65" y="67" width="150" height="3.5" rx="1.5" fill="#60a5fa" opacity="0.35" />
+      <rect x="65" y="74" width="170" height="3.5" rx="1.5" fill="#60a5fa" opacity="0.3" />
 
-      {/* More document lines below */}
-      <rect x="85" y="132" width="140" height="4" rx="2" fill="#eef0f3" />
-      <rect x="85" y="140" width="100" height="4" rx="2" fill="#eef0f3" />
-      <rect x="85" y="148" width="125" height="4" rx="2" fill="#eef0f3" />
+      {/* Refusal reason block */}
+      <rect x="55" y="88" width="100" height="28" rx="5" fill="#fef2f2" stroke="#fca5a5" strokeDasharray="3 2" />
+      <text x="65" y="99" fontSize="6.5" fontWeight="600" fill="#b91c1c" letterSpacing="0.4">REFUSAL REASON</text>
+      <rect x="65" y="104" width="75" height="3" rx="1.5" fill="#f87171" opacity="0.35" />
+      <rect x="65" y="110" width="60" height="3" rx="1.5" fill="#f87171" opacity="0.3" />
 
-      {/* Sparkle icon */}
-      <circle cx="248" cy="30" r="14" fill="#eaf2fe" />
-      <path d="M248 20 L250 26 L256 28 L250 30 L248 36 L246 30 L240 28 L246 26 Z" fill="#0b62d6" />
-    </svg>
-  );
-}
+      {/* Conditions block */}
+      <rect x="163" y="88" width="100" height="28" rx="5" fill="#f0fdf4" stroke="#86efac" strokeDasharray="3 2" />
+      <text x="173" y="99" fontSize="6.5" fontWeight="600" fill="#166534" letterSpacing="0.4">CONDITIONS</text>
+      <rect x="173" y="104" width="75" height="3" rx="1.5" fill="#4ade80" opacity="0.4" />
+      <rect x="173" y="110" width="55" height="3" rx="1.5" fill="#4ade80" opacity="0.35" />
 
-function SpeedIllustration() {
-  return (
-    <svg viewBox="0 0 320 180" fill="none" className="welcome-illustration" aria-hidden="true">
-      {/* Search bar */}
-      <rect x="50" y="20" width="220" height="32" rx="16" fill="white" stroke="#dcdee4" />
-      <circle cx="72" cy="36" r="7" stroke="#949aa6" strokeWidth="1.5" fill="none" />
-      <line x1="77" y1="41" x2="80" y2="44" stroke="#949aa6" strokeWidth="1.5" strokeLinecap="round" />
-      <text x="90" y="40" fontSize="10" fill="#949aa6">124 Sweetmount Ave, Dundrum</text>
+      {/* FI request block */}
+      <rect x="55" y="122" width="100" height="28" rx="5" fill="#fef3c7" stroke="#fcd34d" strokeDasharray="3 2" />
+      <text x="65" y="133" fontSize="6.5" fontWeight="600" fill="#92400e" letterSpacing="0.4">FURTHER INFO</text>
+      <rect x="65" y="138" width="75" height="3" rx="1.5" fill="#fbbf24" opacity="0.4" />
+      <rect x="65" y="144" width="60" height="3" rx="1.5" fill="#fbbf24" opacity="0.35" />
 
-      {/* Instant result card */}
-      <rect x="60" y="60" width="200" height="44" rx="5" fill="white" stroke="#dcdee4" />
-      <circle cx="76" cy="76" r="6" fill="#16a34a" />
-      <text x="76" y="79" fontSize="7" fill="white" textAnchor="middle" fontWeight="700">G</text>
-      <rect x="88" y="70" width="100" height="5" rx="2" fill="#17191e" />
-      <rect x="88" y="80" width="155" height="4" rx="2" fill="#dcdee4" />
-      <rect x="88" y="89" width="80" height="4" rx="2" fill="#eef0f3" />
+      {/* Appeal block */}
+      <rect x="163" y="122" width="100" height="28" rx="5" fill="#ede9fe" stroke="#c4b5fd" strokeDasharray="3 2" />
+      <text x="173" y="133" fontSize="6.5" fontWeight="600" fill="#5b21b6" letterSpacing="0.4">APPEAL</text>
+      <rect x="173" y="138" width="75" height="3" rx="1.5" fill="#a78bfa" opacity="0.4" />
+      <rect x="173" y="144" width="55" height="3" rx="1.5" fill="#a78bfa" opacity="0.35" />
 
-      {/* Bell / alert */}
-      <rect x="60" y="118" width="200" height="44" rx="5" fill="#f0fdf4" stroke="#86efac" />
-      <path d="M82 140 C82 133 86 128 92 128 C98 128 102 133 102 140 L82 140 Z" fill="#16a34a" opacity="0.7" />
-      <circle cx="92" cy="126" r="2" fill="#16a34a" />
-      <line x1="87" y1="142" x2="97" y2="142" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" />
-      <text x="112" y="135" fontSize="8" fontWeight="600" fill="#166534">Status updated</text>
-      <text x="112" y="147" fontSize="8" fill="#5a616e">SD22B/0354 — Granted</text>
+      {/* Sparkle */}
+      <circle cx="262" cy="22" r="12" fill="#eaf2fe" />
+      <path d="M262 14 L263.5 19 L268 20.5 L263.5 22 L262 27 L260.5 22 L256 20.5 L260.5 19 Z" fill="#0b62d6" />
     </svg>
   );
 }
@@ -94,25 +95,62 @@ const STEPS = [
   {
     illustration: DataSourcesIllustration,
     title: "All planning data in one place",
-    body: "PlanView pulls together data from council portals, An Bord Pleanála, the national planning register, property sales, flood zones, zoning maps, and derelict sites. You get the full picture for any location without switching between sites.",
+    body: "We pull together multiple council and national data sources so you get the full picture for any property, all on one screen.",
   },
   {
     illustration: AiSummariesIllustration,
     title: "Understand applications in seconds",
-    body: "Every application gets AI-generated summaries of what's proposed, why it was refused, what further information was requested, notable conditions, and appeal outcomes. You can scan and understand without opening a single document.",
+    body: "AI-generated plain-English summaries of every application, so you can scan and understand without opening a single document.",
   },
   {
-    illustration: SpeedIllustration,
+    illustration: null,
     title: "Find it fast, stay informed",
-    body: "Search by address, area, or keyword and see results instantly on the map. Save applications to track them, watch an area for new activity, and get email alerts when something changes. No more logging in to check.",
+    body: null,
+    features: [
+      {
+        icon: "search",
+        title: "Search",
+        desc: "Find applications instantly by address, area, or keyword",
+      },
+      {
+        icon: "star",
+        title: "Save",
+        desc: "Save applications and track them over time",
+      },
+      {
+        icon: "bell",
+        title: "Alerts",
+        desc: "Watch an area and get emailed when something changes",
+      },
+    ],
   },
 ];
+
+function FeatureIcon({ type }: { type: string }) {
+  if (type === "search") return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="9" cy="9" r="6" stroke="#0b62d6" strokeWidth="1.8" />
+      <line x1="13.5" y1="13.5" x2="17" y2="17" stroke="#0b62d6" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+  if (type === "star") return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M10 2.5l2.2 4.5 5 .7-3.6 3.5.85 5-4.45-2.3L5.55 16.2l.85-5L2.8 7.7l5-.7L10 2.5z" fill="#0b62d6" />
+    </svg>
+  );
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M10 2C7.5 2 5.5 4 5.5 6.5c0 3 4.5 8 4.5 8s4.5-5 4.5-8C14.5 4 12.5 2 10 2z" fill="none" stroke="#0b62d6" strokeWidth="1.5" />
+      <path d="M7 14.5C6 15 5.5 15.5 5.5 16c0 1 2 2 4.5 2s4.5-1 4.5-2c0-.5-.5-1-1.5-1.5" stroke="#0b62d6" strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="10" cy="6.5" r="1.5" fill="#0b62d6" />
+    </svg>
+  );
+}
 
 export function WelcomeModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(0);
   const isLast = step === STEPS.length - 1;
   const current = STEPS[step];
-  const Illustration = current.illustration;
 
   return (
     <div className="welcome-backdrop" onClick={onClose}>
@@ -129,9 +167,22 @@ export function WelcomeModal({ onClose }: { onClose: () => void }) {
         </button>
 
         <div className="welcome-slide" key={step}>
-          <Illustration />
+          {current.illustration && <current.illustration />}
           <h2>{current.title}</h2>
-          <p>{current.body}</p>
+          {current.body && <p>{current.body}</p>}
+          {current.features && (
+            <div className="welcome-features">
+              {current.features.map((f) => (
+                <div key={f.icon} className="welcome-feature">
+                  <span className="welcome-feature-icon"><FeatureIcon type={f.icon} /></span>
+                  <div>
+                    <strong>{f.title}</strong>
+                    <span>{f.desc}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="welcome-footer">
