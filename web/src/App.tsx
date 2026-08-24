@@ -663,7 +663,9 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>
-          PlanView <span className="beta">beta</span>
+          <button type="button" className="brand-home" onClick={() => { setMode("search"); if (window.location.pathname !== "/") history.pushState(null, "", "/"); }}>
+            PlanView <span className="beta">beta</span>
+          </button>
         </h1>
         <nav className="nav-pills" aria-label="Main navigation">
           <button type="button" className={`nav-pill${mode === "search" ? " nav-pill-on" : ""}`} onClick={() => setMode("search")}>Search</button>
@@ -700,6 +702,17 @@ export default function App() {
                 {me.user.email.slice(0, 1).toUpperCase()}
               </button>
               <div className={`nav-links ${navOpen ? "nav-links-open" : ""}`} role="menu">
+                {/* Mobile: nav destinations inside the menu */}
+                <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "search" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("search"); }}>Search</button>
+                <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "saved" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("saved"); }}>
+                  Saved
+                  {me.saves.some((s) => s.has_update) ? <span className="nav-dot" /> : null}
+                </button>
+                <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "alerts" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("alerts"); }}>Alerts</button>
+                <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Pre-planning</button>
+                <button type="button" role="menuitem" className={`nav-link nav-link-mobile${askOpen ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setAskOpen((o) => !o); }}>✦ Ask</button>
+                <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setMode("about"); history.pushState(null, "", "/about"); }}>About</button>
+                <div className="nav-menu-divider" />
                 <button
                   type="button"
                   role="menuitem"
@@ -722,13 +735,39 @@ export default function App() {
               </div>
             </>
           ) : (
-            <button
-              type="button"
-              className="btn btn-primary nav-signin"
-              onClick={() => setMode("account")}
-            >
-              Sign in
-            </button>
+            <>
+              <button
+                type="button"
+                className="nav-hamburger"
+                aria-expanded={navOpen}
+                aria-haspopup="menu"
+                aria-label="Menu"
+                onClick={() => setNavOpen((o) => !o)}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <line x1="3" y1="5" x2="15" y2="5" /><line x1="3" y1="9" x2="15" y2="9" /><line x1="3" y1="13" x2="15" y2="13" />
+                </svg>
+              </button>
+              {navOpen && (
+                <div className="nav-links nav-links-open" role="menu">
+                  <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "search" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("search"); }}>Search</button>
+                  <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "saved" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("saved"); }}>Saved</button>
+                  <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "alerts" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("alerts"); }}>Alerts</button>
+                  <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Pre-planning</button>
+                  <button type="button" role="menuitem" className={`nav-link nav-link-mobile${askOpen ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setAskOpen((o) => !o); }}>✦ Ask</button>
+                  <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setMode("about"); history.pushState(null, "", "/about"); }}>About</button>
+                  <div className="nav-menu-divider" />
+                  <button type="button" role="menuitem" className="nav-link" onClick={() => { setNavOpen(false); setMode("account"); }}>Sign in</button>
+                </div>
+              )}
+              <button
+                type="button"
+                className="btn btn-primary nav-signin"
+                onClick={() => setMode("account")}
+              >
+                Sign in
+              </button>
+            </>
           )}
         </nav>
       </header>

@@ -176,6 +176,16 @@ body {
 
 /* ---------- Top-level navigation pills ---------- */
 
+.brand-home {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
 .nav-pills {
   display: flex;
   align-items: center;
@@ -275,6 +285,30 @@ body {
 
 .nav-links-open {
   display: flex;
+}
+
+.nav-link-mobile { display: none; }
+.nav-menu-divider { display: none; }
+.nav-hamburger { display: none; }
+
+@media (max-width: 767px) {
+  .nav-link-mobile { display: block; }
+  .nav-menu-divider {
+    display: block;
+    height: 1px;
+    background: var(--line);
+    margin: 0.2rem 0.4rem;
+  }
+  .nav-hamburger {
+    display: inline-grid;
+    place-items: center;
+    border: 0;
+    background: none;
+    color: var(--ink-2);
+    cursor: pointer;
+    padding: 0.25rem;
+  }
+  .nav-signin { display: none; }
 }
 
 .nav-links .nav-link,
@@ -739,20 +773,10 @@ body {
   .app-header .beta {
     display: none;
   }
-  .nav-pills {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    flex-shrink: 1;
-    min-width: 0;
-  }
-  .nav-pills::-webkit-scrollbar { display: none; }
-  .nav-pill {
-    font-size: 0.76rem;
-    padding: 0.25rem 0.55rem;
-  }
+  .nav-pills { display: none; }
+  .nav-spacer { display: none; }
+  .app-header > .nav-pill-ask { display: none; }
   .nav-about-link { display: none; }
-  .nav-pill-ask { font-size: 0.76rem; padding: 0.25rem 0.55rem; }
   .ask-drawer { width: 100vw; }
   /* The data-source footer is dropped to reclaim vertical space (attribution
      still shows on every application's detail sheet). */
