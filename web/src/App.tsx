@@ -28,6 +28,7 @@ import {
 } from "./accountApi";
 import { WatchKindPicker } from "./components/WatchKindPicker";
 import type { AgentAppRef } from "./agentApi";
+import { XIcon } from "./components/icons";
 import { AboutPage } from "./components/AboutPage";
 import { coverageSummary } from "./coverage";
 import { posthog } from "./posthog";
@@ -85,6 +86,7 @@ export default function App() {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AppDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const hadSkeletonRef = useRef(false);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number; avoidSheet?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dailyLimit, setDailyLimit] = useState<string | null>(null);
@@ -156,6 +158,7 @@ export default function App() {
     // Closing the sheet returns to the previous address, so Back and the close
     // button agree with each other.
     if (parseAppPath(window.location.pathname)) history.pushState(null, "", "/");
+    hadSkeletonRef.current = false;
     if (window.matchMedia("(max-width: 767px)").matches) {
       setDetail(null);
       setDetailLoading(false);
@@ -419,6 +422,7 @@ export default function App() {
     const seq = ++selectSeqRef.current;
     setSelectedId(id);
     setDetailLoading(true);
+    hadSkeletonRef.current = true;
     try {
       const d = await api.detail(id);
       if (selectSeqRef.current !== seq) return;
@@ -1252,17 +1256,40 @@ export default function App() {
             onClick={closeSheet}
             aria-hidden="true"
           />
-          <Suspense>
-            <DetailPanel
-              detail={detail}
-              meta={meta}
-              closing={sheetClosing}
-              onClose={closeSheet}
-              onSelectRelated={select}
-              saved={detail ? savedByKey.has(saveKey(detail.authority_id, detail.planning_reference)) : false}
-              onToggleSave={detail ? () => toggleSave(detail.authority_id, detail.planning_reference) : () => {}}
-            />
-          </Suspense>
+          {detail ? (
+            <Suspense>
+              <DetailPanel
+                detail={detail}
+                meta={meta}
+                closing={sheetClosing}
+                onClose={closeSheet}
+                onSelectRelated={select}
+                saved={savedByKey.has(saveKey(detail.authority_id, detail.planning_reference))}
+                onToggleSave={() => toggleSave(detail.authority_id, detail.planning_reference)}
+                skipEntrance={hadSkeletonRef.current}
+              />
+            </Suspense>
+          ) : (
+            <aside className={`detail-sheet${sheetClosing ? " sheet-closing" : ""}`}>
+              <div className="sheet-top">
+                <div className="sheet-status" />
+                <div className="sheet-actions">
+                  <button type="button" className="sheet-close" onClick={closeSheet} aria-label="Close"><XIcon size={13} /></button>
+                </div>
+              </div>
+              <div className="skeleton-panel">
+                <div className="skeleton-line skeleton-title" />
+                <div className="skeleton-line skeleton-subtitle" />
+                <div className="skeleton-row"><div className="skeleton-chip" /><div className="skeleton-chip" /><div className="skeleton-chip" /></div>
+                <div className="skeleton-line" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line skeleton-short" />
+                <div className="skeleton-divider" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line skeleton-short" />
+              </div>
+            </aside>
+          )}
         </>
       )}
     </div>

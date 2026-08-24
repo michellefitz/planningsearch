@@ -2281,6 +2281,10 @@ body {
   transform: translateX(100%);
 }
 
+.detail-sheet.sheet-no-anim {
+  animation: none;
+}
+
 @keyframes sheet-in {
   from {
     transform: translateX(100%);

@@ -41,13 +41,14 @@ import { point as turfPoint } from "@turf/helpers";
  */
 
 interface Props {
-  detail: AppDetail | null;
+  detail: AppDetail;
   meta: Meta | null;
   onClose: () => void;
   onSelectRelated: (id: number) => void;
   saved: boolean;
   onToggleSave: () => void;
   closing?: boolean;
+  skipEntrance?: boolean;
 }
 
 interface TimelineStep {
@@ -2393,35 +2394,8 @@ function useScrollAnchor(ref: React.RefObject<HTMLElement | null>) {
   }, [ref]);
 }
 
-export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated, saved, onToggleSave, closing }: Props) {
+export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated, saved, onToggleSave, closing, skipEntrance }: Props) {
   const isMobile = useIsMobile();
-
-  if (!d) {
-    return (
-      <aside className={`detail-sheet${isMobile ? " sheet-mobile" : ""}${closing ? " sheet-closing" : ""}`}>
-        <div className="sheet-top">
-          <div className="sheet-status" />
-          <div className="sheet-actions">
-            <button type="button" className="sheet-close" onClick={onClose} aria-label="Close">
-              <XIcon size={13} />
-            </button>
-          </div>
-        </div>
-        <div className="skeleton-panel">
-          <div className="skeleton-line skeleton-title" />
-          <div className="skeleton-line skeleton-subtitle" />
-          <div className="skeleton-row"><div className="skeleton-chip" /><div className="skeleton-chip" /><div className="skeleton-chip" /></div>
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-          <div className="skeleton-line skeleton-short" />
-          <div className="skeleton-divider" />
-          <div className="skeleton-line" />
-          <div className="skeleton-line skeleton-short" />
-        </div>
-      </aside>
-    );
-  }
-
   const glossary = meta?.glossary ?? {};
   const isEplanning =
     meta?.authorities.find((a) => a.id === d.authority_id)?.source_system === "eplanning";
@@ -2993,7 +2967,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
   return (
     <aside
       ref={sheetRef}
-      className={`detail-sheet ${isMobile ? "sheet-mobile" : ""}${closing ? " sheet-closing" : ""}`}
+      className={`detail-sheet ${isMobile ? "sheet-mobile" : ""}${closing ? " sheet-closing" : ""}${skipEntrance ? " sheet-no-anim" : ""}`}
       aria-label={`Application ${d.planning_reference}`}
       role="dialog"
     >
