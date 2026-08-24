@@ -2592,6 +2592,58 @@ body {
   color: var(--ink);
 }
 
+/* ---------- Detail skeleton (shown while loading) ---------- */
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.skeleton-panel {
+  padding-top: 1rem;
+}
+
+.skeleton-line {
+  height: 0.75rem;
+  background: var(--surface-3);
+  border-radius: var(--r-sm);
+  margin-bottom: 0.75rem;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-title {
+  height: 1.1rem;
+  width: 70%;
+  margin-bottom: 0.5rem;
+}
+
+.skeleton-subtitle {
+  width: 45%;
+  margin-bottom: 1.25rem;
+}
+
+.skeleton-short { width: 35%; }
+
+.skeleton-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.skeleton-chip {
+  height: 1.5rem;
+  width: 5rem;
+  background: var(--surface-3);
+  border-radius: var(--r-pill);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 1.25rem 0;
+}
+
 .detail-sheet section {
   border-top: 1px solid var(--line);
   padding: 1rem 0;

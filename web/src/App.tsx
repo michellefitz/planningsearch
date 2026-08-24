@@ -84,6 +84,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AppDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number; avoidSheet?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dailyLimit, setDailyLimit] = useState<string | null>(null);
@@ -157,6 +158,7 @@ export default function App() {
     if (parseAppPath(window.location.pathname)) history.pushState(null, "", "/");
     if (window.matchMedia("(max-width: 767px)").matches) {
       setDetail(null);
+      setDetailLoading(false);
       setSelectedId(null);
       return;
     }
@@ -165,6 +167,7 @@ export default function App() {
       sheetCloseTimer.current = null;
       setSheetClosing(false);
       setDetail(null);
+      setDetailLoading(false);
       setSelectedId(null);
     }, 240);
   }, []);
@@ -415,9 +418,11 @@ export default function App() {
     }
     const seq = ++selectSeqRef.current;
     setSelectedId(id);
+    setDetailLoading(true);
     try {
       const d = await api.detail(id);
       if (selectSeqRef.current !== seq) return;
+      setDetailLoading(false);
       posthog.capture("application_viewed", {
         authority_id: d.authority_id,
         application_type: d.application_type,
@@ -434,7 +439,10 @@ export default function App() {
         accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
       }
     } catch {
-      if (selectSeqRef.current === seq) setError("Could not load that application.");
+      if (selectSeqRef.current === seq) {
+        setDetailLoading(false);
+        setError("Could not load that application.");
+      }
     }
   }, [savedByKey, refreshMe]);
 
@@ -547,6 +555,7 @@ export default function App() {
       if (!target) {
         setMode("search");
         setDetail(null);
+        setDetailLoading(false);
         setSelectedId(null);
         return;
       }
@@ -1236,24 +1245,43 @@ export default function App() {
         </span>
       </footer>
 
-      {detail && (
+      {(detail || detailLoading) && (
         <>
           <div
             className={`sheet-backdrop${sheetClosing ? " sheet-closing" : ""}`}
             onClick={closeSheet}
             aria-hidden="true"
           />
-          <Suspense>
-            <DetailPanel
-              detail={detail}
-              meta={meta}
-              closing={sheetClosing}
-              onClose={closeSheet}
-              onSelectRelated={select}
-              saved={savedByKey.has(saveKey(detail.authority_id, detail.planning_reference))}
-              onToggleSave={() => toggleSave(detail.authority_id, detail.planning_reference)}
-            />
-          </Suspense>
+          {detail ? (
+            <Suspense>
+              <DetailPanel
+                detail={detail}
+                meta={meta}
+                closing={sheetClosing}
+                onClose={closeSheet}
+                onSelectRelated={select}
+                saved={savedByKey.has(saveKey(detail.authority_id, detail.planning_reference))}
+                onToggleSave={() => toggleSave(detail.authority_id, detail.planning_reference)}
+              />
+            </Suspense>
+          ) : (
+            <aside className={`detail-sheet${sheetClosing ? " sheet-closing" : ""}`}>
+              <div className="detail-sheet-inner">
+                <button type="button" className="sheet-close" onClick={closeSheet} aria-label="Close">×</button>
+                <div className="skeleton-panel">
+                  <div className="skeleton-line skeleton-title" />
+                  <div className="skeleton-line skeleton-subtitle" />
+                  <div className="skeleton-row"><div className="skeleton-chip" /><div className="skeleton-chip" /><div className="skeleton-chip" /></div>
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line skeleton-short" />
+                  <div className="skeleton-divider" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line skeleton-short" />
+                </div>
+              </div>
+            </aside>
+          )}
         </>
       )}
     </div>
