@@ -1883,7 +1883,17 @@ async function summariseDescription(description, applicationType, trace) {
   // is a different failure from the model never answering, and used to look
   // identical from outside.
   if (raw && !text) trace?.push({ step: "summarise", error: "reply rejected by isUsableSummary" });
-  if (text) AI_SUMMARY_CACHE.set(description, text);
+  if (text) {
+    AI_SUMMARY_CACHE.set(description, text);
+    const hash = descriptionKey(description);
+    if (hash && process.env.DATABASE_URL) {
+      sql(
+        `insert into description_summaries (description_hash, summary, model)
+         values ($1, $2, $3) on conflict (description_hash) do nothing`,
+        [hash, text, "claude-haiku-4-5"]
+      ).catch(() => {});
+    }
+  }
   return text;
 }
 
