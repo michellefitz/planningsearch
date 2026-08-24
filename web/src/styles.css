@@ -6001,3 +6001,84 @@ p.loading-line {
 .reg-undo button:hover { text-decoration: underline; }
 
 .reg-undo-error { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+
+/* ---------- About page ---------- */
+
+.nav-about-link {
+  all: unset;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  cursor: pointer;
+  margin-left: auto;
+}
+.nav-about-link:hover { color: var(--ink); }
+
+.about-page {
+  max-width: 640px;
+  margin: 1.5rem auto 0;
+}
+
+.about-page h2 {
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 0.75rem;
+}
+
+.about-page h3 {
+  font-size: 1rem;
+  font-weight: 620;
+  color: var(--ink);
+  margin: 1.75rem 0 0.5rem;
+}
+
+.about-page p {
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin: 0 0 0.75rem;
+}
+
+.about-page ul {
+  padding-left: 1.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.about-page li {
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin-bottom: 0.5rem;
+}
+
+.about-page li strong {
+  color: var(--ink);
+  font-weight: 580;
+}
+
+.about-cta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.about-cta-note {
+  font-size: 0.82rem;
+  color: var(--ink-3);
+}
+
+.about-footer {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.82rem;
+  color: var(--ink-3);
+}
+
+.about-footer a {
+  color: var(--action);
+  text-decoration: none;
+}
+.about-footer a:hover { text-decoration: underline; }

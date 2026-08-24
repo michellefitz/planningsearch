@@ -28,6 +28,7 @@ import {
 } from "./accountApi";
 import { WatchKindPicker } from "./components/WatchKindPicker";
 import type { AgentAppRef } from "./agentApi";
+import { AboutPage } from "./components/AboutPage";
 import { coverageSummary } from "./coverage";
 import { posthog } from "./posthog";
 
@@ -91,7 +92,9 @@ export default function App() {
     window.addEventListener("planview:daily-limit", handler);
     return () => window.removeEventListener("planview:daily-limit", handler);
   }, []);
-  const [mode, setMode] = useState<"search" | "ask" | "account" | "preplan">("search");
+  const [mode, setMode] = useState<"search" | "ask" | "account" | "preplan" | "about">(
+    window.location.pathname === "/about" ? "about" : "search"
+  );
   // Mobile only: the layout shows one of map / list at a time (a toggle),
   // rather than squishing both. Ignored at ≥768px, where they sit side by side.
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
@@ -536,8 +539,13 @@ export default function App() {
   // Back/forward between an open application and the map.
   useEffect(() => {
     const onPop = async () => {
+      if (window.location.pathname === "/about") {
+        setMode("about");
+        return;
+      }
       const target = parseAppPath(window.location.pathname);
       if (!target) {
+        setMode("search");
         setDetail(null);
         setSelectedId(null);
         return;
@@ -651,6 +659,16 @@ export default function App() {
         {/* Account lives in the top bar, where a web app puts it — not as a
             third panel tab. Signing in and the dashboard are app-level
             destinations, not modes of the search panel. */}
+        <button
+          type="button"
+          className="nav-about-link"
+          onClick={() => {
+            setMode("about");
+            history.pushState(null, "", "/about");
+          }}
+        >
+          About
+        </button>
         <nav className="app-nav" aria-label="Account" ref={navRef}>
           {!authChecked ? null : me?.user ? (
             <>
@@ -730,7 +748,7 @@ export default function App() {
           behind it (hidden, not unmounted) so returning keeps its position. */}
       <div
         className={`layout ${mode === "search" && (mobileView === "map" || watchDraft) ? "m-map" : "m-panel"}${panelCollapsed ? " panel-collapsed" : ""}${watchDraft ? " watch-mode" : ""}`}
-        hidden={mode === "account" || mode === "preplan"}
+        hidden={mode === "account" || mode === "preplan" || mode === "about"}
       >
         <div className="side-panel" ref={sidePanelRef}>
           {modeTabs("mode-tabs-panel")}
@@ -1130,6 +1148,23 @@ export default function App() {
           </button>
         )}
       </div>
+
+      {mode === "about" && (
+        <main className="account-screen about-screen">
+          <div className="account-screen-inner">
+            <button type="button" className="back-to-map" onClick={() => {
+              setMode("search");
+              history.pushState(null, "", "/");
+            }}>
+              ← Back to map
+            </button>
+            <AboutPage onGetStarted={() => {
+              setMode("account");
+              history.pushState(null, "", "/");
+            }} />
+          </div>
+        </main>
+      )}
 
       {mode === "preplan" && (
         <main className="account-screen preplan-screen">
