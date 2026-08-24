@@ -41,7 +41,7 @@ import { point as turfPoint } from "@turf/helpers";
  */
 
 interface Props {
-  detail: AppDetail;
+  detail: AppDetail | null;
   meta: Meta | null;
   onClose: () => void;
   onSelectRelated: (id: number) => void;
@@ -2394,8 +2394,35 @@ function useScrollAnchor(ref: React.RefObject<HTMLElement | null>) {
 }
 
 export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated, saved, onToggleSave, closing }: Props) {
-  const glossary = meta?.glossary ?? {};
   const isMobile = useIsMobile();
+
+  if (!d) {
+    return (
+      <aside className={`detail-sheet${isMobile ? " sheet-mobile" : ""}${closing ? " sheet-closing" : ""}`}>
+        <div className="sheet-top">
+          <div className="sheet-status" />
+          <div className="sheet-actions">
+            <button type="button" className="sheet-close" onClick={onClose} aria-label="Close">
+              <XIcon size={13} />
+            </button>
+          </div>
+        </div>
+        <div className="skeleton-panel">
+          <div className="skeleton-line skeleton-title" />
+          <div className="skeleton-line skeleton-subtitle" />
+          <div className="skeleton-row"><div className="skeleton-chip" /><div className="skeleton-chip" /><div className="skeleton-chip" /></div>
+          <div className="skeleton-line" />
+          <div className="skeleton-line" />
+          <div className="skeleton-line skeleton-short" />
+          <div className="skeleton-divider" />
+          <div className="skeleton-line" />
+          <div className="skeleton-line skeleton-short" />
+        </div>
+      </aside>
+    );
+  }
+
+  const glossary = meta?.glossary ?? {};
   const isEplanning =
     meta?.authorities.find((a) => a.id === d.authority_id)?.source_system === "eplanning";
   // Kildare's list arrives from the council rather than from address matching,
