@@ -29,6 +29,7 @@ import {
 import { WatchKindPicker } from "./components/WatchKindPicker";
 import type { AgentAppRef } from "./agentApi";
 import { XIcon } from "./components/icons";
+import { SHEET_PEEK_FRACTION } from "./sheetMetrics";
 import { WelcomeModal, shouldShowWelcome, dismissWelcome } from "./components/WelcomeModal";
 import { AboutPage } from "./components/AboutPage";
 import { coverageSummary } from "./coverage";
@@ -61,7 +62,7 @@ function SkeletonSheet({ closing, onClose }: { closing: boolean; onClose: () => 
   const mobile = window.matchMedia("(max-width: 767px)").matches;
   return (
     <aside className={`detail-sheet${mobile ? " sheet-mobile" : ""}${closing ? " sheet-closing" : ""}`}
-      style={mobile ? { transform: "translateY(30%)" } : undefined}
+      style={mobile ? { transform: `translateY(${Math.round(window.innerHeight * SHEET_PEEK_FRACTION)}px)` } : undefined}
     >
       {mobile && <div className="sheet-grabber" aria-hidden="true"><span className="grabber-bar" /></div>}
       <div className="sheet-top">
@@ -203,7 +204,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    api.meta().then(setMeta).catch(() => setError("Taking a moment to connect. Try refreshing if this persists."));
+    api.meta().then(setMeta).catch(() => {});
   }, []);
 
   const runSearch = useCallback(
@@ -248,7 +249,7 @@ export default function App() {
             setFlyTo({ lat: r.lat, lng: r.lng, zoom: 14 });
         }
       } catch {
-        if (seq === searchSeq.current) setError("Search didn't return results. Try again in a moment.");
+        if (seq === searchSeq.current) setLoading(false);
       } finally {
         if (seq === searchSeq.current) setLoading(false);
       }
@@ -1102,7 +1103,6 @@ export default function App() {
           {(loading || pinsLoading) && (
             <div className="map-busy" role="status">
               <span className="map-busy-bar" aria-hidden="true" />
-              {!mapData && <span className="map-busy-label">Finding applications…</span>}
             </div>
           )}
           {/* A map that quietly stops drawing pins reads as "there's nothing
@@ -1124,6 +1124,20 @@ export default function App() {
             </p>
           )}
           <div className={`legend ${legendOpen ? "legend-open" : ""}`} aria-label="Map legend">
+            {legendOpen && (
+              <div className="legend-items">
+                {Object.entries(STATUS_STYLE)
+                  .filter(([k]) => k !== "unknown")
+                  .map(([key, s]) => (
+                    <span key={key} className="legend-item" title={s.hint}>
+                      <span className="legend-pin" style={{ background: s.color }} aria-hidden="true">
+                        {s.letter}
+                      </span>
+                      {s.label}
+                    </span>
+                  ))}
+              </div>
+            )}
             <button
               type="button"
               className="legend-toggle"
@@ -1132,18 +1146,6 @@ export default function App() {
             >
               Key
             </button>
-            <div className="legend-items">
-              {Object.entries(STATUS_STYLE)
-                .filter(([k]) => k !== "unknown")
-                .map(([key, s]) => (
-                  <span key={key} className="legend-item" title={s.hint}>
-                    <span className="legend-pin" style={{ background: s.color }} aria-hidden="true">
-                      {s.letter}
-                    </span>
-                    {s.label}
-                  </span>
-                ))}
-            </div>
           </div>
         </div>
 

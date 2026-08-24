@@ -14,7 +14,7 @@
 
 /** Where the mobile sheet settles at its "peek" height, as a fraction of the
  *  viewport from the top. It covers everything below that. */
-export const SHEET_PEEK_FRACTION = 0.44;
+export const SHEET_PEEK_FRACTION = 0.30;
 
 /**
  * How far to shift the camera, in pixels, so a point lands in the centre of the

@@ -590,6 +590,8 @@ body {
   }
   .panel-controls .filters-wrap {
     grid-area: filters;
+    align-self: start;
+    padding-top: 0.15rem;
   }
   .panel-controls .applied-row {
     grid-area: chips;
@@ -905,7 +907,7 @@ body {
      offset is --overlay-h, published by a ResizeObserver on the floating panel,
      because that height changes as the controls wrap. */
   .layout.m-map .maplibregl-ctrl-top-right {
-    top: var(--overlay-h, 6rem);
+    top: calc(var(--overlay-h, 6rem) - 0.4rem);
     right: 0;
   }
   .layout.m-map .maplibregl-ctrl-top-left {
@@ -3478,12 +3480,13 @@ a.ov-pop-sub {
 }
 
 .legend-items {
-  display: none;
+  display: flex;
   flex-wrap: wrap;
   gap: 0.35rem 0.75rem;
   font-size: 0.7rem;
   font-weight: 450;
   color: var(--ink-2);
+  margin-bottom: 0.35rem;
 }
 
 .legend-toggle {
@@ -3513,11 +3516,7 @@ a.ov-pop-sub {
 }
 
 .legend.legend-open .legend-toggle {
-  margin-bottom: 0.35rem;
-}
-
-.legend.legend-open .legend-items {
-  display: flex;
+  margin-bottom: 0;
 }
 
 /* Floating "search this area" prompt, shown after a user pan/zoom. */
