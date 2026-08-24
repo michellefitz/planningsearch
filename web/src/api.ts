@@ -360,7 +360,17 @@ async function getJson<T>(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+    if (!res.ok) {
+      if (res.status === 429) {
+        try {
+          const body = await res.json();
+          if (body.error === "daily_limit") {
+            window.dispatchEvent(new CustomEvent("planview:daily-limit", { detail: body.message }));
+          }
+        } catch {}
+      }
+      throw new Error(`${url}: HTTP ${res.status}`);
+    }
     return (await res.json()) as T;
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") throw new TimedOut(url, timeoutMs);

@@ -3185,6 +3185,16 @@ body {
   font-size: 0.82rem;
 }
 
+.daily-limit-banner {
+  font-size: 0.8rem;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: var(--r-sm);
+  padding: 0.5rem 0.75rem;
+  margin: 0.25rem 0;
+}
+
 /* ---------- Map legend ---------- */
 
 /* Overlay toggles, top-left of the map */

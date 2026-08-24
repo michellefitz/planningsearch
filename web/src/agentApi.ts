@@ -33,7 +33,18 @@ export async function streamAgent(
     body: JSON.stringify({ messages }),
     signal,
   });
-  if (!res.ok || !res.body) throw new Error(`agent request failed (${res.status})`);
+  if (!res.ok) {
+    if (res.status === 429) {
+      try {
+        const body = await res.json();
+        if (body.error === "daily_limit") {
+          window.dispatchEvent(new CustomEvent("planview:daily-limit", { detail: body.message }));
+        }
+      } catch {}
+    }
+    throw new Error(`agent request failed (${res.status})`);
+  }
+  if (!res.body) throw new Error(`agent request failed (no body)`);
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = "";

@@ -85,6 +85,12 @@ export default function App() {
   const [detail, setDetail] = useState<AppDetail | null>(null);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number; avoidSheet?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dailyLimit, setDailyLimit] = useState<string | null>(null);
+  useEffect(() => {
+    const handler = (e: Event) => setDailyLimit((e as CustomEvent).detail);
+    window.addEventListener("planview:daily-limit", handler);
+    return () => window.removeEventListener("planview:daily-limit", handler);
+  }, []);
   const [mode, setMode] = useState<"search" | "ask" | "account" | "preplan">("search");
   // Mobile only: the layout shows one of map / list at a time (a toggle),
   // rather than squishing both. Ignored at ≥768px, where they sit side by side.
@@ -749,6 +755,11 @@ export default function App() {
             {error && (
               <p className="error" role="alert">
                 {error}
+              </p>
+            )}
+            {dailyLimit && (
+              <p className="daily-limit-banner" role="status">
+                {dailyLimit}
               </p>
             )}
             {/* Filters and the map/list toggle share one line on mobile, where

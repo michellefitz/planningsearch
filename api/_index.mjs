@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleAccountRoute, isAccountRoute } from "./_accounts/routes.mjs";
+import { sql } from "./_accounts/db.mjs";
 import { handlePreplanRoute, isPreplanRoute } from "./_preplan/routes.mjs";
 import { conditionHighlights, HIGHLIGHTS_PROMPT } from "./_conditions/highlights.mjs";
 import { conditionTitles, TITLES_PROMPT, untitledItems } from "./_conditions/titles.mjs";
@@ -1786,6 +1787,71 @@ function aiRateOk() {
   return ++aiRateCount <= AI_RATE_MAX;
 }
 
+const DAILY_IP_LIMIT = 200;
+const DAILY_GLOBAL_LIMIT = 2000;
+let dailyCapTableReady = false;
+
+async function ensureDailyCapTable() {
+  if (dailyCapTableReady) return;
+  try {
+    await sql(`create table if not exists ai_usage (
+      ip text not null,
+      day date not null,
+      count integer not null default 0,
+      primary key (ip, day)
+    )`);
+    dailyCapTableReady = true;
+  } catch { /* best-effort — don't block requests if Neon is down */ }
+}
+
+async function dailyAiCapOk(ip) {
+  try {
+    await ensureDailyCapTable();
+    const today = new Date().toISOString().slice(0, 10);
+    await sql(
+      `insert into ai_usage (ip, day, count) values ($1, $2, 1)
+       on conflict (ip, day) do update set count = ai_usage.count + 1`,
+      [ip, today]
+    );
+    const [ipRow] = await sql(
+      `select count from ai_usage where ip = $1 and day = $2`,
+      [ip, today]
+    );
+    if (ipRow && ipRow.count > DAILY_IP_LIMIT) return { ok: false, reason: "ip" };
+    const [globalRow] = await sql(
+      `select coalesce(sum(count), 0) as total from ai_usage where day = $1`,
+      [today]
+    );
+    if (globalRow && globalRow.total > DAILY_GLOBAL_LIMIT) return { ok: false, reason: "global" };
+    return { ok: true };
+  } catch {
+    return { ok: true };
+  }
+}
+
+function clientIp(req) {
+  return (req.headers?.["x-forwarded-for"] ?? req.socket?.remoteAddress ?? "").split(",")[0].trim();
+}
+
+async function aiDailyCapCheck(req, res) {
+  if (!aiRateOk()) {
+    send(res, 429, { error: "Too many AI requests — try again shortly." });
+    return false;
+  }
+  const ip = clientIp(req);
+  const cap = await dailyAiCapOk(ip);
+  if (!cap.ok) {
+    send(res, 429, {
+      error: "daily_limit",
+      message: cap.reason === "ip"
+        ? "You've reached the daily limit for AI features. Check back tomorrow."
+        : "The daily limit for AI features has been reached. Check back tomorrow.",
+    });
+    return false;
+  }
+  return true;
+}
+
 async function summariseDescription(description, applicationType, trace) {
   if (!description) {
     trace?.push({ step: "summarise", error: "no description to summarise" });
@@ -3018,6 +3084,7 @@ async function handleAgentRoute(req, res) {
   if (req.method !== "POST") return send(res, 405, { error: "POST only" });
   const ip = (req.headers["x-forwarded-for"] ?? req.socket?.remoteAddress ?? "").split(",")[0].trim();
   if (!agentRateOk(ip)) return send(res, 429, { error: "Rate limit exceeded — try again later." });
+  if (!(await aiDailyCapCheck(req, res))) return;
   const body = await readJsonBody(req);
   if (!body) return send(res, 400, { error: "Invalid or oversized request body" });
   const messages = (body?.messages ?? [])
@@ -3692,7 +3759,7 @@ const readableReason = (doc, content) => {
           findFurtherInfoDocIndex(fs, app.further_info_requested_date)
         )),
       });
-    if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
+    if (!(await aiDailyCapCheck(req, res))) return;
     const files = await fetchScannedFileList(listUrl);
     // The register's own record of when it asked — on Dublin City that is the
     // only thing separating the request from the decision, since both are
@@ -3779,7 +3846,7 @@ const readableReason = (doc, content) => {
     }
     const cached = APPEAL_SUMMARY_CACHE.get(app.id);
     if (cached) return send(res, 200, { supported: true, ...cached });
-    if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
+    if (!(await aiDailyCapCheck(req, res))) return;
 
     const trace = debug ? [] : undefined;
     const details = await fetchAppealCase(caseUrl, trace);
@@ -3922,7 +3989,7 @@ const readableReason = (doc, content) => {
     }
     const cached = DECISION_SUMMARY_CACHE.get(app.id);
     if (cached) return send(res, 200, { supported: true, ...cached });
-    if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
+    if (!(await aiDailyCapCheck(req, res))) return;
     const trace = debug ? [] : undefined;
     const files = await fetchScannedFileList(listUrl, trace);
     const index = files ? findDecisionDocIndex(files, app.decision) : -1;
@@ -4137,7 +4204,7 @@ const readableReason = (doc, content) => {
   if (em) {
     const app = BUNDLE.applications.find((a) => a.id === Number(em[1]));
     if (!app) return send(res, 404, { error: "Application not found" });
-    if (!aiRateOk()) return send(res, 429, { error: "Too many AI requests — try again shortly." });
+    if (!(await aiDailyCapCheck(req, res))) return;
 
     let description = app.description ?? null;
     let parties = { applicant: null, agent: null };
