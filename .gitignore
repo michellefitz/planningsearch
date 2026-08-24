@@ -17,3 +17,8 @@ api/_data/
 
 # Raw flood data (large shapefiles, re-downloadable via scripts/flood/download.sh)
 scripts/flood/data/
+
+# Seeded design canvases — 2 MB of editor payload each, rebuilt from the
+# .dc.html sources beside them (see design/README.md)
+design/*-canvas.html
+design/planview-*.html

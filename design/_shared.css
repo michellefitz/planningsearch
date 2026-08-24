@@ -1,0 +1,65 @@
+:root{--ink:#17191e;--ink2:#5a616e;--ink3:#949aa6;--line:#ebecf0;--line2:#dcdee4;
+--surface:#fff;--s2:#f7f8fa;--s3:#eef0f3;--brand:#17456e;--action:#0b62d6;--tint:#eaf2fe;
+--warn:#8a5a00;--warn-bg:#fdf5e6}
+*{box-sizing:border-box}
+body{margin:0;background:var(--s2);color:var(--ink);
+font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+font-size:14px;line-height:1.5;letter-spacing:-0.006em;-webkit-font-smoothing:antialiased}
+a{color:var(--action)}a:hover{color:#084a9f}
+.sheet{display:flex;flex-direction:column;gap:22px;padding:30px}
+.eyebrow{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:650;
+letter-spacing:.08em;text-transform:uppercase;color:var(--action)}
+.eyebrow .dot{width:5px;height:5px;border-radius:999px;background:var(--action)}
+h1{margin:6px 0 0;font-size:23px;font-weight:650;letter-spacing:-.02em;text-wrap:balance}
+.axis{margin:5px 0 0;font-size:13.5px;color:var(--ink2);max-width:62ch}
+.label{font-size:10.5px;font-weight:650;letter-spacing:.075em;text-transform:uppercase;
+color:var(--ink3);margin-bottom:9px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+/* chrome wireframe */
+.bar{display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--surface);
+border:1px solid var(--line2);border-radius:7px 7px 0 0;border-bottom:0}
+.brand{font-size:12.5px;font-weight:650;color:var(--brand);letter-spacing:-.015em}
+.pill{padding:4px 10px;border-radius:999px;font-size:11.5px;font-weight:550;
+background:var(--s3);color:var(--ink2);white-space:nowrap}
+.pill.on{background:var(--tint);color:var(--action)}
+.pill.ghost{background:none;border:1px dashed var(--line2);color:var(--ink3)}
+.seg{display:inline-flex;gap:2px;padding:3px;background:var(--s2);
+border:1px solid var(--line);border-radius:7px}
+.seg span{padding:3px 10px;border-radius:5px;font-size:11.5px;font-weight:550;color:var(--ink2)}
+.seg span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.spacer{flex:1}
+.avatar{width:22px;height:22px;border-radius:999px;background:var(--brand);color:#fff;
+font-size:10.5px;font-weight:650;display:flex;align-items:center;justify-content:center}
+.subbar{display:flex;align-items:center;gap:8px;padding:7px 11px;background:var(--s2);
+border:1px solid var(--line2);border-top:1px dashed var(--line2);border-bottom:0}
+.body{display:flex;border:1px solid var(--line2);border-radius:0 0 7px 7px;overflow:hidden;height:132px}
+.panel{width:36%;background:var(--surface);border-right:1px solid var(--line);
+padding:10px;display:flex;flex-direction:column;gap:6px}
+.map{flex:1;background:
+linear-gradient(90deg,rgba(0,0,0,.035) 1px,transparent 1px) 0 0/26px 26px,
+linear-gradient(180deg,rgba(0,0,0,.035) 1px,transparent 1px) 0 0/26px 26px,var(--s3);
+display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink3)}
+.doc{flex:1;background:var(--surface);padding:11px;display:flex;flex-direction:column;gap:6px}
+.ln{height:7px;border-radius:3px;background:var(--s3)}
+.ln.w40{width:40%}.ln.w60{width:60%}.ln.w75{width:75%}.ln.w90{width:90%}
+.note{font-size:11.5px;color:var(--ink3);margin-top:7px}
+/* tree */
+.tree{display:flex;flex-direction:column;gap:3px;font-size:13px}
+.tier{display:flex;flex-direction:column;gap:3px;margin-left:15px;padding-left:13px;
+border-left:1px solid var(--line2)}
+.node{display:flex;align-items:baseline;gap:8px;padding:3px 0}
+.node b{font-weight:600}
+.node .tag{font-size:10.5px;font-weight:600;letter-spacing:.03em;padding:1px 6px;
+border-radius:999px;background:var(--s3);color:var(--ink2)}
+.node .tag.new{background:var(--tint);color:var(--action)}
+.node .tag.layer{background:#efeaf9;color:#5b3fa8}
+.node small{color:var(--ink3);font-size:12px}
+/* verdict */
+.verdict{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.vbox{border:1px solid var(--line);border-radius:8px;padding:11px 12px;background:var(--surface)}
+.vbox .h{font-size:10.5px;font-weight:650;letter-spacing:.075em;text-transform:uppercase;
+margin-bottom:5px}
+.vbox p{margin:0;font-size:12.5px;color:var(--ink2);line-height:1.45}
+.vbox.good .h{color:#1d6b3f}.vbox.bad .h{color:#9a4b1c}
+.flag{display:flex;gap:9px;align-items:flex-start;background:var(--warn-bg);
+border:1px solid #f0e2c4;border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--warn)}

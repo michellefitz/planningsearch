@@ -1,0 +1,33 @@
+{
+  "artboards": [
+    { "file": "Today.dc.html",   "x": 0,    "y": 0,    "w": 760, "h": 940 },
+    { "file": "OptionA.dc.html", "x": 840,  "y": 0,    "w": 760, "h": 940 },
+    { "file": "Main.dc.html",    "x": 1680, "y": 0,    "w": 760, "h": 940 },
+    { "file": "OptionC.dc.html", "x": 0,    "y": 1070, "w": 760, "h": 940 },
+    { "file": "OptionD.dc.html", "x": 840,  "y": 1070, "w": 760, "h": 940 }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -230,
+      "w": 760,
+      "text": "Four ways to group Search, Ask, Saved lists, Area alerts, Pre-planning and a new My Account.\n\nRead left to right: where we are today, then four directions, each pulling on a different axis. Pick one and I'll build it out properly."
+    },
+    {
+      "id": "recommend",
+      "x": 1680,
+      "y": -230,
+      "w": 760,
+      "text": "My pick: Option B.\n\nThe move that matters most is in B, C and D — Ask stops being a peer of Search and becomes a layer over whatever you're looking at. B is the smallest structure that gets every feature visible and gives the pre-planning report full width.\n\nOption C is where B goes if the personal side keeps growing."
+    },
+    {
+      "id": "next",
+      "x": 1680,
+      "y": 1070,
+      "w": 760,
+      "text": "Whichever we pick, two things need deciding:\n\n1. Does leaving Search keep the map's position and filters? Today the map stays mounted behind the dashboard — that should hold for every destination.\n\n2. Where does drawing an area alert happen? It needs the map, so it can't be a screen that leaves it."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
