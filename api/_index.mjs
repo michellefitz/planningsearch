@@ -4161,6 +4161,22 @@ const readableReason = (doc, content) => {
               received_date: a.received_date,
               decision_date: a.decision_date,
             }));
+    if (app.lat != null && app.lng != null) {
+      const relatedIdSet = new Set(related.map((r) => r.id));
+      const colocated = BUNDLE.applications
+        .filter((a) => a.id !== id && !relatedIdSet.has(a.id) && a.lat === app.lat && a.lng === app.lng)
+        .sort((x, y) => (y.received_date ?? "").localeCompare(x.received_date ?? ""))
+        .slice(0, 5)
+        .map((a) => ({
+          id: a.id,
+          planning_reference: a.planning_reference,
+          description: a.description,
+          status: a.status,
+          received_date: a.received_date,
+          decision_date: a.decision_date,
+        }));
+      related.push(...colocated);
+    }
     // Slow upstream work lives on /enrich so the sheet renders immediately;
     // anything already in the warm-instance caches still comes through here.
     return send(res, 200, {
