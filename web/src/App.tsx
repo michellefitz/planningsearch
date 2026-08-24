@@ -29,6 +29,7 @@ import {
 import { WatchKindPicker } from "./components/WatchKindPicker";
 import type { AgentAppRef } from "./agentApi";
 import { XIcon } from "./components/icons";
+import { WelcomeModal, shouldShowWelcome, dismissWelcome } from "./components/WelcomeModal";
 import { AboutPage } from "./components/AboutPage";
 import { coverageSummary } from "./coverage";
 import { posthog } from "./posthog";
@@ -90,6 +91,7 @@ export default function App() {
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number; avoidSheet?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dailyLimit, setDailyLimit] = useState<string | null>(null);
+  const [showWelcome, setShowWelcome] = useState(shouldShowWelcome);
   useEffect(() => {
     const handler = (e: Event) => setDailyLimit((e as CustomEvent).detail);
     window.addEventListener("planview:daily-limit", handler);
@@ -1291,6 +1293,10 @@ export default function App() {
             </aside>
           )}
         </>
+      )}
+
+      {showWelcome && (
+        <WelcomeModal onClose={() => { dismissWelcome(); setShowWelcome(false); }} />
       )}
     </div>
   );

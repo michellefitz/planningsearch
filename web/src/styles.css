@@ -3237,8 +3237,13 @@ body {
 }
 
 .error {
-  color: #b91c1c;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
+  color: #92400e;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: var(--r-sm);
+  padding: 0.5rem 0.75rem;
+  margin: 0.25rem 0;
 }
 
 .daily-limit-banner {
@@ -6128,3 +6133,99 @@ p.loading-line {
   text-decoration: none;
 }
 .about-footer a:hover { text-decoration: underline; }
+
+/* ---------- Welcome modal ---------- */
+
+.welcome-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(23, 25, 30, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  animation: welcome-fade 200ms ease;
+}
+
+@keyframes welcome-fade {
+  from { opacity: 0; }
+}
+
+.welcome-modal {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: 0 8px 40px rgba(23, 25, 30, 0.2);
+  max-width: 480px;
+  width: 100%;
+  padding: 1.75rem 2rem 2rem;
+  position: relative;
+  animation: welcome-up 260ms var(--ease);
+}
+
+@keyframes welcome-up {
+  from { opacity: 0; transform: translateY(12px); }
+}
+
+.welcome-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  border: 0;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.welcome-close:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.welcome-modal h2 {
+  font-size: 1.2rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 0.6rem;
+}
+
+.welcome-modal p {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0 0 0.75rem;
+}
+
+.welcome-modal ul {
+  padding-left: 1.1rem;
+  margin: 0 0 1rem;
+}
+
+.welcome-modal li {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin-bottom: 0.4rem;
+}
+
+.welcome-modal li strong {
+  color: var(--ink);
+  font-weight: 580;
+}
+
+.welcome-account {
+  font-size: 0.82rem !important;
+  color: var(--ink-3) !important;
+}
+
+.welcome-go {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  border-radius: var(--r-md);
+}
