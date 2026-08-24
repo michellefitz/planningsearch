@@ -57,6 +57,31 @@ const SORT_LABELS: Record<string, string> = {
   distance: "Distance",
 };
 
+function SkeletonSheet({ closing, onClose }: { closing: boolean; onClose: () => void }) {
+  const mobile = window.matchMedia("(max-width: 767px)").matches;
+  return (
+    <aside className={`detail-sheet${mobile ? " sheet-mobile" : ""}${closing ? " sheet-closing" : ""}`}
+      style={mobile ? { transform: "translateY(30%)" } : undefined}
+    >
+      {mobile && <div className="sheet-grabber" aria-hidden="true"><span className="grabber-bar" /></div>}
+      <div className="sheet-top">
+        <div className="sheet-status" />
+        <div className="sheet-actions">
+          <button type="button" className="sheet-close" onClick={onClose} aria-label="Close"><XIcon size={13} /></button>
+        </div>
+      </div>
+      <div className="skeleton-panel">
+        <div className="skeleton-line skeleton-title" />
+        <div className="skeleton-line skeleton-subtitle" />
+        <div className="skeleton-row"><div className="skeleton-chip" /><div className="skeleton-chip" /><div className="skeleton-chip" /></div>
+        <div className="skeleton-line" />
+        <div className="skeleton-line" />
+        <div className="skeleton-line skeleton-short" />
+      </div>
+    </aside>
+  );
+}
+
 const appPath = (authorityId: string, reference: string): string =>
   `/application/${encodeURIComponent(authorityId)}/${encodeURIComponent(reference)}`;
 
@@ -178,7 +203,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    api.meta().then(setMeta).catch(() => setError("Could not reach the PlanView API."));
+    api.meta().then(setMeta).catch(() => setError("Taking a moment to connect. Try refreshing if this persists."));
   }, []);
 
   const runSearch = useCallback(
@@ -223,7 +248,7 @@ export default function App() {
             setFlyTo({ lat: r.lat, lng: r.lng, zoom: 14 });
         }
       } catch {
-        if (seq === searchSeq.current) setError("Search failed — is the server running?");
+        if (seq === searchSeq.current) setError("Search didn't return results. Try again in a moment.");
       } finally {
         if (seq === searchSeq.current) setLoading(false);
       }
@@ -1272,25 +1297,7 @@ export default function App() {
               />
             </Suspense>
           ) : (
-            <aside className={`detail-sheet${sheetClosing ? " sheet-closing" : ""}`}>
-              <div className="sheet-top">
-                <div className="sheet-status" />
-                <div className="sheet-actions">
-                  <button type="button" className="sheet-close" onClick={closeSheet} aria-label="Close"><XIcon size={13} /></button>
-                </div>
-              </div>
-              <div className="skeleton-panel">
-                <div className="skeleton-line skeleton-title" />
-                <div className="skeleton-line skeleton-subtitle" />
-                <div className="skeleton-row"><div className="skeleton-chip" /><div className="skeleton-chip" /><div className="skeleton-chip" /></div>
-                <div className="skeleton-line" />
-                <div className="skeleton-line" />
-                <div className="skeleton-line skeleton-short" />
-                <div className="skeleton-divider" />
-                <div className="skeleton-line" />
-                <div className="skeleton-line skeleton-short" />
-              </div>
-            </aside>
+            <SkeletonSheet closing={sheetClosing} onClose={closeSheet} />
           )}
         </>
       )}

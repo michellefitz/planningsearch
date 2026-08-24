@@ -6157,9 +6157,11 @@ p.loading-line {
   box-shadow: 0 8px 40px rgba(23, 25, 30, 0.2);
   max-width: 480px;
   width: 100%;
-  padding: 1.75rem 2rem 2rem;
+  padding: 1.75rem 2rem 1.5rem;
   position: relative;
   animation: welcome-up 260ms var(--ease);
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes welcome-up {
@@ -6170,6 +6172,7 @@ p.loading-line {
   position: absolute;
   top: 1rem;
   right: 1rem;
+  z-index: 1;
   border: 0;
   background: var(--surface-2);
   color: var(--ink-2);
@@ -6186,46 +6189,87 @@ p.loading-line {
   color: var(--ink);
 }
 
+.welcome-slide {
+  animation: welcome-slide-in 250ms var(--ease);
+}
+
+@keyframes welcome-slide-in {
+  from { opacity: 0; transform: translateX(16px); }
+}
+
+.welcome-illustration {
+  width: 100%;
+  height: 180px;
+  display: block;
+  margin-bottom: 1rem;
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+}
+
 .welcome-modal h2 {
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   font-weight: 650;
   letter-spacing: -0.02em;
   color: var(--ink);
-  margin: 0 0 0.6rem;
+  margin: 0 0 0.5rem;
 }
 
 .welcome-modal p {
   font-size: 0.88rem;
   line-height: 1.6;
   color: var(--ink-2);
-  margin: 0 0 0.75rem;
+  margin: 0;
 }
 
-.welcome-modal ul {
-  padding-left: 1.1rem;
-  margin: 0 0 1rem;
+.welcome-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
 }
 
-.welcome-modal li {
-  font-size: 0.88rem;
-  line-height: 1.6;
+.welcome-dots {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.welcome-dot {
+  all: unset;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.welcome-dot-active {
+  background: var(--ink);
+}
+
+.welcome-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.welcome-back {
+  background: var(--surface-2);
   color: var(--ink-2);
-  margin-bottom: 0.4rem;
+  border: 1px solid var(--line-strong);
+  padding: 0.4rem 1rem;
+  border-radius: var(--r-md);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.welcome-back:hover {
+  background: var(--surface-3);
 }
 
-.welcome-modal li strong {
-  color: var(--ink);
-  font-weight: 580;
-}
-
-.welcome-account {
-  font-size: 0.82rem !important;
-  color: var(--ink-3) !important;
-}
-
+.welcome-next,
 .welcome-go {
-  width: 100%;
-  padding: 0.6rem 1rem;
-  font-size: 0.9rem;
+  padding: 0.4rem 1.2rem;
+  font-size: 0.85rem;
   border-radius: var(--r-md);
 }
