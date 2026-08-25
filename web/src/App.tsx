@@ -579,6 +579,21 @@ export default function App() {
     })();
   }, []);
 
+  /**
+   * Keep /about off the address bar once you have left it.
+   *
+   * The "Back to map" button used to be the only control that cleared the
+   * path; the nav pills and the menu set `mode` and leave the URL alone. With
+   * the button gone, leaving About any other way would strand /about in the
+   * address bar and a reload would put you straight back on it. Replace rather
+   * than push, so Back still returns to About.
+   */
+  useEffect(() => {
+    if (mode !== "about" && window.location.pathname === "/about") {
+      history.replaceState(null, "", "/");
+    }
+  }, [mode]);
+
   // Back/forward between an open application and the map.
   useEffect(() => {
     const onPop = async () => {
@@ -1188,12 +1203,6 @@ export default function App() {
       {mode === "about" && (
         <main className="account-screen about-screen">
           <div className="account-screen-inner">
-            <button type="button" className="back-to-map" onClick={() => {
-              setMode("search");
-              history.pushState(null, "", "/");
-            }}>
-              ← Back to map
-            </button>
             <AboutPage onGetStarted={() => {
               setMode("account");
               history.pushState(null, "", "/");
@@ -1205,9 +1214,6 @@ export default function App() {
       {mode === "preplan" && (
         <main className="account-screen preplan-screen">
           <div className="account-screen-inner">
-            <button type="button" className="back-to-map no-print" onClick={() => setMode("search")}>
-              ← Back to map
-            </button>
             <Suspense>
               <PrePlannerPanel
                 onOpenApp={async (authorityId, reference) => {
@@ -1227,9 +1233,6 @@ export default function App() {
       {(mode === "account" || mode === "saved" || mode === "alerts") && (
         <main className="account-screen">
           <div className="account-screen-inner">
-            <button type="button" className="back-to-map" onClick={() => setMode("search")}>
-              ← Back to map
-            </button>
             <Suspense>
               {/* Three destinations, three screens. They shared one panel while
                   the nav was still an avatar menu; keeping that after the nav

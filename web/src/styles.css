@@ -412,23 +412,6 @@ body {
   background: none;
 }
 
-.back-to-map {
-  margin-bottom: 0.9rem;
-  padding: 0.3rem 0.7rem 0.3rem 0.5rem;
-  font-family: inherit;
-  font-size: 0.8rem;
-  color: var(--ink-2);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.back-to-map:hover {
-  color: var(--ink);
-  background: var(--surface-2);
-}
-
 /* At full width the heading is a page title, not a panel header. */
 .account-screen .account-head h2 {
   margin: 0;
@@ -5574,7 +5557,6 @@ p.loading-line {
 @media print {
   .app-header,
   .app-footer,
-  .back-to-map,
   .no-print {
     display: none !important;
   }
