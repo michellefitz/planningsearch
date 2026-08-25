@@ -42,6 +42,8 @@ const MapView = lazy(() => import("./components/MapView"));
 const DetailPanel = lazy(() => import("./components/DetailPanel"));
 const ChatPanel = lazy(() => import("./components/ChatPanel"));
 const AccountPanel = lazy(() => import("./components/AccountPanel"));
+const SavedPanel = lazy(() => import("./components/SavedPanel"));
+const AlertsPanel = lazy(() => import("./components/AlertsPanel"));
 const PrePlannerPanel = lazy(() => import("./components/PrePlannerPanel"));
 
 /**
@@ -659,6 +661,16 @@ export default function App() {
     null
   );
 
+  /** Open a saved application in the detail sheet from an account screen. */
+  const openSavedApp = async (authorityId: string, reference: string) => {
+    try {
+      const { id } = await api.resolve(authorityId, reference);
+      await select(id);
+    } catch {
+      setError("That application is no longer in the current dataset.");
+    }
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -1219,31 +1231,45 @@ export default function App() {
               ← Back to map
             </button>
             <Suspense>
-            <AccountPanel
-              me={me}
-              notice={authNotice}
-              onRefresh={refreshMe}
-              onOpenApp={async (authorityId, reference) => {
-                try {
-                  const { id } = await api.resolve(authorityId, reference);
-                  await select(id);
-                } catch {
-                  setError("That application is no longer in the current dataset.");
-                }
-              }}
-              onGoSearch={() => setMode("search")}
-              onAddWatch={() => {
-                setMode("search");
-                startWatchDraft();
-              }}
-              onViewWatch={(w) => {
-                setWatchDraft(null);
-                setWatchNotice(null);
-                setWatchView(w);
-                setMode("search");
-                setFlyTo({ lat: w.lat, lng: w.lng, zoom: 15 - Math.log2(w.radius_m / 250) });
-              }}
-            />
+              {/* Three destinations, three screens. They shared one panel while
+                  the nav was still an avatar menu; keeping that after the nav
+                  split meant Saved and Alerts landed on the same page. */}
+              {mode === "saved" && (
+                <SavedPanel
+                  me={me}
+                  notice={authNotice}
+                  onRefresh={refreshMe}
+                  onOpenApp={openSavedApp}
+                  onGoSearch={() => setMode("search")}
+                />
+              )}
+              {mode === "alerts" && (
+                <AlertsPanel
+                  me={me}
+                  notice={authNotice}
+                  onRefresh={refreshMe}
+                  onAddWatch={() => {
+                    setMode("search");
+                    startWatchDraft();
+                  }}
+                  onViewWatch={(w) => {
+                    setWatchDraft(null);
+                    setWatchNotice(null);
+                    setWatchView(w);
+                    setMode("search");
+                    setFlyTo({ lat: w.lat, lng: w.lng, zoom: 15 - Math.log2(w.radius_m / 250) });
+                  }}
+                />
+              )}
+              {mode === "account" && (
+                <AccountPanel
+                  me={me}
+                  notice={authNotice}
+                  onSignOut={signOut}
+                  onGoSaved={() => setMode("saved")}
+                  onGoAlerts={() => setMode("alerts")}
+                />
+              )}
             </Suspense>
           </div>
         </main>

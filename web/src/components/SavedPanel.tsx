@@ -1,0 +1,608 @@
+import { useEffect, useReducer, useRef, useState, type CSSProperties } from "react";
+import {
+  accountApi,
+  type Me,
+  type SavedApp,
+  type SavedList,
+} from "../accountApi";
+import type { PointFeatureCollection } from "../api";
+import { createUndoQueue, type UndoQueue } from "../undoQueue";
+import { RowMenu } from "./RowMenu";
+import SignInCard from "./SignInCard";
+import { StatusBadge } from "./ResultsList";
+import { lazy, Suspense } from "react";
+const MapView = lazy(() => import("./MapView"));
+import { BellIcon, PencilIcon, XIcon } from "./icons";
+import { fmtDate } from "../api";
+import { posthog } from "../posthog";
+
+interface Props {
+  me: Me | null;
+  notice: string | null;
+  onRefresh: () => Promise<Me>;
+  onOpenApp: (authorityId: string, reference: string) => Promise<void>;
+  onGoSearch: () => void;
+}
+
+const DECIDED = new Set(["granted", "refused", "split", "decided", "withdrawn", "invalid"]);
+const PENDING = new Set(["pending", "further_info"]);
+
+
+function sortSaves(saves: SavedApp[]): SavedApp[] {
+  return [...saves].sort((a, b) => {
+    if (a.has_update !== b.has_update) return a.has_update ? -1 : 1;
+    return b.created_at.localeCompare(a.created_at);
+  });
+}
+
+function RegisterRow({
+  s,
+  lists,
+  onOpenApp,
+  onRefresh,
+  index,
+  updated,
+  onRemove,
+}: {
+  s: SavedApp;
+  lists: SavedList[];
+  onOpenApp: (authorityId: string, reference: string) => Promise<void>;
+  onRefresh: () => Promise<Me>;
+  index: number;
+  updated?: boolean;
+  /** Hides the row now and deletes it when the undo window lapses. */
+  onRemove: (s: SavedApp) => void;
+}) {
+  const [alertsOn, setAlertsOn] = useState(s.alerts_enabled);
+  useEffect(() => {
+    setAlertsOn(s.alerts_enabled);
+  }, [s.alerts_enabled]);
+  const [busy, setBusy] = useState(false);
+
+  const open = () => void onOpenApp(s.authority_id, s.planning_reference);
+  // The most decision-relevant date wins the single date slot.
+  const date = s.app?.decision_date
+    ? `decided ${fmtDate(s.app.decision_date)}`
+    : s.app?.received_date
+      ? `received ${fmtDate(s.app.received_date)}`
+      : null;
+
+  return (
+    <div
+      className={`reg-row${updated ? " reg-row-updated" : ""}`}
+      role="button"
+      tabIndex={0}
+      style={{ "--i": index } as CSSProperties}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      }}
+    >
+      <span className="reg-status">
+        {s.app ? (
+          <StatusBadge status={s.app.status} label={s.app.status_label} />
+        ) : (
+          <span className="reg-gone">Not in dataset</span>
+        )}
+      </span>
+      <span className="reg-main">
+        <strong className="reg-address">{s.app?.address_text ?? s.planning_reference}</strong>
+        {s.has_update && !updated && <span className="badge-updated">Updated</span>}
+        {s.latest_event_summary && (
+          <span className="reg-latest">
+            {s.latest_event_summary}
+            {s.latest_event_at && ` · ${fmtDate(s.latest_event_at.slice(0, 10))}`}
+          </span>
+        )}
+      </span>
+      <span className="reg-meta">
+        <span className="ref">{s.planning_reference}</span>
+        {date && <span className="reg-date">{date}</span>}
+      </span>
+      <span className="reg-actions" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className={`saved-bell${alertsOn ? " saved-bell-on" : ""}`}
+          title={alertsOn ? "Alerts on — click to turn off" : "Alerts off — click to turn on"}
+          aria-pressed={alertsOn}
+          disabled={busy}
+          onClick={async (e) => {
+            e.stopPropagation();
+            const next = !alertsOn;
+            setAlertsOn(next);
+            try {
+              await accountApi.updateSave(s.id, { alerts_enabled: next });
+            } catch {
+              setAlertsOn(!next);
+            }
+          }}
+        >
+          <BellIcon on={alertsOn} />
+        </button>
+        {/* Filing and unsaving are occasional; they do not belong at the same
+            weight as the application on every row. See RowMenu. */}
+        <RowMenu label={`Actions for ${s.app?.address_text ?? s.planning_reference}`}>
+          {(close) => (
+            <>
+              {lists.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  role="menuitem"
+                  className="row-menu-item"
+                  disabled={busy}
+                  onClick={async () => {
+                    close();
+                    setBusy(true);
+                    try {
+                      await accountApi.addToList(l.id, s.id);
+                      await onRefresh();
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Add to {l.name}
+                </button>
+              ))}
+              {lists.length > 0 && <span className="row-menu-sep" />}
+              {/* Says what it removes it from. The old X did not, and the two
+                  things it could plausibly have meant — take out of this list,
+                  stop saving entirely — are not the same. */}
+              <button
+                type="button"
+                role="menuitem"
+                className="row-menu-item row-menu-danger"
+                disabled={busy}
+                onClick={() => {
+                  close();
+                  onRemove(s);
+                }}
+              >
+                Remove from saved
+              </button>
+            </>
+          )}
+        </RowMenu>
+      </span>
+    </div>
+  );
+}
+
+function ListSectionHead({
+  list,
+  count,
+  onRefresh,
+}: {
+  list: SavedList;
+  count: number;
+  onRefresh: () => Promise<Me>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(list.name);
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <div className="reg-section-head">
+        <p className="list-confirm">
+          Delete “{list.name}”? Its applications stay saved.
+          <button
+            type="button"
+            className="list-confirm-del"
+            onClick={async () => {
+              await accountApi.deleteList(list.id);
+              await onRefresh();
+            }}
+          >
+            Delete list
+          </button>
+          <button
+            type="button"
+            className="list-confirm-keep"
+            onClick={() => setConfirming(false)}
+          >
+            Keep list
+          </button>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="reg-section-head">
+      {editing ? (
+        <form
+          className="list-rename-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!name.trim()) return;
+            await accountApi.updateList(list.id, { name: name.trim() });
+            setEditing(false);
+            await onRefresh();
+          }}
+        >
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+          />
+        </form>
+      ) : (
+        <h3>
+          {list.name} <span className="reg-count">{count}</span>
+        </h3>
+      )}
+      <div className="list-actions">
+        <button
+          type="button"
+          className={`list-bell${list.alerts_enabled ? " list-bell-on" : ""}`}
+          title={list.alerts_enabled ? "List alerts on" : "List alerts off"}
+          aria-pressed={list.alerts_enabled}
+          onClick={async () => {
+            await accountApi.updateList(list.id, { alerts_enabled: !list.alerts_enabled });
+            await onRefresh();
+          }}
+        >
+          <BellIcon on={list.alerts_enabled} />
+        </button>
+        <button
+          type="button"
+          className="list-edit-btn"
+          title="Rename list"
+          onClick={() => { setName(list.name); setEditing(true); }}
+        >
+          <PencilIcon />
+        </button>
+        <button
+          type="button"
+          className="list-delete-btn"
+          title="Delete list"
+          onClick={() => setConfirming(true)}
+        >
+          <XIcon />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function SavedPanel({ me, notice, onRefresh, onOpenApp, onGoSearch }: Props) {
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [view, setView] = useState<"register" | "map">("register");
+  const [mapList, setMapList] = useState<number | "all">("all");
+  const [newListName, setNewListName] = useState("");
+  const [creatingList, setCreatingList] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  // Bumped by the queue so a schedule or an undo re-renders the register.
+  const [, bumpRemovals] = useReducer((n: number) => n + 1, 0);
+
+  /**
+   * Removals wait out an undo window before they happen at all, so taking one
+   * back restores the save exactly as it was rather than re-creating it — see
+   * undoQueue.ts. The queue outlives re-renders but not the panel, so it is
+   * flushed on unmount.
+   */
+  const removalsRef = useRef<UndoQueue<SavedApp> | null>(null);
+  if (!removalsRef.current) {
+    removalsRef.current = createUndoQueue<SavedApp>({
+      commit: async (_key, save) => {
+        await accountApi.unsave(save.id);
+        await onRefresh();
+      },
+      onChange: bumpRemovals,
+      onError: (_key, save) =>
+        setRemoveError(
+          `Couldn't remove ${save.app?.address_text ?? save.planning_reference} — it's still saved.`
+        ),
+    });
+  }
+  const removals = removalsRef.current;
+  useEffect(() => () => void removals.flush(), [removals]);
+
+  const removeSave = (save: SavedApp) => {
+    setRemoveError(null);
+    removals.schedule(String(save.id), save);
+  };
+
+  if (!me) return <div className="account-panel"><p className="account-muted">Loading your applications…</p></div>;
+
+  if (!me.user) {
+    return (
+      <SignInCard
+        headline="Your applications, watched"
+        blurb="Save any planning application, organise them into lists, and get an email the day something changes — a decision, an appeal, work starting on site."
+        notice={notice}
+      />
+    );
+  }
+
+  // A row whose removal is still inside its undo window is gone from the
+  // register already — the whole point is that it disappears at once — but is
+  // not deleted, and comes back untouched if taken back.
+  const removing = new Set(removals.pending());
+  const { lists } = me;
+  const saves = removing.size ? me.saves.filter((s) => !removing.has(String(s.id))) : me.saves;
+  const justRemoved = removals.pending().map((k) => removals.peek(k)).filter(Boolean) as SavedApp[];
+  const tracked = saves.length;
+  const pending = saves.filter((s) => s.app && PENDING.has(s.app.status)).length;
+  const decided = saves.filter((s) => s.app && DECIDED.has(s.app.status)).length;
+  const updatedSaves = sortSaves(saves.filter((s) => s.has_update));
+
+  // Grouping: one section per list (a save can appear in several), then the
+  // rest under "Everything else". No lists → one flat register, no headers.
+  const inAnyList = new Set(lists.flatMap((l) => l.item_ids));
+  const unfiled = sortSaves(saves.filter((s) => !inAnyList.has(s.id)));
+  const groups = lists.map((l) => ({
+    list: l,
+    items: sortSaves(saves.filter((s) => l.item_ids.includes(s.id))),
+  }));
+
+  // Map view can be narrowed to one list; fall back to all if it was deleted.
+  const mapListObj = mapList === "all" ? null : lists.find((l) => l.id === mapList) ?? null;
+  const mapSource = mapListObj ? saves.filter((s) => mapListObj.item_ids.includes(s.id)) : saves;
+  const mappable = mapSource.filter((s) => s.app && s.app.lat != null && s.app.lng != null);
+  const unmappedCount = mapSource.length - mappable.length;
+
+  const mapGeoJson: PointFeatureCollection = {
+    type: "FeatureCollection",
+    features: mappable.map((s) => ({
+      type: "Feature" as const,
+      geometry: {
+        type: "Point" as const,
+        coordinates: [s.app!.lng!, s.app!.lat!] as [number, number],
+      },
+      properties: {
+        id: s.app!.id,
+        reference: s.app!.planning_reference,
+        status: s.app!.status,
+        authority_id: s.app!.authority_id,
+        address: s.app!.address_text,
+        is_domestic_guess: s.app!.is_domestic_guess,
+      },
+    })),
+  };
+
+  const handleMapSelect = (id: number) => {
+    const match = saves.find((s) => s.app?.id === id);
+    if (match) void onOpenApp(match.authority_id, match.planning_reference);
+  };
+
+  // Row stagger index across the whole page, so sections cascade as one.
+  let rowIndex = 0;
+
+  return (
+    <div className="account-panel">
+      <div className="reg-head">
+        <h2>Your saved applications</h2>
+        {saves.length > 0 && (
+          <p className="reg-statline">
+            <b>{tracked}</b> tracked
+            <span className="reg-sep">·</span>
+            <b>{pending}</b> pending
+            <span className="reg-sep">·</span>
+            <b>{decided}</b> decided
+            {updatedSaves.length > 0 && (
+              <>
+                <span className="reg-sep">·</span>
+                <span className="reg-stat-live"><b>{updatedSaves.length}</b> updated</span>
+              </>
+            )}
+          </p>
+        )}
+      </div>
+
+      {/* One line per removal, while it can still be taken back. The row has
+          already gone from the register — that is what makes the removal feel
+          immediate — and nothing has actually been deleted yet, so undo puts
+          it back exactly as it was rather than re-creating it. */}
+      {justRemoved.map((save) => (
+        <p className="reg-undo" key={`undo-${save.id}`} role="status">
+          <span>Removed {save.app?.address_text ?? save.planning_reference}</span>
+          <button type="button" onClick={() => removals.undo(String(save.id))}>
+            Undo
+          </button>
+        </p>
+      ))}
+      {removeError && (
+        <p className="reg-undo reg-undo-error" role="alert">
+          {removeError}
+        </p>
+      )}
+
+      {saves.length === 0 && justRemoved.length === 0 ? (
+        <div className="account-empty">
+          <strong>Nothing saved yet</strong>
+          <p>Star any application in Search and it'll live here — with alerts when it changes.</p>
+          <button type="button" onClick={onGoSearch}>Search your area</button>
+        </div>
+      ) : (
+        <>
+          {updatedSaves.length > 0 ? (
+            <section className="reg-updates" aria-label="Updated applications">
+              <h3>Since you last looked</h3>
+              {updatedSaves.map((s) => (
+                <RegisterRow
+                  key={`u${s.id}`}
+                  s={s}
+                  lists={lists}
+                  onOpenApp={onOpenApp}
+                  onRefresh={onRefresh}
+                  index={rowIndex++}
+                  updated
+                  onRemove={removeSave}
+                />
+              ))}
+            </section>
+          ) : (
+            <p className="reg-steady">
+              Nothing new since you last looked — we'll email you the day something changes.
+            </p>
+          )}
+
+          <div className="account-view-toggle">
+            <div className="view-seg">
+              <button
+                type="button"
+                className={view === "register" ? "on" : ""}
+                onClick={() => setView("register")}
+              >
+                Register
+              </button>
+              <button
+                type="button"
+                className={view === "map" ? "on" : ""}
+                onClick={() => setView("map")}
+              >
+                Map
+              </button>
+            </div>
+          </div>
+
+          {view === "map" ? (
+            <>
+              {lists.length > 0 && (
+                <div className="map-list-chips" role="group" aria-label="Filter map by list">
+                  <button
+                    type="button"
+                    className={mapList === "all" ? "on" : ""}
+                    onClick={() => setMapList("all")}
+                  >
+                    All saved
+                  </button>
+                  {lists.map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      className={mapList === l.id ? "on" : ""}
+                      onClick={() => setMapList(l.id)}
+                    >
+                      {l.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {mappable.length === 0 ? (
+                <div className="account-empty">
+                  <strong>No mapped locations</strong>
+                  <p>None of these applications have coordinates to show on a map.</p>
+                </div>
+              ) : (
+                <div className="account-map-wrap">
+                  <Suspense fallback={<div className="map-skeleton" role="status" aria-label="Loading the map" />}>
+                  <MapView
+                    data={mapGeoJson}
+                    polygons={null}
+                    selectedId={null}
+                    hoveredId={null}
+                    onSelect={handleMapSelect}
+                    onBoundsChange={() => {}}
+                  />
+                  </Suspense>
+                </div>
+              )}
+              {unmappedCount > 0 && (
+                <p className="account-map-note">
+                  {unmappedCount} without map location{unmappedCount === 1 ? "" : "s"}
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="reg-body">
+              {groups.map(({ list, items }) => (
+                <section key={list.id} aria-label={list.name}>
+                  <ListSectionHead list={list} count={items.length} onRefresh={onRefresh} />
+                  {items.length === 0 ? (
+                    <p className="reg-list-empty">Nothing in this list yet — add applications from any row.</p>
+                  ) : (
+                    items.map((s) => (
+                      <RegisterRow
+                        key={`${list.id}-${s.id}`}
+                        s={s}
+                        lists={lists}
+                        onOpenApp={onOpenApp}
+                        onRefresh={onRefresh}
+                        index={rowIndex++}
+                        onRemove={removeSave}
+                      />
+                    ))
+                  )}
+                </section>
+              ))}
+
+              {unfiled.length > 0 && (
+                <section aria-label={lists.length > 0 ? "Everything else" : "Saved applications"}>
+                  {lists.length > 0 && (
+                    <div className="reg-section-head">
+                      <h3>
+                        Everything else <span className="reg-count">{unfiled.length}</span>
+                      </h3>
+                    </div>
+                  )}
+                  {unfiled.map((s) => (
+                    <RegisterRow
+                      key={s.id}
+                      s={s}
+                      lists={lists}
+                      onOpenApp={onOpenApp}
+                      onRefresh={onRefresh}
+                      index={rowIndex++}
+                      onRemove={removeSave}
+                    />
+                  ))}
+                </section>
+              )}
+
+              {creatingList ? (
+                <form
+                  className="list-new-form"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newListName.trim()) return;
+                    await accountApi.createList(newListName.trim());
+                    posthog.capture("saved_list_created");
+                    setNewListName("");
+                    setCreatingList(false);
+                    await onRefresh();
+                  }}
+                >
+                  <input
+                    type="text"
+                    placeholder="List name"
+                    value={newListName}
+                    onChange={(e) => setNewListName(e.target.value)}
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === "Escape") setCreatingList(false); }}
+                  />
+                  <button type="submit">Create list</button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  className="list-new-btn"
+                  onClick={() => setCreatingList(true)}
+                >
+                  + New list
+                </button>
+              )}
+
+              {saves.length <= 5 && (
+                <p className="reg-teach">
+                  Star more applications in Search to build out your register.
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+    </div>
+  );
+}

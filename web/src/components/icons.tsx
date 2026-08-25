@@ -58,3 +58,26 @@ export function HistoryIcon({ size = 12 }: { size?: number }) {
     </svg>
   );
 }
+
+
+/** Alerts on or off for one saved thing — an application, a list, a watched
+    area. Struck through when off, so the state reads without colour alone. */
+export function BellIcon({ on }: { on: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" />
+      <path d="M13.7 20a2 2 0 0 1-3.4 0" />
+      {!on && <path d="M4.5 3.5l15 17" />}
+    </svg>
+  );
+}

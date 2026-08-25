@@ -3756,10 +3756,9 @@ a.ov-pop-sub {
   text-align: left;
 }
 
-/* Watched-areas rows on the account screen. */
-.watch-section {
-  margin-top: 1.6rem;
-}
+/* Watched-areas rows. The .watch-section wrapper went with the split: its only
+   job was a top margin separating these from the saved register above, and
+   Alerts is now its own screen with nothing above them. */
 .watch-row {
   display: flex;
   align-items: center;
@@ -6110,6 +6109,80 @@ p.loading-line {
 .reg-undo button:hover { text-decoration: underline; }
 
 .reg-undo-error { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+
+/* ---------- My account ---------- */
+
+.acct-section {
+  padding: 0.9rem 0 1rem;
+  border-top: 1px solid var(--line);
+}
+.acct-section:first-of-type { border-top: 0; }
+
+.acct-section h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.acct-email {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+.acct-fine {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+
+/* Counts that double as the way back to the screen they describe — the account
+   page states what you are tracking, and the numbers are the shortest route to
+   the thing itself. */
+.acct-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.acct-link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font: inherit;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.acct-link:hover { border-color: var(--action); color: var(--action); }
+.acct-link b {
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.acct-link:hover b { color: var(--action); }
+.acct-link span { font-size: 0.82rem; }
+
+.acct-signout {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 550;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.acct-signout:hover { border-color: #c9453a; color: #c9453a; }
 
 /* ---------- About page ---------- */
 
