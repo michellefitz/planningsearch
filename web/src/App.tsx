@@ -711,7 +711,6 @@ export default function App() {
                 <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "alerts" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("alerts"); }}>Alerts</button>
                 <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Pre-planning</button>
                 <button type="button" role="menuitem" className={`nav-link nav-link-mobile${askOpen ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setAskOpen((o) => !o); }}>✦ Ask</button>
-                <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setMode("about"); history.pushState(null, "", "/about"); }}>About</button>
                 <div className="nav-menu-divider" />
                 <button
                   type="button"
@@ -721,6 +720,10 @@ export default function App() {
                 >
                   My account
                 </button>
+                {/* Below the divider: About is site information, not a product
+                    destination, so it sits with the account items rather than
+                    among Search/Saved/Alerts. Desktop keeps it in the header. */}
+                <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setMode("about"); history.pushState(null, "", "/about"); }}>About</button>
                 <span className="nav-email" title={me.user.email}>
                   {me.user.email}
                 </span>
@@ -755,9 +758,9 @@ export default function App() {
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "alerts" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("alerts"); }}>Alerts</button>
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Pre-planning</button>
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${askOpen ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setAskOpen((o) => !o); }}>✦ Ask</button>
-                  <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setMode("about"); history.pushState(null, "", "/about"); }}>About</button>
                   <div className="nav-menu-divider" />
                   <button type="button" role="menuitem" className="nav-link" onClick={() => { setNavOpen(false); setMode("account"); }}>Sign in</button>
+                  <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setMode("about"); history.pushState(null, "", "/about"); }}>About</button>
                 </div>
               )}
               <button

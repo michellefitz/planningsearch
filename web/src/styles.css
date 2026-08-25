@@ -776,7 +776,9 @@ body {
   .nav-pills { display: none; }
   .nav-spacer { display: none; }
   .app-header > .nav-pill-ask { display: none; }
-  .nav-about-link { display: none; }
+  /* .nav-about-link is hidden beside its own rule further down — `all: unset`
+     there resets display, and being later in the file it wins over a hide
+     placed here. */
   .ask-drawer { width: 100vw; }
   /* The data-source footer is dropped to reclaim vertical space (attribution
      still shows on every application's detail sheet). */
@@ -6118,6 +6120,15 @@ p.loading-line {
   cursor: pointer;
 }
 .nav-about-link:hover { color: var(--ink); }
+
+/* Must follow the rule above, not sit with the other mobile hides higher up:
+   `all: unset` resets display to inline, so an earlier `display: none` of the
+   same specificity loses the cascade and About stays in the header. On a phone
+   it lives in the overflow menu instead, below the divider with the account
+   items — it is site information, not a product destination. */
+@media (max-width: 767px) {
+  .nav-about-link { display: none; }
+}
 
 .about-page {
   max-width: 640px;
