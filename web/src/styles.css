@@ -6127,15 +6127,58 @@ p.loading-line {
   color: var(--ink-3);
 }
 
+.acct-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 22rem;
+}
+
+.acct-field-label {
+  font-size: 0.78rem;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+
+.acct-field input {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+.acct-field input:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: -1px;
+  border-color: var(--action);
+}
+
+/* Reserves its line whatever it says, so the field does not jump between the
+   hint and the save state. */
+.acct-field-note {
+  min-height: 1.1em;
+  font-size: 0.74rem;
+  color: var(--ink-3);
+}
+.acct-field-saved { color: #1d6b3f; }
+.acct-field-error { color: #c9453a; }
+
+.acct-email-line {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0.9rem 0 0;
+}
+
 .acct-email {
-  margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 550;
   color: var(--ink);
 }
 
 .acct-fine {
-  margin: 0.3rem 0 0;
   font-size: 0.78rem;
   color: var(--ink-3);
 }

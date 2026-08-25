@@ -87,7 +87,7 @@ export async function currentUser(req) {
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (!token) return null;
   const rows = await sql(
-    `select u.id, u.email from sessions s join users u on u.id = s.user_id
+    `select u.id, u.email, u.name from sessions s join users u on u.id = s.user_id
      where s.token_hash = $1 and s.expires_at > now()`,
     [sha256Hex(token)]
   );
@@ -371,17 +371,31 @@ document.getElementById("btn").onclick = async function() {
 
   const user = await currentUser(req);
 
-  if (route === "/api/me") {
+  // Method-guarded: PATCH is handled below, after the sign-in check. Without
+  // the guard it would fall in here and quietly return the unchanged account.
+  if (route === "/api/me" && req.method !== "PATCH") {
     if (!user) return sendPrivate(res, 200, { user: null, saves: [], lists: [], watches: [] });
     const [saves, lists, watches] = await Promise.all([
       loadSaves(user.id, ctx),
       loadLists(user.id),
       loadWatches(user.id),
     ]);
-    return sendPrivate(res, 200, { user: { email: user.email }, saves, lists, watches });
+    return sendPrivate(res, 200, { user: { email: user.email, name: user.name ?? null }, saves, lists, watches });
   }
 
   if (!user) return sendPrivate(res, 401, { error: "sign in required" });
+
+  // The account's own details. Only a name so far: it is what an alert email
+  // can greet you by, and the one thing about you the register cannot supply.
+  if (route === "/api/me" && req.method === "PATCH") {
+    const body = await readJsonBody(req);
+    if (body && "name" in body) {
+      const raw = body.name == null ? "" : String(body.name).trim().slice(0, 80);
+      await sql(`update users set name = $2 where id = $1`, [user.id, raw || null]);
+      return sendPrivate(res, 200, { user: { email: user.email, name: raw || null } });
+    }
+    return sendPrivate(res, 400, { error: "nothing to update" });
+  }
 
   if (route === "/api/watches" && req.method === "POST") {
     const body = await readJsonBody(req);

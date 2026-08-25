@@ -86,7 +86,7 @@ export interface AreaWatch {
 }
 
 export interface Me {
-  user: { email: string } | null;
+  user: { email: string; name: string | null } | null;
   saves: SavedApp[];
   lists: SavedList[];
   watches?: AreaWatch[];
@@ -102,6 +102,13 @@ export const accountApi = {
   save: (authority_id: string, planning_reference: string) =>
     j<SavedApp>("/api/saves", { method: "POST", body: JSON.stringify({ authority_id, planning_reference }) }),
   unsave: (id: number) => j<{ ok: boolean }>(`/api/saves/${id}`, { method: "DELETE" }),
+  /** The account's own details — a name, so far. */
+  updateAccount: (patch: { name?: string | null }) =>
+    j<{ user: { email: string; name: string | null } }>("/api/me", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
   updateSave: (id: number, patch: { alerts_enabled?: boolean; seen?: boolean }) =>
     j<SavedApp>(`/api/saves/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   createList: (name: string) =>

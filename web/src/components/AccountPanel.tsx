@@ -1,5 +1,69 @@
-import { type Me } from "../accountApi";
+import { useEffect, useState } from "react";
+import { accountApi, type Me } from "../accountApi";
 import SignInCard from "./SignInCard";
+
+/**
+ * The one detail the register cannot supply.
+ *
+ * Saved on blur rather than behind a Save button: it is a single field, and a
+ * button that is the only thing on the screen to press invites a trip that
+ * changes nothing. Empty clears it back to null, and the address takes over
+ * again wherever a name would have been used.
+ */
+function NameField({ name, onSaved }: { name: string | null; onSaved: () => Promise<Me> }) {
+  const [value, setValue] = useState(name ?? "");
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // Another device, or a reload mid-edit: follow the server unless the field
+  // is dirty, so typing is never yanked out from under the cursor.
+  useEffect(() => {
+    setValue((v) => (v === (name ?? "") ? v : name ?? ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name]);
+
+  const commit = async () => {
+    const next = value.trim();
+    if (next === (name ?? "")) return setState("idle");
+    setState("saving");
+    try {
+      await accountApi.updateAccount({ name: next || null });
+      await onSaved();
+      setState("saved");
+    } catch {
+      setState("error");
+    }
+  };
+
+  return (
+    <label className="acct-field">
+      <span className="acct-field-label">Name</span>
+      <input
+        type="text"
+        value={value}
+        maxLength={80}
+        placeholder="Not set"
+        autoComplete="name"
+        onChange={(e) => {
+          setValue(e.target.value);
+          if (state !== "idle") setState("idle");
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") {
+            setValue(name ?? "");
+            setState("idle");
+          }
+        }}
+      />
+      <span className={`acct-field-note acct-field-${state}`} role="status">
+        {state === "saving" ? "Saving…"
+          : state === "saved" ? "Saved"
+          : state === "error" ? "Couldn't save — try again."
+          : "Used to greet you in alert emails."}
+      </span>
+    </label>
+  );
+}
 
 /**
  * My account — who you are and how we reach you.
@@ -18,12 +82,14 @@ import SignInCard from "./SignInCard";
 export default function AccountPanel({
   me,
   notice,
+  onRefresh,
   onSignOut,
   onGoSaved,
   onGoAlerts,
 }: {
   me: Me | null;
   notice: string | null;
+  onRefresh: () => Promise<Me>;
   onSignOut: () => void;
   onGoSaved: () => void;
   onGoAlerts: () => void;
@@ -49,11 +115,14 @@ export default function AccountPanel({
         <h2>My account</h2>
       </div>
 
-      <section className="acct-section" aria-label="Sign-in details">
-        <h3>Signed in as</h3>
-        <p className="acct-email">{me.user.email}</p>
-        <p className="acct-fine">
-          PlanView has no password — you sign in with a link sent to this address.
+      <section className="acct-section" aria-label="Your details">
+        <h3>Your details</h3>
+        <NameField name={me.user.name} onSaved={onRefresh} />
+        <p className="acct-email-line">
+          <span className="acct-email">{me.user.email}</span>
+          <span className="acct-fine">
+            PlanView has no password — you sign in with a link sent here.
+          </span>
         </p>
       </section>
 

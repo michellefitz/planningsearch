@@ -1265,6 +1265,7 @@ export default function App() {
                 <AccountPanel
                   me={me}
                   notice={authNotice}
+                  onRefresh={refreshMe}
                   onSignOut={signOut}
                   onGoSaved={() => setMode("saved")}
                   onGoAlerts={() => setMode("alerts")}

@@ -141,6 +141,10 @@ const STATEMENTS = [
     model text not null,
     created_at timestamptz not null default now()
   )`,
+  // Added after the accounts tables shipped, so it is an alter rather than a
+  // column on the create above — existing rows keep a null name and the UI
+  // falls back to the address.
+  `alter table users add column if not exists name text`,
 ];
 
 for (const stmt of STATEMENTS) {
