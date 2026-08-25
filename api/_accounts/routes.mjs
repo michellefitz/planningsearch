@@ -87,11 +87,41 @@ export async function currentUser(req) {
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (!token) return null;
   const rows = await sql(
-    `select u.id, u.email, u.name from sessions s join users u on u.id = s.user_id
+    `select u.id, u.email from sessions s join users u on u.id = s.user_id
      where s.token_hash = $1 and s.expires_at > now()`,
     [sha256Hex(token)]
   );
   return rows[0] ?? null;
+}
+
+/**
+ * Mirrors scripts/migrate-accounts.mjs, for the same reason ensureWatchSchema
+ * does: the script needs DATABASE_URL, which only production has, so a column
+ * added after the tables shipped has to apply itself.
+ *
+ * Deliberately not called from currentUser. That runs on every authenticated
+ * request, and when `name` was read there before this existed, the missing
+ * column threw, the session came back null, and signing in appeared to do
+ * nothing at all — the sign-in form again, straight after a valid magic link.
+ * The hot path stays on columns that have always been there.
+ */
+/** The account's name, or null — including when the column is not there yet,
+ *  because a missing name must never cost anyone their session. */
+async function loadUserName(userId) {
+  try {
+    await ensureUserSchema();
+    const rows = await sql(`select name from users where id = $1`, [userId]);
+    return rows[0]?.name ?? null;
+  } catch (err) {
+    console.error("name lookup failed", err);
+    return null;
+  }
+}
+
+let userSchemaReady = null;
+export function ensureUserSchema() {
+  userSchemaReady ??= sql(`alter table users add column if not exists name text`);
+  return userSchemaReady;
 }
 
 async function seedSnapshot(authorityId, reference, ctx) {
@@ -375,12 +405,13 @@ document.getElementById("btn").onclick = async function() {
   // the guard it would fall in here and quietly return the unchanged account.
   if (route === "/api/me" && req.method !== "PATCH") {
     if (!user) return sendPrivate(res, 200, { user: null, saves: [], lists: [], watches: [] });
-    const [saves, lists, watches] = await Promise.all([
+    const [saves, lists, watches, name] = await Promise.all([
       loadSaves(user.id, ctx),
       loadLists(user.id),
       loadWatches(user.id),
+      loadUserName(user.id),
     ]);
-    return sendPrivate(res, 200, { user: { email: user.email, name: user.name ?? null }, saves, lists, watches });
+    return sendPrivate(res, 200, { user: { email: user.email, name }, saves, lists, watches });
   }
 
   if (!user) return sendPrivate(res, 401, { error: "sign in required" });
@@ -390,6 +421,7 @@ document.getElementById("btn").onclick = async function() {
   if (route === "/api/me" && req.method === "PATCH") {
     const body = await readJsonBody(req);
     if (body && "name" in body) {
+      await ensureUserSchema();
       const raw = body.name == null ? "" : String(body.name).trim().slice(0, 80);
       await sql(`update users set name = $2 where id = $1`, [user.id, raw || null]);
       return sendPrivate(res, 200, { user: { email: user.email, name: raw || null } });
