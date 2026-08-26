@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   collectAppRefs,
   streamAgent,
@@ -8,9 +8,12 @@ import {
 } from "../agentApi";
 import { renderMarkdown as renderText } from "../markdown";
 import { StatusBadge } from "./ResultsList";
+import ChatStats, { type CountResult } from "./ChatStats";
 import { ChevronRightIcon } from "./icons";
 import { posthog } from "../posthog";
 import { Waiting } from "../loading";
+
+const ChatMap = lazy(() => import("./ChatMap"));
 
 interface Props {
   onSelectApp: (id: number) => void;
@@ -22,6 +25,7 @@ interface DisplayMessage {
   role: "user" | "assistant";
   content: string;
   error?: boolean;
+  stats?: CountResult[];
 }
 
 // Chat cards carry only the agent's slim app summary, which has no display
@@ -178,25 +182,23 @@ function AssistantMessage({
   content,
   appRefs,
   seenCards,
+  stats,
   onSelectApp,
   onHoverApp,
 }: {
   content: string;
   appRefs: Map<number, AgentAppRef>;
   seenCards: Set<number>;
+  stats?: CountResult[];
   onSelectApp: (id: number) => void;
   onHoverApp: (id: number | null) => void;
 }) {
-  // Cards are pulled out of the prose and rendered after the paragraph they
-  // appear in — never mid-sentence — and only the first time a property comes
-  // up in the whole conversation. `seenCards` is threaded across messages so a
-  // property mentioned again later doesn't render its card a second time.
   const blocks: ReactNode[] = [];
+  const messageAppIds: number[] = [];
+
   content.split(/\n{2,}/).forEach((para, pi) => {
     const ids: number[] = [];
     for (const m of para.matchAll(TOKEN_RE)) ids.push(Number(m[1]));
-    // Strip the tokens from the prose and tidy the whitespace/punctuation they
-    // leave behind so a mid-sentence reference reads cleanly.
     const prose = para
       .replace(TOKEN_RE, "")
       .replace(/[ \t]{2,}/g, " ")
@@ -204,6 +206,7 @@ function AssistantMessage({
       .trim();
     if (prose) blocks.push(<div key={`t${pi}`}>{renderText(prose, pi)}</div>);
     for (const id of ids) {
+      messageAppIds.push(id);
       if (seenCards.has(id)) continue;
       seenCards.add(id);
       const app = appRefs.get(id);
@@ -213,6 +216,25 @@ function AssistantMessage({
         );
     }
   });
+
+  if (stats?.length) {
+    for (let si = 0; si < stats.length; si++) {
+      blocks.push(<ChatStats key={`s${si}`} data={stats[si]} />);
+    }
+  }
+
+  const mapApps = messageAppIds
+    .map((id) => appRefs.get(id))
+    .filter((a): a is AgentAppRef => a != null && a.lat != null && a.lng != null);
+  const uniqueMap = [...new Map(mapApps.map((a) => [a.id, a])).values()];
+
+  if (uniqueMap.length >= 2) {
+    blocks.push(
+      <Suspense key="map" fallback={null}>
+        <ChatMap apps={uniqueMap} onSelect={onSelectApp} />
+      </Suspense>
+    );
+  }
 
   return <div className="chat-msg chat-assistant">{blocks}</div>;
 }
@@ -229,6 +251,7 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
      an ellipsis on a disabled button and nothing else. */
   const [answering, setAnswering] = useState(false);
   const appRefs = useRef(new Map<number, AgentAppRef>());
+  const pendingStats = useRef<CountResult[]>([]);
 
   const threadRef = useRef<HTMLDivElement>(null);
   // Pinned to the bottom? Set false the moment the user scrolls up, so the
@@ -307,6 +330,7 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
     ];
     targetRef.current = "";
     shownRef.current = 0;
+    pendingStats.current = [];
     replyIndexRef.current = messages.length + 1;
     setMessages((ms) => [...ms, { role: "user", content: q }, { role: "assistant", content: "" }]);
     // Sending re-arms the pin and rides down to the new question.
@@ -323,6 +347,12 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
       } else if (ev.type === "tool_start") {
         setStatus(TOOL_LABELS[ev.name] ?? "Working…");
       } else if (ev.type === "tool_result") {
+        if (ev.name === "count_applications" && ev.result && typeof ev.result === "object") {
+          const r = ev.result as Record<string, unknown>;
+          if (typeof r.total === "number" && r.total > 0) {
+            pendingStats.current.push(r as unknown as CountResult);
+          }
+        }
         const referenced = [...appRefs.current.values()];
         if (referenced.length) onAppsReferenced(referenced);
       } else if (ev.type === "error") {
@@ -343,6 +373,13 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
     } finally {
       setBusy(false);
       setStatus(null);
+      if (pendingStats.current.length > 0) {
+        const stats = [...pendingStats.current];
+        const idx = replyIndexRef.current;
+        if (idx != null) {
+          setMessages((ms) => ms.map((m, i) => (i === idx ? { ...m, stats } : m)));
+        }
+      }
     }
   }, [input, busy, messages, onAppsReferenced, ensureReveal, scrollToBottom, setReplyContent, stopReveal]);
 
@@ -375,6 +412,7 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
                 content={m.content}
                 appRefs={appRefs.current}
                 seenCards={seenCards}
+                stats={m.stats}
                 onSelectApp={onSelectApp}
                 onHoverApp={onHoverApp}
               />

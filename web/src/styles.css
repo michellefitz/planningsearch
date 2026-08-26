@@ -4679,6 +4679,115 @@ p.loading-line {
   font-weight: 550;
   color: var(--action);
 }
+/* Inline map for referenced applications */
+.chat-map {
+  width: 100%;
+  height: 200px;
+  border-radius: var(--radius);
+  margin: 6px 0;
+  border: 1px solid var(--line);
+}
+.chat-map-pin {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.chat-map-pin:hover {
+  transform: scale(1.4);
+}
+
+/* Stats card from count_applications */
+.chat-stats {
+  width: 100%;
+  margin: 6px 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 0.85em;
+}
+.stats-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.stats-total {
+  font-size: 1.3em;
+  font-weight: 650;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.stats-rate {
+  font-size: 0.9em;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+.stats-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 8px 0 6px;
+  gap: 1px;
+}
+.stats-bar-seg {
+  height: 100%;
+  min-width: 3px;
+  border-radius: 3px;
+}
+.stats-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.stats-chip {
+  font-size: 0.9em;
+  color: var(--ink-2);
+}
+.stats-breakdown {
+  margin-top: 6px;
+}
+.stats-breakdown-toggle {
+  all: unset;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.stats-breakdown-toggle:hover {
+  color: var(--ink);
+}
+.stats-breakdown-list {
+  list-style: none;
+  padding: 4px 0 0 0;
+  margin: 0;
+}
+.stats-breakdown-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  font-size: 0.9em;
+  border-bottom: 1px solid var(--line);
+}
+.stats-breakdown-list li:last-child {
+  border-bottom: 0;
+}
+.stats-bd-key {
+  color: var(--ink-2);
+}
+.stats-bd-val {
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
 .chat-empty {
   color: var(--ink-2);
   font-size: 0.95em;
