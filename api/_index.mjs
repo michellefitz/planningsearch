@@ -292,7 +292,7 @@ async function resolveCitedUrls(app) {
   const urls = {};
   await Promise.all(
     unresolved.map(async (c) => {
-      const agileId = await resolveAgileId(client, null, c.reference);
+      const agileId = await resolveAgileId(client, null, c.reference, null, app.authority_id);
       if (agileId) urls[c.reference] = `${base}/application-details/${agileId}`;
     })
   );
@@ -710,11 +710,27 @@ function fieldOf(r, fields) {
   return null;
 }
 
-async function resolveAgileId(client, sourceUrl, reference, trace) {
+async function resolveAgileId(client, sourceUrl, reference, trace, authorityId) {
   const fromUrl = sourceUrl?.match(/application-details\/(\d+)/i)?.[1];
   if (fromUrl) return fromUrl;
   const cacheKey = `${client}:${reference}`;
   if (AGILE_ID_CACHE.has(cacheKey)) return AGILE_ID_CACHE.get(cacheKey);
+  if (authorityId && process.env.DATABASE_URL) {
+    try {
+      const rows = await sql(
+        `select agile_id from agile_enrichment
+         where authority_id = $1 and planning_reference = $2 and agile_id is not null
+         limit 1`,
+        [authorityId, reference]
+      );
+      if (rows[0]?.agile_id) {
+        const id = String(rows[0].agile_id);
+        AGILE_ID_CACHE.set(cacheKey, id);
+        trace?.push({ step: "agile_resolve", source: "neon", resolvedId: Number(id) });
+        return id;
+      }
+    } catch {}
+  }
   const url = `${AGILE_API}/application/search?query=${encodeURIComponent(reference)}`;
   const found = await agileGetJson(url, client);
   const results = coerceResults(found);
@@ -731,8 +747,19 @@ async function resolveAgileId(client, sourceUrl, reference, trace) {
   let hit = results.find((r) => normRef(fieldOf(r, REF_FIELDS)) === want && fieldOf(r, ID_FIELDS));
   if (!hit && results.length === 1 && fieldOf(results[0], ID_FIELDS)) hit = results[0];
   const id = hit ? fieldOf(hit, ID_FIELDS) : null;
-  trace?.push({ step: "agile_resolve", resolvedId: id ? Number(id) : null });
-  if (id) AGILE_ID_CACHE.set(cacheKey, id);
+  trace?.push({ step: "agile_resolve", source: "api", resolvedId: id ? Number(id) : null });
+  if (id) {
+    AGILE_ID_CACHE.set(cacheKey, id);
+    if (authorityId && process.env.DATABASE_URL) {
+      sql(
+        `insert into agile_enrichment (authority_id, planning_reference, agile_id)
+         values ($1, $2, $3)
+         on conflict (authority_id, planning_reference) do update set agile_id = excluded.agile_id
+         where agile_enrichment.agile_id is null`,
+        [authorityId, reference, Number(id)]
+      ).catch(() => {});
+    }
+  }
   return id;
 }
 
@@ -942,7 +969,7 @@ async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false
   if (!client) return null;
   const cacheKey = `agile-detail:${authorityId}:${reference}`;
   if (!debug && PARTIES_CACHE.has(cacheKey)) return PARTIES_CACHE.get(cacheKey);
-  const id = await resolveAgileId(client, sourceUrl, reference);
+  const id = await resolveAgileId(client, sourceUrl, reference, null, authorityId);
   if (!id) return null;
   const detail = await fetchAgileDetailById(authorityId, id, debug);
   if (!detail) return null;
@@ -1187,7 +1214,7 @@ async function fetchAgileConditions(authorityId, sourceUrl, reference, trace) {
   if (!client) return null;
   const cacheKey = `${authorityId}:${reference}`;
   if (!trace && CONDITIONS_CACHE.has(cacheKey)) return CONDITIONS_CACHE.get(cacheKey);
-  const id = await resolveAgileId(client, sourceUrl, reference, trace);
+  const id = await resolveAgileId(client, sourceUrl, reference, trace, authorityId);
   if (!id) return null;
   const url = `${AGILE_API}/application/${id}/conditions`;
   const d = await agileGetJson(url, client);
@@ -2010,7 +2037,7 @@ async function agilePortalUrl(authorityId, sourceUrl, reference, trace) {
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   const slug = AGILE_SLUGS[authorityId];
   if (!client || !slug) return null;
-  const id = await resolveAgileId(client, sourceUrl, reference, trace);
+  const id = await resolveAgileId(client, sourceUrl, reference, trace, authorityId);
   return id ? `${AGILE_BASE}/${slug}/application-details/${id}` : null;
 }
 
@@ -2103,7 +2130,7 @@ async function fetchAgileDocumentList(authorityId, sourceUrl, reference, trace) 
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   const slug = AGILE_SLUGS[authorityId];
   if (!client || !slug) return null;
-  const id = await resolveAgileId(client, sourceUrl, reference);
+  const id = await resolveAgileId(client, sourceUrl, reference, null, authorityId);
   trace?.push({ step: "agile_resolve", resolvedId: id === null ? null : Number(id) });
   if (!id) return null;
   const applicationUrl = `${AGILE_BASE}/${slug}/application-details/${id}`;
@@ -2117,7 +2144,7 @@ async function fetchAgileDocumentList(authorityId, sourceUrl, reference, trace) 
 async function fetchAgileDocument(authorityId, sourceUrl, reference, index, maxBytes = 4_000_000, trace) {
   const client = AGILE_CLIENT_BY_AUTHORITY[authorityId];
   if (!client) return null;
-  const id = await resolveAgileId(client, sourceUrl, reference);
+  const id = await resolveAgileId(client, sourceUrl, reference, null, authorityId);
   if (!id) return null;
   const listJson = await agileGetTraced(confirmedDocEndpoint(id), client, "PA", trace);
   const entries = parseAgileDocEntries(listJson);
@@ -3162,7 +3189,7 @@ export default async function handler(req, res) {
       // For the nightly agile harvest (accounts/harvest.mjs).
       applications: BUNDLE.applications,
       resolveAgileId: (app) =>
-        resolveAgileId(AGILE_CLIENT_BY_AUTHORITY[app.authority_id], app.source_url, app.planning_reference),
+        resolveAgileId(AGILE_CLIENT_BY_AUTHORITY[app.authority_id], app.source_url, app.planning_reference, null, app.authority_id),
       fetchAgileDetailById,
     });
   }
