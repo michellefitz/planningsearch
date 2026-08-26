@@ -1,25 +1,58 @@
 {
   "artboards": [
-    { "file": "CardToday.dc.html", "x": 0,    "y": 0, "w": 560, "h": 900 },
-    { "file": "Main.dc.html",      "x": 640,  "y": 0, "w": 560, "h": 900 },
-    { "file": "OptionB.dc.html",   "x": 1280, "y": 0, "w": 560, "h": 900 },
-    { "file": "OptionC.dc.html",   "x": 1920, "y": 0, "w": 560, "h": 900 }
+    {
+      "file": "CardToday.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 760,
+      "h": 900
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 860,
+      "y": 0,
+      "w": 760,
+      "h": 900
+    },
+    {
+      "file": "OptionB.dc.html",
+      "x": 1720,
+      "y": 0,
+      "w": 760,
+      "h": 900
+    },
+    {
+      "file": "OptionC.dc.html",
+      "x": 2580,
+      "y": 0,
+      "w": 760,
+      "h": 900
+    }
   ],
   "annotations": [
     {
       "id": "brief",
       "x": 0,
       "y": -250,
-      "w": 700,
-      "text": "The card that renders under every property the agent mentions.\n\nTwo problems, and they have different fixes. The visual one: the card is the search-results list row, which is borderless by design because the list has dividers — dropped in a grey bubble it reads as another paragraph. The content one: the prompt tells the model to bold the address before emitting the token, so the address, the status and the proposal are all said twice.\n\nRead left to right. Each option moves the same line — how much identity the card carries versus the prose."
+      "w": 760,
+      "text": "The card that renders under every property the agent mentions.\n\nTwo problems with different fixes. Visual: the card is the search-results list row, borderless because that list has dividers \u2014 in a grey bubble it reads as another paragraph. Content: the prompt tells the model to bold the address before emitting the token, so the address, the status and the proposal are each said twice.\n\nRead left to right. Each option moves the same line \u2014 how much identity the card carries versus the prose."
     },
     {
       "id": "widths",
-      "x": 1920,
+      "x": 2580,
       "y": -250,
-      "w": 560,
-      "text": "Drawn at the 420px Ask drawer these actually ship in, not the width in your screenshot — worth checking where that wider view came from.\n\nAll three give the card a real surface: white fill on the grey bubble, a border, and in B a 1px shadow. Today it has none of those at rest — only a hover, which says nothing on touch."
+      "w": 760,
+      "text": "Drawn at the real surface: the Ask view is now a full page with a 720px column, so the bubble is 680px wide here. The first draft assumed the old 420px drawer \u2014 that is where the earlier narrow cards came from.\n\nAll three give the card a surface it does not have today: white fill against the grey bubble, plus a border. Today it has neither at rest, only a hover, which says nothing on touch."
+    },
+    {
+      "id": "picked",
+      "x": 860,
+      "y": -250,
+      "w": 760,
+      "text": "Chosen. The address stays, in the quiet line beside the council and the date \u2014 enough to tell which paragraph a card belongs to when an answer cites several properties, without becoming a second headline.\n\nChecked at 720px: the longest meta line tried (Ardilaun, Malahide Road, Swords, Co. Dublin \u00b7 Fingal \u00b7 Jan 2026) fits with room to spare, and truncates rather than wraps if a longer one turns up."
     }
   ],
-  "launch": { "view": "canvas" }
+  "launch": {
+    "view": "canvas"
+  }
 }
