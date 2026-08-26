@@ -19,6 +19,7 @@ api/_data/
 scripts/flood/data/
 
 # Seeded design canvases — 2 MB of editor payload each, rebuilt from the
-# .dc.html sources beside them (see design/README.md)
-design/*-canvas.html
+# .dc.html sources beside them (see design/README.md). Matches at any depth:
+# each canvas lives in its own folder under design/.
+design/**/planview-*.html
 design/planview-*.html
