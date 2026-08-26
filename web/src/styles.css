@@ -4565,6 +4565,7 @@ p.loading-line {
   gap: 8px;
   min-height: 0;
   flex: 1;
+  padding: 0 1rem 0.75rem;
 }
 .chat-thread {
   overflow-y: auto;
@@ -4573,7 +4574,7 @@ p.loading-line {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 4px 2px;
+  padding: 4px 0;
   /* Reaching the top/bottom of the thread shouldn't scroll the page behind it. */
   overscroll-behavior: contain;
 }
