@@ -8,6 +8,7 @@ import {
 } from "../agentApi";
 import { renderMarkdown as renderText } from "../markdown";
 import { StatusBadge } from "./ResultsList";
+import { ChevronRightIcon } from "./icons";
 import { posthog } from "../posthog";
 import { Waiting } from "../loading";
 
@@ -60,6 +61,70 @@ const EXAMPLES = [
 
 const TOKEN_RE = /\[app:(?:id:)?(\d+)(?::\d+)?\]/g;
 
+/** "Aug 2024" — a month is as precise as this line needs to be. */
+export function monthYear(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("en-IE", { month: "short", year: "numeric" });
+}
+
+/**
+ * The quiet line under the reference: which property, whose register, when.
+ *
+ * The address is here rather than as a heading because the paragraph above has
+ * already named it — but it has to be *somewhere*, since an answer often cites
+ * several properties and a bare reference gives a reader nothing to match
+ * against the prose.
+ *
+ * Decided beats received: it is when the outcome on the badge happened. Both
+ * are labelled, because an unlabelled date beside "Pending decision" reads
+ * either way.
+ *
+ * Returned in two parts rather than one string so the layout can decide what
+ * gives when there is not enough room. On a phone the joined line lost the
+ * council and the date first — the two things the card exists to carry — so
+ * only the address truncates now.
+ */
+export function cardParts(app: {
+  address_text?: string | null;
+  authority_id: string;
+  decision_date?: string | null;
+  received_date?: string | null;
+}): { where: string | null; when: string | null } {
+  const date = app.decision_date
+    ? `decided ${monthYear(app.decision_date)}`
+    : app.received_date
+      ? `received ${monthYear(app.received_date)}`
+      : null;
+  return {
+    where: app.address_text?.trim() || null,
+    when: [AUTHORITY_SHORT_NAMES[app.authority_id], date].filter(Boolean).join(" · ") || null,
+  };
+}
+
+/** The same line as one string — for the hover title, where the address is
+ *  whole even when the rendered one has been truncated. */
+export function cardMeta(app: Parameters<typeof cardParts>[0]): string {
+  const { where, when } = cardParts(app);
+  return [where, when].filter(Boolean).join(" · ");
+}
+
+/**
+ * One cited application, under the paragraph that discusses it.
+ *
+ * A citation, not a second telling of it. This used to be the search-results
+ * row — address as a heading, the council's full description, then the meta
+ * line — which restated three things the sentence above had just said, and,
+ * being `.result-card`, carried no border or fill because in the results list
+ * the dividers do that work. In a chat bubble there are no dividers, so it
+ * read as another paragraph.
+ *
+ * What survives is what the prose cannot give you: the reference, the council,
+ * the date, and a way in. The address stays too, quietly, on the same line —
+ * an answer often cites several properties, and without a name there is no way
+ * to tell which paragraph a card belongs to.
+ */
 function AppRefCard({
   app,
   onSelect,
@@ -69,34 +134,42 @@ function AppRefCard({
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
 }) {
+  const { where, when } = cardParts(app);
+
   return (
     <button
       type="button"
-      className="result-card chat-app-card"
+      className="chat-app-card"
       onClick={() => onSelect(app.id)}
       onMouseEnter={() => onHover(app.id)}
       onMouseLeave={() => onHover(null)}
       onFocus={() => onHover(app.id)}
       onBlur={() => onHover(null)}
     >
-      <div className="result-top">
-        <strong>{app.address_text ?? app.planning_reference}</strong>
-        <StatusBadge status={app.status} label={app.status_label ?? app.status} />
-      </div>
-      <p className="result-desc">{app.description}</p>
-      <p className="result-meta">
-        <span className="ref">{app.planning_reference}</span>
-        {AUTHORITY_SHORT_NAMES[app.authority_id] && ` · ${AUTHORITY_SHORT_NAMES[app.authority_id]}`}
-        {app.received_date && ` · received ${app.received_date}`}
-        {app.commencement_date && (
-          <span
-            className="tag tag-commenced"
-            title="A commencement notice was filed with building control for this permission"
-          >
-            {app.completion_date ? "built" : "work commenced"}
+      <span className="chat-card-lines">
+        <span className="chat-card-head">
+          <span className="ref">{app.planning_reference}</span>
+          <StatusBadge status={app.status} label={app.status_label ?? app.status} />
+          {app.commencement_date && (
+            <span
+              className="tag tag-commenced"
+              title="A commencement notice was filed with building control for this permission"
+            >
+              {app.completion_date ? "built" : "work commenced"}
+            </span>
+          )}
+        </span>
+        {(where || when) && (
+          <span className="chat-card-meta" title={cardMeta(app)}>
+            {where && <span className="chat-card-where">{where}</span>}
+            {when && <span className="chat-card-when">{when}</span>}
           </span>
         )}
-      </p>
+      </span>
+      <span className="chat-card-open">
+        Open
+        <ChevronRightIcon />
+      </span>
     </button>
   );
 }

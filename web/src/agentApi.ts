@@ -16,6 +16,8 @@ export interface AgentAppRef {
   status_label: string;
   authority_id: string;
   received_date?: string | null;
+  /** Sent by toolAppSummary all along; the card needs it to say when, not just what. */
+  decision_date?: string | null;
   commencement_date?: string | null;
   completion_date?: string | null;
   lat: number | null;

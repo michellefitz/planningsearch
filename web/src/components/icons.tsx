@@ -81,3 +81,22 @@ export function BellIcon({ on }: { on: boolean }) {
     </svg>
   );
 }
+
+/** Points into something — used where a control opens a record elsewhere. */
+export function ChevronRightIcon({ size = 11 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}

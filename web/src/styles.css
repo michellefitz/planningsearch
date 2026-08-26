@@ -4565,15 +4565,119 @@ p.loading-line {
   color: var(--ink-2);
   margin: 0 4px;
 }
+/* A cited record inside a grey bubble, so it needs its own surface: the search
+   results row this used to reuse sets `border: 0; background: none` and leans
+   on the list's dividers for structure, of which a chat bubble has none. */
 .chat-app-card {
-  margin: 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   width: 100%;
+  margin: 8px 0 2px;
+  padding: 0.5rem 0.62rem;
   text-align: left;
-  border-radius: 8px;
-}
-.chat-app-card:hover,
-.chat-app-card:focus {
   background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.chat-app-card:hover,
+.chat-app-card:focus-visible {
+  border-color: var(--action);
+  box-shadow: 0 1px 3px rgba(23, 25, 30, 0.07);
+}
+
+.chat-card-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Wraps rather than overflowing: with a commencement tag alongside a long
+   status the row ran under the Open control and the two drew on top of each
+   other. */
+.chat-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.28rem 0.42rem;
+  min-width: 0;
+}
+
+.chat-card-head .ref {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Smaller than the badge in a results row: here it sits beside a reference,
+   not a heading, and must not outweigh it. */
+.chat-card-head .status-badge {
+  flex: none;
+  font-size: 0.66rem;
+  padding: 0.1rem 0.42rem;
+}
+
+/* Address, council and date on one quiet line, which truncates rather than
+   wraps — a second line would make every card a different height.
+   What gives is the address, never the council and date: joined as one string
+   the line ran out at phone widths and dropped the date, which is precisely
+   what the prose above does not tell you. */
+.chat-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.3rem;
+  min-width: 0;
+  font-size: 0.72rem;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Holds a floor before it lets the council and date wrap below it. Left free
+   to shrink to nothing, a narrow card kept "South Dublin · decided Aug 2024"
+   and dropped the address altogether — the one thing that says which
+   paragraph the card belongs to. */
+.chat-card-where {
+  /* Shrinks but never grows: given room to grow it pushed the council and date
+     to the far edge and left the separator dangling mid-row. */
+  flex: 0 1 auto;
+  min-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The separator belongs to the address, so it disappears with the wrap
+   instead of dangling at the end of a line. */
+.chat-card-where:not(:last-child)::after {
+  content: " ·";
+}
+
+@media (max-width: 767px) {
+  .chat-card-where:not(:last-child)::after {
+    content: none;
+  }
+}
+
+.chat-card-when {
+  flex: none;
+}
+
+.chat-card-open {
+  flex: none;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 0.22rem;
+  font-size: 0.72rem;
+  font-weight: 550;
+  color: var(--action);
 }
 .chat-empty {
   color: var(--ink-2);
