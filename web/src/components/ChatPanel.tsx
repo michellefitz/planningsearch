@@ -193,7 +193,8 @@ function AssistantMessage({
   onSelectApp: (id: number) => void;
   onHoverApp: (id: number | null) => void;
 }) {
-  const blocks: ReactNode[] = [];
+  const proseBlocks: ReactNode[] = [];
+  const cardBlocks: ReactNode[] = [];
   const messageAppIds: number[] = [];
 
   content.split(/\n{2,}/).forEach((para, pi) => {
@@ -204,39 +205,36 @@ function AssistantMessage({
       .replace(/[ \t]{2,}/g, " ")
       .replace(/[ \t]+([.,;:!?])/g, "$1")
       .trim();
-    if (prose) blocks.push(<div key={`t${pi}`}>{renderText(prose, pi)}</div>);
+    if (prose) proseBlocks.push(<div key={`t${pi}`}>{renderText(prose, pi)}</div>);
     for (const id of ids) {
       messageAppIds.push(id);
       if (seenCards.has(id)) continue;
       seenCards.add(id);
       const app = appRefs.get(id);
       if (app)
-        blocks.push(
+        cardBlocks.push(
           <AppRefCard key={`c${pi}-${id}`} app={app} onSelect={onSelectApp} onHover={onHoverApp} />
         );
     }
   });
-
-  if (stats?.length) {
-    for (let si = 0; si < stats.length; si++) {
-      blocks.push(<ChatStats key={`s${si}`} data={stats[si]} />);
-    }
-  }
 
   const mapApps = messageAppIds
     .map((id) => appRefs.get(id))
     .filter((a): a is AgentAppRef => a != null && a.lat != null && a.lng != null);
   const uniqueMap = [...new Map(mapApps.map((a) => [a.id, a])).values()];
 
-  if (uniqueMap.length >= 2) {
-    blocks.push(
-      <Suspense key="map" fallback={null}>
-        <ChatMap apps={uniqueMap} onSelect={onSelectApp} />
-      </Suspense>
-    );
-  }
-
-  return <div className="chat-msg chat-assistant">{blocks}</div>;
+  return (
+    <div className="chat-msg chat-assistant">
+      {proseBlocks}
+      {stats?.map((s, si) => <ChatStats key={`s${si}`} data={s} />)}
+      {uniqueMap.length >= 2 && (
+        <Suspense fallback={null}>
+          <ChatMap key={uniqueMap.length} apps={uniqueMap} onSelect={onSelectApp} />
+        </Suspense>
+      )}
+      {cardBlocks.length > 0 && <div className="chat-card-list">{cardBlocks}</div>}
+    </div>
+  );
 }
 
 export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }: Props) {

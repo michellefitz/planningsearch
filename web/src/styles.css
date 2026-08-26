@@ -4568,13 +4568,20 @@ p.loading-line {
 /* A cited record inside a grey bubble, so it needs its own surface: the search
    results row this used to reuse sets `border: 0; background: none` and leans
    on the list's dividers for structure, of which a chat bubble has none. */
+.chat-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
 .chat-app-card {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   width: 100%;
-  margin: 8px 0 2px;
-  padding: 0.5rem 0.62rem;
+  padding: 0.55rem 0.7rem;
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--line-strong);
@@ -4582,13 +4589,14 @@ p.loading-line {
   font: inherit;
   color: inherit;
   cursor: pointer;
-  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 
 .chat-app-card:hover,
 .chat-app-card:focus-visible {
   border-color: var(--action);
-  box-shadow: 0 1px 3px rgba(23, 25, 30, 0.07);
+  background: var(--action-tint, rgba(37, 99, 235, 0.04));
+  box-shadow: 0 1px 4px rgba(23, 25, 30, 0.08);
 }
 
 .chat-card-lines {
@@ -4675,9 +4683,12 @@ p.loading-line {
   display: flex;
   align-items: center;
   gap: 0.22rem;
+  padding: 0.22rem 0.5rem;
   font-size: 0.72rem;
   font-weight: 550;
   color: var(--action);
+  background: var(--action-tint, rgba(37, 99, 235, 0.06));
+  border-radius: 999px;
 }
 /* Inline map for referenced applications */
 .chat-map {
