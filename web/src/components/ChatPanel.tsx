@@ -52,6 +52,12 @@ const TOOL_LABELS: Record<string, string> = {
 
 // Canonical form is [app:id:35269], but the model sometimes emits
 // [app:35269] or [app:35269:35269] — accept all three.
+const EXAMPLES = [
+  "What extensions have been approved near Griffith Avenue?",
+  "Have any two-storey extensions been refused in Lucan, and why?",
+  "What conditions do granted attic conversions in Maynooth usually carry?",
+];
+
 const TOKEN_RE = /\[app:(?:id:)?(\d+)(?::\d+)?\]/g;
 
 function AppRefCard({
@@ -211,8 +217,8 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
     if (stickRef.current) scrollToBottom();
   }, [status, messages.length, scrollToBottom]);
 
-  const send = useCallback(async () => {
-    const q = input.trim();
+  const send = useCallback(async (prefill?: string) => {
+    const q = (prefill ?? input).trim();
     if (!q || busy) return;
     setInput("");
     posthog.capture("chat_question_submitted", { question_length: q.length });
@@ -272,12 +278,8 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
       <div className="chat-thread" ref={threadRef} onScroll={onThreadScroll}>
         {messages.length === 0 && (
           <div className="chat-empty">
-            <p>Ask about planning in your area — for example:</p>
-            <ul>
-              <li>"What extensions have been approved near Griffith Avenue?"</li>
-              <li>"Have any two-storey extensions been refused in Lucan, and why?"</li>
-              <li>"What conditions do granted attic conversions in Maynooth usually carry?"</li>
-            </ul>
+            <p>Ask about planning in your area.</p>
+            <p className="chat-beta">Early beta — answers are generated from planning register data and may contain errors.</p>
           </div>
         )}
         {(() => {
@@ -330,6 +332,15 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
           />
         )}
       </div>
+      {messages.length === 0 && !busy && (
+        <div className="chat-suggestions">
+          {EXAMPLES.map((ex) => (
+            <button key={ex} type="button" className="chat-suggestion" onClick={() => send(ex)}>
+              {ex}
+            </button>
+          ))}
+        </div>
+      )}
       <form
         className="chat-input-row"
         onSubmit={(e) => {

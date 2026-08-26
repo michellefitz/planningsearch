@@ -762,7 +762,6 @@ body {
   /* .nav-about-link is hidden beside its own rule further down — `all: unset`
      there resets display, and being later in the file it wins over a hide
      placed here. */
-  .ask-drawer { width: 100vw; }
   /* The data-source footer is dropped to reclaim vertical space (attribution
      still shows on every application's detail sheet). */
   .app-footer {
@@ -4493,64 +4492,12 @@ p.loading-line {
 
 /* ---- Ask drawer (layer over any destination) ---- */
 
-.ask-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  background: rgba(0, 0, 0, 0.25);
-  animation: fade-in 200ms ease;
-}
-
-.ask-drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 41;
-  width: min(420px, 100vw);
+/* Ask — full-screen mode */
+.ask-screen {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  flex-direction: column;
   background: var(--surface);
-  border-left: 1px solid var(--line-strong);
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.08);
-  animation: slide-in-right 220ms var(--ease);
-}
-
-@keyframes slide-in-right {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
-}
-
-.ask-drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.65rem 1rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.ask-drawer-title {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.ask-drawer-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  padding: 0;
-  background: none;
-  border: 0;
-  border-radius: 999px;
-  color: var(--ink-3);
-  cursor: pointer;
-}
-.ask-drawer-close:hover {
-  background: var(--surface-2);
-  color: var(--ink);
 }
 
 .chat-wrap {
@@ -4558,6 +4505,9 @@ p.loading-line {
   flex-direction: column;
   min-height: 0;
   flex: 1;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
 }
 .chat-panel {
   display: flex;
@@ -4565,7 +4515,7 @@ p.loading-line {
   gap: 8px;
   min-height: 0;
   flex: 1;
-  padding: 0 1rem 0.75rem;
+  padding: 1.5rem 1.25rem 0.75rem;
 }
 .chat-thread {
   overflow-y: auto;
@@ -4575,13 +4525,12 @@ p.loading-line {
   flex-direction: column;
   gap: 10px;
   padding: 4px 0;
-  /* Reaching the top/bottom of the thread shouldn't scroll the page behind it. */
   overscroll-behavior: contain;
 }
 .chat-msg {
   border-radius: 10px;
   padding: 8px 12px;
-  max-width: 95%;
+  max-width: 85%;
   transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease);
 }
 @starting-style {
@@ -4622,8 +4571,6 @@ p.loading-line {
   text-align: left;
   border-radius: 8px;
 }
-/* The assistant bubble is already grey (--surface-2), so the list view's grey
-   hover is invisible here — go white instead. */
 .chat-app-card:hover,
 .chat-app-card:focus {
   background: var(--surface);
@@ -4631,6 +4578,40 @@ p.loading-line {
 .chat-empty {
   color: var(--ink-2);
   font-size: 0.95em;
+  text-align: center;
+  margin: auto 0;
+  padding: 2rem 0;
+}
+.chat-beta {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: var(--action-tint);
+  color: var(--action);
+  border-radius: var(--radius);
+  font-size: 0.82em;
+  font-weight: 500;
+}
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  padding: 0 0 4px;
+}
+.chat-suggestion {
+  padding: 7px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 0.82em;
+  cursor: pointer;
+  transition: background var(--t-base) var(--ease), color var(--t-base) var(--ease);
+}
+.chat-suggestion:hover {
+  background: var(--surface-2);
+  color: var(--ink);
 }
 .chat-input-row {
   display: flex;
@@ -4660,6 +4641,7 @@ p.loading-line {
   font-size: 0.8em;
   color: var(--ink-3);
   margin: 0;
+  text-align: center;
 }
 
 /* Account */
@@ -5586,7 +5568,8 @@ p.loading-line {
   body:has(.detail-sheet) .layout,
   body:has(.detail-sheet) .sheet-backdrop,
   body:has(.detail-sheet) .account-screen,
-  body:has(.detail-sheet) .preplan-screen {
+  body:has(.detail-sheet) .preplan-screen,
+  body:has(.detail-sheet) .ask-screen {
     display: none !important;
   }
 

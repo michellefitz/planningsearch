@@ -125,10 +125,9 @@ export default function App() {
     window.addEventListener("planview:daily-limit", handler);
     return () => window.removeEventListener("planview:daily-limit", handler);
   }, []);
-  const [mode, setMode] = useState<"search" | "saved" | "alerts" | "preplan" | "about" | "account">(
+  const [mode, setMode] = useState<"search" | "saved" | "alerts" | "preplan" | "about" | "account" | "ask">(
     window.location.pathname === "/about" ? "about" : "search"
   );
-  const [askOpen, setAskOpen] = useState(false);
   // Mobile only: the layout shows one of map / list at a time (a toggle),
   // rather than squishing both. Ignored at ≥768px, where they sit side by side.
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
@@ -704,7 +703,7 @@ export default function App() {
           <button type="button" className={`nav-pill${mode === "preplan" ? " nav-pill-on" : ""}`} onClick={() => setMode("preplan")}>Report</button>
         </nav>
         <div className="nav-spacer" />
-        <button type="button" className={`nav-pill nav-pill-ask${askOpen ? " nav-pill-on" : ""}`} onClick={() => setAskOpen((o) => !o)}>✦ Ask</button>
+        <button type="button" className={`nav-pill nav-pill-ask${mode === "ask" ? " nav-pill-on" : ""}`} onClick={() => setMode(mode === "ask" ? "search" : "ask")}>✦ Ask</button>
         <button
           type="button"
           className="nav-about-link"
@@ -737,7 +736,7 @@ export default function App() {
                 </button>
                 <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "alerts" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("alerts"); }}>Alerts</button>
                 <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Report</button>
-                <button type="button" role="menuitem" className={`nav-link nav-link-mobile${askOpen ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setAskOpen((o) => !o); }}>✦ Ask</button>
+                <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "ask" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode(mode === "ask" ? "search" : "ask"); }}>✦ Ask</button>
                 <div className="nav-menu-divider" />
                 <button
                   type="button"
@@ -784,7 +783,7 @@ export default function App() {
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "saved" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("saved"); }}>Saved</button>
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "alerts" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("alerts"); }}>Alerts</button>
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Report</button>
-                  <button type="button" role="menuitem" className={`nav-link nav-link-mobile${askOpen ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setAskOpen((o) => !o); }}>✦ Ask</button>
+                  <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "ask" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode(mode === "ask" ? "search" : "ask"); }}>✦ Ask</button>
                   <div className="nav-menu-divider" />
                   <button type="button" role="menuitem" className="nav-link" onClick={() => { setNavOpen(false); setMode("account"); }}>Sign in</button>
                   <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setMode("about"); history.pushState(null, "", "/about"); }}>About</button>
@@ -806,7 +805,7 @@ export default function App() {
           behind it (hidden, not unmounted) so returning keeps its position. */}
       <div
         className={`layout ${mode === "search" && (mobileView === "map" || watchDraft) ? "m-map" : "m-panel"}${panelCollapsed ? " panel-collapsed" : ""}${watchDraft ? " watch-mode" : ""}`}
-        hidden={mode === "account" || mode === "saved" || mode === "alerts" || mode === "preplan" || mode === "about"}
+        hidden={mode === "account" || mode === "saved" || mode === "alerts" || mode === "preplan" || mode === "about" || mode === "ask"}
       >
         <div className="side-panel" ref={sidePanelRef}>
           <div hidden={mode !== "search"} className="search-wrap">
@@ -1281,23 +1280,14 @@ export default function App() {
         </main>
       )}
 
-      {askOpen && (
-        <>
-          <div className="ask-backdrop" onClick={() => setAskOpen(false)} aria-hidden="true" />
-          <aside className="ask-drawer">
-            <div className="ask-drawer-head">
-              <span className="ask-drawer-title">✦ Ask</span>
-              <button type="button" className="ask-drawer-close" onClick={() => setAskOpen(false)} aria-label="Close">
-                <XIcon size={13} />
-              </button>
-            </div>
-            <div className="chat-wrap">
-              <Suspense>
-                <ChatPanel onSelectApp={select} onHoverApp={setHoveredId} onAppsReferenced={showAgentApps} />
-              </Suspense>
-            </div>
-          </aside>
-        </>
+      {mode === "ask" && (
+        <main className="ask-screen">
+          <div className="chat-wrap">
+            <Suspense>
+              <ChatPanel onSelectApp={select} onHoverApp={setHoveredId} onAppsReferenced={showAgentApps} />
+            </Suspense>
+          </div>
+        </main>
       )}
 
       <footer className="app-footer">
