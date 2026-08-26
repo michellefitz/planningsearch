@@ -648,7 +648,7 @@ const AGILE_CLIENT_BY_AUTHORITY = {
 
 async function agileGetJson(url, client) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
+  const timer = setTimeout(() => controller.abort(), 6000);
   try {
     const res = await fetch(url, {
       signal: controller.signal,
@@ -1231,7 +1231,7 @@ async function fetchEplanningParties(sourceUrl) {
   if (!/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return none;
   if (PARTIES_CACHE.has(sourceUrl)) return PARTIES_CACHE.get(sourceUrl);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
+  const timer = setTimeout(() => controller.abort(), 6000);
   try {
     const res = await fetch(sourceUrl, { signal: controller.signal, headers: UA_HEADERS });
     if (!res.ok) return none;
@@ -4238,7 +4238,7 @@ const readableReason = (doc, content) => {
     // portal, so we summarise after that fetch (below) — otherwise the summary
     // is built from the truncated national text.
     const isAgile = app.authority_id in AGILE_CLIENT_BY_AUTHORITY;
-    const [detail, eplanningParties, quickSummary] = await Promise.all([
+    const [detail, eplanningParties, quickSummary, citedUrls] = await Promise.all([
       isAgile
         ? fetchAgileDetail(app.authority_id, app.source_url, app.planning_reference, debug)
         : null,
@@ -4246,6 +4246,7 @@ const readableReason = (doc, content) => {
         ? fetchEplanningParties(app.source_url)
         : null,
       isAgile ? null : summariseDescription(description, app.application_type, summaryTrace),
+      resolveCitedUrls(app),
     ]);
     // The council portal reflects the true current outcome (e.g. "Invalid",
     // "Grant Permission") long before the national dataset does. The portal
@@ -4323,7 +4324,7 @@ const readableReason = (doc, content) => {
       status: useLiveStatus ? liveStatus : null,
       status_raw: useLiveStatus ? liveRaw : null,
       status_label: useLiveStatus ? STATUS_LABELS[liveStatus] : null,
-      cited_urls: await resolveCitedUrls(app),
+      cited_urls: citedUrls,
     });
   }
 

@@ -11,7 +11,7 @@
 import type { EplanningParties } from "./documents.js";
 
 const AGILE_API = "https://planningapi.agileapplications.ie/api";
-const TIMEOUT_MS = 12_000;
+const TIMEOUT_MS = 6_000;
 
 export const AGILE_CLIENT_BY_AUTHORITY: Record<string, string> = {
   "south-dublin": "SD",

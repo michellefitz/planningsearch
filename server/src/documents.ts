@@ -260,7 +260,7 @@ export function extractFrameSrc(html: string): string | null {
   return null;
 }
 
-const FETCH_TIMEOUT_MS = 12_000;
+const FETCH_TIMEOUT_MS = 6_000;
 
 const UA_HEADERS = {
   "User-Agent": "PlanView/0.1 (planning register viewer; respectful on-demand fetch)",
