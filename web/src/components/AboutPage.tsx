@@ -44,7 +44,7 @@ export function AboutPage({ onGetStarted }: { onGetStarted: () => void }) {
           <li>Save applications and come back to them later</li>
           <li>Get email alerts when a saved application is updated</li>
           <li>Watch an area on the map and get notified when new applications are lodged nearby</li>
-          <li>Run a pre-planning property report that pulls together everything we know about a site</li>
+          <li>Generate a property report that pulls together everything we know about a site</li>
         </ul>
 
         <div className="about-cta">

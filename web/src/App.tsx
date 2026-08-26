@@ -701,7 +701,7 @@ export default function App() {
             {me?.saves.some((s) => s.has_update) ? <span className="nav-dot" /> : null}
           </button>
           <button type="button" className={`nav-pill${mode === "alerts" ? " nav-pill-on" : ""}`} onClick={() => setMode("alerts")}>Alerts</button>
-          <button type="button" className={`nav-pill${mode === "preplan" ? " nav-pill-on" : ""}`} onClick={() => setMode("preplan")}>Pre-planning</button>
+          <button type="button" className={`nav-pill${mode === "preplan" ? " nav-pill-on" : ""}`} onClick={() => setMode("preplan")}>Report</button>
         </nav>
         <div className="nav-spacer" />
         <button type="button" className={`nav-pill nav-pill-ask${askOpen ? " nav-pill-on" : ""}`} onClick={() => setAskOpen((o) => !o)}>✦ Ask</button>
@@ -736,7 +736,7 @@ export default function App() {
                   {me.saves.some((s) => s.has_update) ? <span className="nav-dot" /> : null}
                 </button>
                 <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "alerts" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("alerts"); }}>Alerts</button>
-                <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Pre-planning</button>
+                <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Report</button>
                 <button type="button" role="menuitem" className={`nav-link nav-link-mobile${askOpen ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setAskOpen((o) => !o); }}>✦ Ask</button>
                 <div className="nav-menu-divider" />
                 <button
@@ -783,7 +783,7 @@ export default function App() {
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "search" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("search"); }}>Search</button>
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "saved" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("saved"); }}>Saved</button>
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "alerts" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("alerts"); }}>Alerts</button>
-                  <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Pre-planning</button>
+                  <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "preplan" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode("preplan"); }}>Report</button>
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${askOpen ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setAskOpen((o) => !o); }}>✦ Ask</button>
                   <div className="nav-menu-divider" />
                   <button type="button" role="menuitem" className="nav-link" onClick={() => { setNavOpen(false); setMode("account"); }}>Sign in</button>
@@ -1216,6 +1216,8 @@ export default function App() {
           <div className="account-screen-inner">
             <Suspense>
               <PrePlannerPanel
+                me={me}
+                notice={authNotice}
                 onOpenApp={async (authorityId, reference) => {
                   try {
                     const { id } = await api.resolve(authorityId, reference);

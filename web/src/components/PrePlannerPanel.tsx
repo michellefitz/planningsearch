@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { fmtDate } from "../api";
+import type { Me } from "../accountApi";
 import {
   preplanApi,
   type PreplanEvent,
@@ -8,6 +9,7 @@ import {
   type PreplanReport,
 } from "../preplanApi";
 import ReportView from "./ReportView";
+import SignInCard from "./SignInCard";
 import { XIcon } from "./icons";
 import { posthog } from "../posthog";
 
@@ -166,22 +168,22 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
       posthog.capture("preplanner_project_created", { has_eircode: Boolean(location.eircode) });
       onCreated(project);
     } catch {
-      setError("Couldn’t save the project — try again.");
+      setError("Couldn’t save the report — try again.");
       setSubmitting(false);
     }
   };
 
   return (
     <div className="preplan-new">
-      <h3>New pre-planner project</h3>
+      <h3>New property report</h3>
       <div className="preplan-form">
         <label className="pf-field">
-          <span>Project name</span>
+          <span>Report name</span>
           <input
             type="text"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="e.g. Our house — attic conversion"
+            placeholder="e.g. 12 Maple Drive — attic conversion"
             maxLength={120}
           />
         </label>
@@ -200,7 +202,7 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
         <div className="pf-field">
           <span>Where is it?</span>
           <p className="pf-hint">
-            Search any Irish address, Eircode, or place — or click the map to drop a pin.
+            Type an address or Eircode below, then pick from the suggestions — or click the map to drop a pin.
           </p>
           <input
             type="search"
@@ -254,7 +256,7 @@ function NewProjectForm({ onCreated, onCancel }: { onCreated: (p: PreplanProject
             disabled={!label.trim() || !location || submitting}
             onClick={submit}
           >
-            {submitting ? "Saving…" : "Save project"}
+            {submitting ? "Saving…" : "Create report"}
           </button>
         </div>
       </div>
@@ -293,6 +295,30 @@ function RunningView({ project, steps, sections }: { project: PreplanProject; st
 }
 
 export default function PrePlannerPanel({
+  me,
+  notice,
+  onOpenApp,
+}: {
+  me: Me | null;
+  notice: string | null;
+  onOpenApp?: (authorityId: string, reference: string) => void;
+}) {
+  if (!me) return <div className="account-panel"><p className="account-muted">Loading…</p></div>;
+
+  if (!me.user) {
+    return (
+      <SignInCard
+        headline="Property reports"
+        blurb="Generate a property report for any address — designations, planning history, precedents and area statistics, all in one place."
+        notice={notice}
+      />
+    );
+  }
+
+  return <PrePlannerInner onOpenApp={onOpenApp} />;
+}
+
+function PrePlannerInner({
   onOpenApp,
 }: {
   onOpenApp?: (authorityId: string, reference: string) => void;
@@ -311,7 +337,7 @@ export default function PrePlannerPanel({
       setProjects(data.projects);
       setError(null);
     } catch {
-      setError("Couldn’t load your pre-planner projects.");
+      setError("Couldn’t load your reports.");
     } finally {
       setLoading(false);
     }
@@ -383,7 +409,7 @@ export default function PrePlannerPanel({
       <div className="preplan">
         <div className="preplan-report-bar no-print">
           <button type="button" className="btn" onClick={() => setView({ kind: "list" })}>
-            ← All projects
+            ← All reports
           </button>
           <button type="button" className="btn" onClick={() => window.print()}>
             Print
@@ -398,14 +424,14 @@ export default function PrePlannerPanel({
     <div className="preplan">
       <div className="preplan-head">
         <div>
-          <h2>Pre-planner</h2>
+          <h2>Property report</h2>
           <p className="preplan-sub">
-            Save a place and what you want to do there, then generate a research report on the
-            designations, precedents and statistics that surround it.
+            Generate a report for any address — designations, planning history, precedents and
+            area statistics, all in one place.
           </p>
         </div>
         <button type="button" className="btn btn-primary" onClick={() => setView({ kind: "new" })}>
-          New project
+          New report
         </button>
       </div>
 
@@ -414,10 +440,10 @@ export default function PrePlannerPanel({
         <p className="preplan-none">Loading…</p>
       ) : projects.length === 0 ? (
         <div className="preplan-empty">
-          <p>No projects yet.</p>
+          <p>No reports yet.</p>
           <p className="preplan-none">
-            Start with the place you’re thinking about — your own house, or one you’re looking at — and
-            describe the works. The report pulls together everything PlanView knows around that point.
+            Start with any address — your own house, or one you’re looking at. The report pulls
+            together designations, planning history and precedents around that point.
           </p>
         </div>
       ) : (
@@ -469,16 +495,16 @@ export default function PrePlannerPanel({
                       generate(p);
                     }}
                   >
-                    {p.latest_report_id ? "Run new report" : "Generate report"}
+                    {p.latest_report_id ? "Regenerate" : "Generate report"}
                   </button>
                   <button
                     type="button"
                     className="pp-delete"
                     aria-label={`Delete ${p.label}`}
-                    title="Delete project"
+                    title="Delete report"
                     onClick={async (e) => {
                       e.stopPropagation();
-                      if (!window.confirm(`Delete “${p.label}” and its reports?`)) return;
+                      if (!window.confirm(`Delete “${p.label}”?`)) return;
                       try {
                         await preplanApi.deleteProject(p.id);
                         posthog.capture("preplanner_project_deleted");

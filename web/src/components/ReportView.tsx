@@ -388,7 +388,7 @@ export default function ReportView({
     <article className="report">
       {/* 1. Property header */}
       <header className="report-head">
-        <p className="report-kicker">{report.intent ? "Pre-planning research report" : "Planning history report"} &middot; #{report.id}</p>
+        <p className="report-kicker">Property report &middot; #{report.id}</p>
         <h2>{report.label}</h2>
         <p className="report-sub">
           {report.address}
