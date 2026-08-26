@@ -66,6 +66,7 @@ describe("generateReport", () => {
     expect(Object.keys(done.sections).sort()).toEqual([
       "address_history",
       "area_stats",
+      "at_a_glance",
       "local_plan",
       "nearby",
       "site_constraints",

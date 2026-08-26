@@ -103,7 +103,10 @@ export function submissionsDeadline(
   const from = new Date(`${d.received_date}T00:00:00`);
   if (Number.isNaN(from.getTime())) return null;
   from.setDate(from.getDate() + SUBMISSION_WEEKS * 7);
-  return { date: from.toISOString().slice(0, 10), source: "statutory" };
+  const yyyy = from.getFullYear();
+  const mm = String(from.getMonth() + 1).padStart(2, "0");
+  const dd = String(from.getDate()).padStart(2, "0");
+  return { date: `${yyyy}-${mm}-${dd}`, source: "statutory" };
 }
 
 /**
