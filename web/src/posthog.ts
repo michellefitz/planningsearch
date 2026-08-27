@@ -3,15 +3,22 @@ import posthog from "posthog-js";
 const apiKey = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
 const apiHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
 
-if (apiKey && apiHost) {
+const isProduction =
+  typeof window !== "undefined" &&
+  window.location.hostname === "planningsearch-server.vercel.app";
+
+if (apiKey && apiHost && (isProduction || import.meta.env.DEV)) {
   posthog.init(apiKey, {
     api_host: apiHost,
     capture_exceptions: true,
+    persistence: "localStorage+cookie",
+    loaded: (ph) => {
+      if (!isProduction) {
+        ph.register({ environment: "development" });
+      }
+    },
   });
 } else if (import.meta.env.DEV) {
-  // Analytics is optional for local development: warn loudly, but never throw.
-  // This runs at module load, so throwing took the whole app down with a blank
-  // page — anyone cloning the repo without a PostHog project couldn't run it.
   const missing = [
     !apiKey && "VITE_PUBLIC_POSTHOG_KEY",
     !apiHost && "VITE_PUBLIC_POSTHOG_HOST",
