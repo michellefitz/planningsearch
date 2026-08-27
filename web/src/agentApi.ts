@@ -41,8 +41,11 @@ export async function streamAgent(
         const body = await res.json();
         if (body.error === "daily_limit") {
           window.dispatchEvent(new CustomEvent("planview:daily-limit", { detail: body.message }));
+          throw new Error(body.message ?? "You've reached your daily Ask limit. Try again tomorrow.");
         }
-      } catch {}
+      } catch (e) {
+        if (e instanceof Error && e.message !== `agent request failed (${res.status})`) throw e;
+      }
     }
     throw new Error(`agent request failed (${res.status})`);
   }

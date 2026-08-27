@@ -363,11 +363,14 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
 
     try {
       await streamAgent(history, onEvent);
-    } catch {
+    } catch (err) {
       stopReveal();
       targetRef.current = "";
       shownRef.current = 0;
-      setReplyContent("Something went wrong — try again.", true);
+      const msg = err instanceof Error && !err.message.startsWith("agent request")
+        ? err.message
+        : "Something went wrong — try again.";
+      setReplyContent(msg, true);
     } finally {
       setBusy(false);
       setStatus(null);
