@@ -461,6 +461,7 @@ export default function App() {
         authority_id: d.authority_id,
         application_type: d.application_type,
         status: d.status,
+        source: mode === "ask" ? "ask" : mode === "preplan" ? "report" : "search",
       });
       setDetail(d);
       const url = appPath(d.authority_id, d.planning_reference);
@@ -813,7 +814,7 @@ export default function App() {
               value={state.q}
               onChange={(q) => setState((s) => ({ ...s, q }))}
               onSubmit={(q) => {
-                posthog.capture("search_submitted", { has_query: Boolean(q.trim()) });
+                posthog.capture("search_submitted", { query: q.trim() || null });
                 if (q.trim()) flyOnNextSearch.current = true;
                 applyState({ ...state, q });
                 // Searching an area used to flip the phone into list view. The

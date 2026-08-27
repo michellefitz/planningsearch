@@ -315,7 +315,11 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
     const q = (prefill ?? input).trim();
     if (!q || busy) return;
     setInput("");
-    posthog.capture("chat_question_submitted", { question_length: q.length });
+    posthog.capture("chat_question_submitted", {
+      question: q,
+      source: prefill ? "suggestion" : "typed",
+      turn: messages.filter((m) => m.role === "user").length + 1,
+    });
     setBusy(true);
     setStatus(null);
     setAnswering(false);
@@ -335,6 +339,9 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
     stickRef.current = true;
     requestAnimationFrame(() => scrollToBottom(true));
 
+    const toolCalls: string[] = [];
+    let hadError = false;
+
     const onEvent = (ev: AgentEvent) => {
       collectAppRefs(ev, appRefs.current);
       if (ev.type === "text") {
@@ -343,6 +350,7 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
         targetRef.current += ev.text;
         ensureReveal();
       } else if (ev.type === "tool_start") {
+        toolCalls.push(ev.name);
         setStatus(TOOL_LABELS[ev.name] ?? "Working…");
       } else if (ev.type === "tool_result") {
         if (ev.name === "count_applications" && ev.result && typeof ev.result === "object") {
@@ -354,6 +362,7 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
         const referenced = [...appRefs.current.values()];
         if (referenced.length) onAppsReferenced(referenced);
       } else if (ev.type === "error") {
+        hadError = true;
         stopReveal();
         targetRef.current = ev.message;
         shownRef.current = ev.message.length;
@@ -363,7 +372,16 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
 
     try {
       await streamAgent(history, onEvent);
+      posthog.capture("chat_answer_received", {
+        question: q,
+        answer_length: targetRef.current.length,
+        tool_calls: toolCalls,
+        tool_count: toolCalls.length,
+        apps_referenced: appRefs.current.size,
+        had_error: hadError,
+      });
     } catch (err) {
+      hadError = true;
       stopReveal();
       targetRef.current = "";
       shownRef.current = 0;
@@ -371,6 +389,10 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
         ? err.message
         : "Something went wrong — try again.";
       setReplyContent(msg, true);
+      posthog.capture("chat_answer_failed", {
+        question: q,
+        error: msg,
+      });
     } finally {
       setBusy(false);
       setStatus(null);
