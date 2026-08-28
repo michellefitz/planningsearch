@@ -2968,7 +2968,7 @@ body {
 }
 
 .tl-statutory .tl-label {
-  font-weight: 600;
+  font-weight: inherit;
 }
 
 .tl-label {
@@ -4866,6 +4866,84 @@ p.loading-line {
   color: var(--ink-3);
   margin: 0;
   text-align: center;
+}
+
+/* Feedback modal */
+.feedback-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(23, 25, 30, 0.24);
+  backdrop-filter: blur(2px);
+  animation: backdrop-in var(--t-base) var(--ease);
+}
+.feedback-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 51;
+  width: min(440px, calc(100vw - 2rem));
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
+  padding: 1.5rem;
+  animation: fade-in 200ms ease;
+}
+.feedback-modal h3 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+}
+.feedback-blurb {
+  color: var(--ink-2);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+}
+.feedback-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+.feedback-optional {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.feedback-field input,
+.feedback-field textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 0.92rem;
+  resize: vertical;
+}
+.feedback-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+.feedback-fine {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-3);
+  text-align: right;
+}
+.feedback-sent {
+  text-align: center;
+}
+.feedback-sent p {
+  margin: 0.5rem 0;
+  font-size: 0.92rem;
+  color: var(--ink-2);
+}
+.feedback-sent .btn {
+  margin-top: 1rem;
 }
 
 /* Account */

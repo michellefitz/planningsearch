@@ -45,6 +45,7 @@ const AccountPanel = lazy(() => import("./components/AccountPanel"));
 const SavedPanel = lazy(() => import("./components/SavedPanel"));
 const AlertsPanel = lazy(() => import("./components/AlertsPanel"));
 const PrePlannerPanel = lazy(() => import("./components/PrePlannerPanel"));
+const FeedbackModal = lazy(() => import("./components/FeedbackModal"));
 
 /**
  * An open application is a real, shareable address: /application/{council}/{ref}.
@@ -151,6 +152,7 @@ export default function App() {
   // Mobile account menu. Only rendered as a menu below 768px — above it the
   // same buttons sit inline in the top bar and this stays false.
   const [navOpen, setNavOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   // Shown after the user pans/zooms the map: a one-tap "search this area".
   const [canSearchArea, setCanSearchArea] = useState(false);
@@ -705,6 +707,7 @@ export default function App() {
         </nav>
         <div className="nav-spacer" />
         <button type="button" className={`nav-pill nav-pill-ask${mode === "ask" ? " nav-pill-on" : ""}`} onClick={() => setMode(mode === "ask" ? "search" : "ask")}>✦ Ask</button>
+        <button type="button" className="nav-about-link" onClick={() => setFeedbackOpen(true)}>Feedback</button>
         <button
           type="button"
           className="nav-about-link"
@@ -747,9 +750,7 @@ export default function App() {
                 >
                   My account
                 </button>
-                {/* Below the divider: About is site information, not a product
-                    destination, so it sits with the account items rather than
-                    among Search/Saved/Alerts. Desktop keeps it in the header. */}
+                <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setFeedbackOpen(true); }}>Feedback</button>
                 <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setMode("about"); history.pushState(null, "", "/about"); }}>About</button>
                 <span className="nav-email" title={me.user.email}>
                   {me.user.email}
@@ -787,6 +788,7 @@ export default function App() {
                   <button type="button" role="menuitem" className={`nav-link nav-link-mobile${mode === "ask" ? " nav-link-on" : ""}`} onClick={() => { setNavOpen(false); setMode(mode === "ask" ? "search" : "ask"); }}>✦ Ask</button>
                   <div className="nav-menu-divider" />
                   <button type="button" role="menuitem" className="nav-link" onClick={() => { setNavOpen(false); setMode("account"); }}>Sign in</button>
+                  <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setFeedbackOpen(true); }}>Feedback</button>
                   <button type="button" role="menuitem" className="nav-link nav-link-mobile" onClick={() => { setNavOpen(false); setMode("about"); history.pushState(null, "", "/about"); }}>About</button>
                 </div>
               )}
@@ -1298,6 +1300,12 @@ export default function App() {
           {meta?.generated_at && ` · refreshed here ${meta.generated_at.slice(0, 10)}`}.
         </span>
       </footer>
+
+      {feedbackOpen && (
+        <Suspense>
+          <FeedbackModal onClose={() => setFeedbackOpen(false)} />
+        </Suspense>
+      )}
 
       {(detail || detailLoading) && (
         <>
