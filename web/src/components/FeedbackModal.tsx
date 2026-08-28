@@ -4,23 +4,31 @@ import { posthog } from "../posthog";
 export default function FeedbackModal({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState(false);
 
-  const submit = () => {
-    if (!message.trim()) return;
-    const subject = encodeURIComponent("PlanView feedback");
-    const body = encodeURIComponent(
-      `${message.trim()}${email.trim() ? `\n\n— ${email.trim()}` : ""}`
-    );
-    window.open(
-      `mailto:shellie.fitzpatrick@gmail.com?subject=${subject}&body=${body}`,
-      "_blank"
-    );
-    posthog.capture("feedback_submitted", {
-      has_email: Boolean(email.trim()),
-      message_length: message.trim().length,
-    });
-    setSent(true);
+  const submit = async () => {
+    if (!message.trim() || sending) return;
+    setSending(true);
+    setError(false);
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() || null, message: message.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      posthog.capture("feedback_submitted", {
+        has_email: Boolean(email.trim()),
+        message_length: message.trim().length,
+      });
+      setSent(true);
+    } catch {
+      setError(true);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -29,15 +37,14 @@ export default function FeedbackModal({ onClose }: { onClose: () => void }) {
       <div className="feedback-modal" role="dialog" aria-label="Send feedback">
         {sent ? (
           <div className="feedback-sent">
-            <p><strong>Thanks!</strong></p>
-            <p>Your email app should have opened with the message. If it didn't, you can email me directly at shellie.fitzpatrick@gmail.com</p>
+            <p><strong>Thanks for the feedback!</strong></p>
             <button type="button" className="btn" onClick={onClose}>Close</button>
           </div>
         ) : (
           <>
             <h3>Send feedback</h3>
             <p className="feedback-blurb">
-              PlanView is a side project and I'd love to hear what you think — what's useful, what's broken, what's missing.
+              I'd love to hear what you think — what's useful, what's broken, what's missing.
             </p>
             <label className="feedback-field">
               <span>Your email <span className="feedback-optional">(optional)</span></span>
@@ -49,7 +56,7 @@ export default function FeedbackModal({ onClose }: { onClose: () => void }) {
               />
             </label>
             <label className="feedback-field">
-              <span>What's on your mind?</span>
+              <span>Feedback</span>
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
@@ -58,18 +65,18 @@ export default function FeedbackModal({ onClose }: { onClose: () => void }) {
                 autoFocus
               />
             </label>
+            {error && <p className="feedback-error">Couldn't send — try again.</p>}
             <div className="feedback-actions">
               <button type="button" className="btn" onClick={onClose}>Cancel</button>
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={!message.trim()}
+                disabled={!message.trim() || sending}
                 onClick={submit}
               >
-                Send
+                {sending ? "Sending…" : "Send"}
               </button>
             </div>
-            <p className="feedback-fine">Thanks — Michelle</p>
           </>
         )}
       </div>

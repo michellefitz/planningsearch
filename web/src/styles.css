@@ -4934,6 +4934,11 @@ p.loading-line {
   color: var(--ink-3);
   text-align: right;
 }
+.feedback-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin: 0;
+}
 .feedback-sent {
   text-align: center;
 }

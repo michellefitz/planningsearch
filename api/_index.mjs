@@ -3455,6 +3455,41 @@ export default async function handler(req, res) {
     return send(res, 200, await fetchOverlay(om[1], bbox));
   }
 
+  if (route === "/api/feedback" && req.method === "POST") {
+    const body = await readJsonBody(req, 10_000);
+    const message = String(body?.message ?? "").trim();
+    if (!message) return send(res, 400, { error: "message is required" });
+    const email = String(body?.email ?? "").trim() || null;
+    const ua = req.headers?.["user-agent"] ?? null;
+    if (process.env.DATABASE_URL) {
+      try {
+        await sql(
+          `create table if not exists feedback (
+            id bigint generated always as identity primary key,
+            email text,
+            message text not null,
+            user_agent text,
+            ip text,
+            created_at timestamptz not null default now()
+          )`
+        );
+        await sql(
+          `insert into feedback (email, message, user_agent, ip) values ($1, $2, $3, $4)`,
+          [email, message, ua, clientIp(req)]
+        );
+      } catch {}
+    }
+    try {
+      const { sendEmail } = await import("./_accounts/email.mjs");
+      await sendEmail({
+        to: "shellie.fitzpatrick@gmail.com",
+        subject: `PlanView feedback${email ? ` from ${email}` : ""}`,
+        text: `${message}\n\n${email ? `From: ${email}\n` : ""}${ua ? `UA: ${ua}` : ""}`,
+      });
+    } catch {}
+    return send(res, 200, { ok: true });
+  }
+
   if (route === "/api/geocode") {
     const gKey = process.env.GOOGLE_GEOCODING_KEY ?? process.env.VITE_GOOGLE_MAPS_KEY;
     if (!gKey) return send(res, 503, { error: "Geocoding not configured" });
