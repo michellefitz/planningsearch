@@ -969,6 +969,35 @@ async function fetchAgileDetail(authorityId, sourceUrl, reference, debug = false
   if (!client) return null;
   const cacheKey = `agile-detail:${authorityId}:${reference}`;
   if (!debug && PARTIES_CACHE.has(cacheKey)) return PARTIES_CACHE.get(cacheKey);
+  if (!debug && process.env.DATABASE_URL) {
+    try {
+      const rows = await sql(
+        `select full_description, applicant_name, agent_name, officer_name,
+                eircode, application_type, live_status, live_decision
+         from agile_enrichment
+         where authority_id = $1 and planning_reference = $2
+           and not resolve_failed and full_description is not null
+         limit 1`,
+        [authorityId, reference]
+      );
+      if (rows[0]) {
+        const r = rows[0];
+        const detail = {
+          applicant: r.applicant_name || null,
+          agent: r.agent_name || null,
+          status: r.live_status || null,
+          decision: r.live_decision || null,
+          description: r.full_description || null,
+          eircode: r.eircode || null,
+          officer: r.officer_name || null,
+          submissionsBy: null,
+          application_type: r.application_type || null,
+        };
+        PARTIES_CACHE.set(cacheKey, detail);
+        return detail;
+      }
+    } catch {}
+  }
   const id = await resolveAgileId(client, sourceUrl, reference, null, authorityId);
   if (!id) return null;
   const detail = await fetchAgileDetailById(authorityId, id, debug);
