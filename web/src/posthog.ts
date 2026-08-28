@@ -5,7 +5,8 @@ const apiHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
 
 const isProduction =
   typeof window !== "undefined" &&
-  window.location.hostname === "planningsearch-server.vercel.app";
+  (window.location.hostname === "planningsearch.vercel.app" ||
+    window.location.hostname === "planningsearch-server.vercel.app");
 
 if (apiKey && apiHost && (isProduction || import.meta.env.DEV)) {
   posthog.init(apiKey, {
