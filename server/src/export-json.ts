@@ -150,6 +150,10 @@ async function fetchLiveRecords(): Promise<{
   };
 }
 
+const refreshData =
+  process.env.PLANVIEW_REFRESH_SUMMARIES === "1" ||
+  /refresh|nightly|backfill|summaries/i.test(process.env.VERCEL_GIT_COMMIT_MESSAGE ?? "");
+
 async function main() {
   const source = process.env.PLANVIEW_EXPORT_SOURCE ?? "seed";
   let records: ApplicationRecord[];
@@ -393,7 +397,7 @@ async function main() {
     // Overlay the nightly agile-portal harvest (Neon agile_enrichment): full
     // untruncated descriptions, applicant/agent, case officer, Eircodes, and
     // live status corrections. Best-effort — a failure must not sink the deploy.
-    if (process.env.DATABASE_URL) {
+    if (process.env.DATABASE_URL && refreshData) {
       try {
         console.log("Fetching agile enrichment (Neon agile_enrichment) …");
         const rows = await neonSql(
@@ -464,6 +468,8 @@ async function main() {
       } catch (err) {
         console.error("Agile enrichment merge failed — bundle ships without it:", err);
       }
+    } else if (!refreshData) {
+      console.log("Skipping agile enrichment (PLANVIEW_REFRESH_SUMMARIES not set).");
     } else {
       console.log("DATABASE_URL not set — skipping agile enrichment merge.");
     }
@@ -622,8 +628,25 @@ async function writeSummarySidecar(
     const key = descriptionKey(a.description);
     if (key) needed.add(key);
   }
-  const out: Record<string, string> = {};
-  if (process.env.DATABASE_URL) {
+  let out: Record<string, string> = {};
+  if (!refreshData) {
+    if (fs.existsSync(SUMMARIES_OUT)) {
+      try {
+        out = JSON.parse(fs.readFileSync(SUMMARIES_OUT, "utf8"));
+        console.log(
+          `Reusing existing summaries.json (${Object.keys(out).length} entries). ` +
+            `Set PLANVIEW_REFRESH_SUMMARIES=1 or include "refresh" in the commit message to fetch fresh from Neon.`
+        );
+      } catch {
+        out = {};
+      }
+    } else {
+      console.log(
+        `Skipping Neon summary fetch (PLANVIEW_REFRESH_SUMMARIES not set). ` +
+          `Summaries will be served from runtime cache instead.`
+      );
+    }
+  } else if (process.env.DATABASE_URL) {
     try {
       console.log("Fetching description summaries (Neon description_summaries) …");
       const rows = await neonSql(`select description_hash, summary from description_summaries`);
