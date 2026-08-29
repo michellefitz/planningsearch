@@ -9,7 +9,7 @@ import { magicLinkEmail, sendEmail } from "./email.mjs";
 import { diffSnapshots, fmtEventDate, normalizeStatus, snapshotFromBundleApp } from "./diff.mjs";
 import { fetchLiveNationalSnapshot } from "./live.mjs";
 import { fetchKildareLiveSnapshot } from "./kildare.mjs";
-import { buildDigestEmail } from "./digest.mjs";
+import { buildSavedAppsEmail, buildAreaAlertsEmail } from "./digest.mjs";
 import { runAgileHarvest } from "./harvest.mjs";
 import { topUpDescriptionSummaries } from "../_ai/topup.mjs";
 import {
@@ -814,12 +814,23 @@ async function handleCron(req, res, ctx) {
       : [];
     const unsubUrl = `${origin}/api/alerts/unsubscribe?u=${u.id}&t=${unsubscribeToken(u.id)}`;
     try {
-      await sendEmail({
-        to: u.email,
-        ...buildDigestEmail([...byApp.values()], unsubUrl, areaSections),
-        headers: { "List-Unsubscribe": `<${unsubUrl}>` },
-      });
-      emailsSent++;
+      const savedEntries = [...byApp.values()];
+      if (savedEntries.length) {
+        await sendEmail({
+          to: u.email,
+          ...buildSavedAppsEmail(savedEntries, unsubUrl),
+          headers: { "List-Unsubscribe": `<${unsubUrl}>` },
+        });
+        emailsSent++;
+      }
+      if (areaSections.length) {
+        await sendEmail({
+          to: u.email,
+          ...buildAreaAlertsEmail(areaSections, unsubUrl),
+          headers: { "List-Unsubscribe": `<${unsubUrl}>` },
+        });
+        emailsSent++;
+      }
       await sql(`update users set last_digest_at = now() where id = $1`, [u.id]);
     } catch (err) {
       console.error("digest send failed", u.email, err);

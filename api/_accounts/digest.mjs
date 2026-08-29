@@ -49,121 +49,125 @@ function truncate(s, max = 120) {
   return s.slice(0, max).replace(/\s+\S*$/, "") + "…";
 }
 
-/**
- * @param entries   per-saved-application updates
- * @param areaSections  per-watched-area news
- */
-export function buildDigestEmail(entries, unsubscribeUrl, areaSections = []) {
-  const n = entries.length;
-  const areaCount = areaSections.reduce((s, a) => s + a.items.length, 0);
-  const subject =
-    n === 0 && areaCount > 0
-      ? areaCount === 1
-        ? `New planning activity in ${areaSections[0].name}`
-        : `${areaCount} new planning items in your watched areas`
-      : n === 1
-        ? `Update on ${entries[0].address}`
-        : `Updates on ${n} applications you're watching`;
+function dateLine(e) {
+  const parts = [];
+  if (e.received_date) parts.push(`Received ${fmtDate(e.received_date)}`);
+  if (e.decision_date) parts.push(`decided ${fmtDate(e.decision_date)}`);
+  return parts.length ? parts.join(" · ") : null;
+}
 
-  const text = [
-    n === 1 ? "There's been an update on an application you're watching." :
-      n > 1 ? `There have been updates on ${n} applications you're watching.` :
-      "There's new planning activity in an area you're watching.",
-    "",
-    ...entries.map((e) =>
-      [
-        `${e.address} (${e.reference})`,
-        e.description ? `  ${truncate(e.description)}` : null,
-        e.received_date ? `  Received: ${fmtDate(e.received_date)}` : null,
-        e.decision_date ? `  Decision: ${fmtDate(e.decision_date)}` : null,
-        ...e.summaries.map((s) => `  • ${s}`),
-        `  ${e.url}`,
-      ].filter(Boolean).join("\n")
-    ),
-    ...areaSections.map((a) =>
-      [
-        `In ${a.name}:`,
-        ...a.items.map((i) => [
-          `  ${i.summary}`,
-          `  ${i.address} (${i.reference})`,
-          i.description ? `  ${truncate(i.description)}` : null,
-          i.received_date ? `  Received: ${fmtDate(i.received_date)}` : null,
-          `  ${i.url}`,
-        ].filter(Boolean).join("\n")),
-      ].join("\n\n")
-    ),
-    ...(unsubscribeUrl ? [`Turn off these emails: ${unsubscribeUrl}`] : []),
-  ].join("\n\n");
-
-  const dateLine = (e) => {
-    const parts = [];
-    if (e.received_date) parts.push(`Received ${fmtDate(e.received_date)}`);
-    if (e.decision_date) parts.push(`decided ${fmtDate(e.decision_date)}`);
-    return parts.length ? parts.join(" · ") : null;
-  };
-
-  const blocks = entries
-    .map(
-      (e) => `
-<tr><td style="padding:16px 32px 0;">
+function appCard(e) {
+  const dl = dateLine(e);
+  return `
+<tr><td style="padding:10px 32px 0;">
   <div style="border:1px solid #e9ebee;border-radius:8px;padding:16px 20px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
       <td style="font-size:15px;font-weight:600;color:#1a1d21;">${esc(e.address)}</td>
       <td style="text-align:right;vertical-align:top;">${e.status ? statusBadge(e.status) : ""}</td>
     </tr></table>
     <div style="font-size:12px;color:#9aa1ab;font-family:ui-monospace,'SF Mono',Menlo,monospace;padding-top:2px;">${esc(e.reference)}</div>
-    ${dateLine(e) ? `<div style="font-size:12px;color:#9aa1ab;padding-top:4px;">${esc(dateLine(e))}</div>` : ""}
+    ${dl ? `<div style="font-size:12px;color:#9aa1ab;padding-top:4px;">${esc(dl)}</div>` : ""}
     ${e.description ? `<div style="font-size:13px;color:#5c6370;padding-top:8px;line-height:1.5;">${esc(truncate(e.description))}</div>` : ""}
-    <div style="padding-top:10px;border-top:1px solid #f0f1f3;margin-top:10px;">
+    ${e.summaries?.length ? `<div style="padding-top:10px;border-top:1px solid #f0f1f3;margin-top:10px;">
       ${e.summaries.map((s) => `<div style="font-size:13px;line-height:1.6;color:#1a1d21;padding:3px 0 3px 12px;border-left:3px solid #0b62d6;">${esc(s)}</div>`).join("")}
-    </div>
+    </div>` : ""}
     <a href="${esc(e.url)}" style="display:inline-block;padding-top:10px;font-size:13px;font-weight:600;color:#0b62d6;text-decoration:none;">View application →</a>
   </div>
-</td></tr>`
-    )
-    .join("");
+</td></tr>`;
+}
 
-  const areaBlocks = areaSections
-    .map(
-      (a) => `
-<tr><td style="padding:20px 32px 0;">
-  <div style="font-size:13px;font-weight:600;color:#17456e;text-transform:uppercase;letter-spacing:0.04em;">In ${esc(a.name)}</div>
-</td></tr>
-${a.items
-  .map(
-    (i) => `
-<tr><td style="padding:10px 32px 0;">
-  <div style="border:1px solid #e9ebee;border-radius:8px;padding:14px 20px;">
-    <div style="font-size:13px;font-weight:600;color:#0b7a3d;">${esc(i.summary)}</div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td style="font-size:14px;color:#1a1d21;padding-top:4px;">${esc(i.address)}</td>
-      <td style="text-align:right;vertical-align:top;padding-top:4px;">${i.status ? statusBadge(i.status) : ""}</td>
-    </tr></table>
-    <div style="font-size:12px;color:#9aa1ab;font-family:ui-monospace,'SF Mono',Menlo,monospace;padding-top:2px;">${esc(i.reference)}</div>
-    ${i.received_date ? `<div style="font-size:12px;color:#9aa1ab;padding-top:4px;">Received ${esc(fmtDate(i.received_date))}</div>` : ""}
-    ${i.description ? `<div style="font-size:13px;color:#5c6370;padding-top:6px;line-height:1.5;">${esc(truncate(i.description))}</div>` : ""}
-    <a href="${esc(i.url)}" style="display:inline-block;padding-top:8px;font-size:13px;font-weight:600;color:#0b62d6;text-decoration:none;">View application →</a>
-  </div>
-</td></tr>`
-  )
-  .join("")}`
-    )
-    .join("");
-
-  const html = `<!doctype html>
+function wrap(title, bodyRows, unsubscribeUrl) {
+  return `<!doctype html>
 <html><body style="margin:0;padding:0;background:#f6f7f8;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a1d21;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px;">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;border:1px solid #e9ebee;">
 <tr><td style="padding:28px 32px 4px;font-size:15px;font-weight:600;color:#17456e;">PlanView</td></tr>
-<tr><td style="padding:8px 32px 0;font-size:19px;font-weight:600;">${esc(subject)}</td></tr>
-${blocks}
-${areaBlocks}
+<tr><td style="padding:8px 32px 0;font-size:19px;font-weight:600;">${esc(title)}</td></tr>
+${bodyRows}
 <tr><td style="padding:20px 32px 28px;font-size:12px;color:#9aa1ab;">You get this because alerts are on for saved applications or watched areas. Manage them from your PlanView account.${
     unsubscribeUrl
       ? ` <a href="${esc(unsubscribeUrl)}" style="color:#9aa1ab;text-decoration:underline;">Turn off these emails</a>.`
       : ""
   }</td></tr>
 </table></td></tr></table></body></html>`;
+}
 
+function sectionHeader(label) {
+  return `<tr><td style="padding:20px 32px 0;">
+  <div style="font-size:12px;font-weight:600;color:#9aa1ab;text-transform:uppercase;letter-spacing:0.05em;">${esc(label)}</div>
+</td></tr>`;
+}
+
+export function buildSavedAppsEmail(entries, unsubscribeUrl) {
+  const n = entries.length;
+  const subject =
+    n === 1
+      ? `Update on ${entries[0].address}`
+      : `Updates on ${n} saved applications`;
+
+  const text = entries.map((e) =>
+    [
+      `${e.address} (${e.reference})`,
+      e.description ? `  ${truncate(e.description)}` : null,
+      e.received_date ? `  Received: ${fmtDate(e.received_date)}` : null,
+      e.decision_date ? `  Decision: ${fmtDate(e.decision_date)}` : null,
+      ...e.summaries.map((s) => `  • ${s}`),
+      `  ${e.url}`,
+    ].filter(Boolean).join("\n")
+  ).join("\n\n");
+
+  const body = sectionHeader("Saved properties") + entries.map(appCard).join("");
+  const html = wrap(subject, body, unsubscribeUrl);
   return { subject, html, text };
+}
+
+export function buildAreaAlertsEmail(areaSections, unsubscribeUrl) {
+  const areaCount = areaSections.reduce((s, a) => s + a.items.length, 0);
+  const names = areaSections.map((a) => a.name);
+  const subject =
+    areaCount === 1
+      ? `New planning activity in ${names[0]}`
+      : names.length === 1
+        ? `${areaCount} new applications in ${names[0]}`
+        : `New planning activity in ${names.join(", ")}`;
+
+  const text = areaSections.map((a) =>
+    [
+      `In ${a.name}:`,
+      ...a.items.map((i) => [
+        `  ${i.summary}`,
+        `  ${i.address} (${i.reference})`,
+        i.description ? `  ${truncate(i.description)}` : null,
+        i.received_date ? `  Received: ${fmtDate(i.received_date)}` : null,
+        `  ${i.url}`,
+      ].filter(Boolean).join("\n")),
+    ].join("\n\n")
+  ).join("\n\n");
+
+  const body = areaSections.map((a) =>
+    sectionHeader(`Area alert — ${a.name}`) +
+    a.items.map((i) => appCard({
+      address: i.address,
+      reference: i.reference,
+      url: i.url,
+      description: i.description,
+      status: i.status,
+      received_date: i.received_date,
+      decision_date: i.decision_date,
+      summaries: [i.summary],
+    })).join("")
+  ).join("");
+
+  const html = wrap(subject, body, unsubscribeUrl);
+  return { subject, html, text };
+}
+
+/** @deprecated Use buildSavedAppsEmail and buildAreaAlertsEmail separately. */
+export function buildDigestEmail(entries, unsubscribeUrl, areaSections = []) {
+  if (entries.length && areaSections.length) {
+    return buildSavedAppsEmail(entries, unsubscribeUrl);
+  }
+  if (entries.length) return buildSavedAppsEmail(entries, unsubscribeUrl);
+  if (areaSections.length) return buildAreaAlertsEmail(areaSections, unsubscribeUrl);
+  return { subject: "PlanView update", html: "", text: "" };
 }
