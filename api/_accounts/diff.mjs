@@ -124,8 +124,16 @@ function summarize(field, oldV, newV, next) {
     case "appeal_decision": return `Appeal decided: ${newV}`;
     case "appeal_decision_date": return `Appeal decision date recorded: ${fmtEventDate(newV)}`;
     case "appeal_lodged_date": return `Appeal lodged on ${fmtEventDate(newV)}`;
-    case "commencement_notice": return `Commencement notice filed — work is starting`;
-    case "commencement_date": return `Work on site recorded as commencing ${fmtEventDate(newV)}`;
+    case "commencement_notice": {
+      const commDate = next?.commencement_date;
+      if (commDate) {
+        const age = Date.now() - Date.parse(`${commDate}T00:00:00Z`);
+        if (age > 180 * 86_400_000)
+          return `Commencement notice filed — work commenced ${fmtEventDate(commDate)}`;
+      }
+      return `Commencement notice filed — work is starting`;
+    }
+    case "commencement_date": return `Work on site commenced ${fmtEventDate(newV)}`;
     case "completion_date": return `Works recorded complete (${fmtEventDate(newV)})`;
     case "further_info_requested_date":
       return `Further information requested on ${fmtEventDate(newV)} — the decision clock pauses until it arrives`;

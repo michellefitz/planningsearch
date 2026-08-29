@@ -753,6 +753,10 @@ async function handleCron(req, res, ctx) {
             reference: h.app.planning_reference,
             summary: watchHitSummary(h.app, kind),
             authority_id: h.app.authority_id,
+            description: h.app.description ?? null,
+            received_date: h.app.received_date ?? null,
+            decision_date: h.app.decision_date ?? null,
+            status: h.app.status ?? null,
           });
           watchHitsFound++;
         }
@@ -790,6 +794,11 @@ async function handleCron(req, res, ctx) {
           reference: r.planning_reference,
           url: `${origin}/#app=${encodeURIComponent(r.authority_id)}:${encodeURIComponent(r.planning_reference)}`,
           summaries: [],
+          description: app?.description ?? null,
+          status: app?.status ?? null,
+          decision: app?.decision ?? null,
+          received_date: app?.received_date ?? null,
+          decision_date: app?.decision_date ?? null,
         });
       }
       byApp.get(key).summaries.push(r.summary);
