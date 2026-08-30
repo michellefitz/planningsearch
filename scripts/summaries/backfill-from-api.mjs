@@ -15,7 +15,9 @@ import {
   descriptionUserMsg,
 } from "../../api/_ai/descriptions.mjs";
 
-const API_BASE = "https://planningsearch-server.vercel.app";
+// Overridable so this can be pointed at a preview deployment or a local
+// server; the default follows the production domain.
+const API_BASE = process.env.PLANVIEW_API_BASE ?? "https://planningsearch.vercel.app";
 const MODEL = "claude-haiku-4-5-20251001";
 const PRICE_IN = 1.0;
 const PRICE_OUT = 5.0;

@@ -70,9 +70,11 @@ function ensureSchema() {
 }
 
 let staticCache = new Map();
-async function loadStaticGeojsonFrom(host, name) {
+/** Fetches the deployment's own static geojson, so it needs this deployment's
+ *  origin — the scheme included, rather than assumed. */
+async function loadStaticGeojsonFrom(origin, name) {
   if (staticCache.has(name)) return staticCache.get(name);
-  const res = await fetch(`https://${host}/${name}.geojson`);
+  const res = await fetch(`${origin}/${name}.geojson`);
   if (!res.ok) throw new Error(`static ${name}: HTTP ${res.status}`);
   const fc = await res.json();
   staticCache.set(name, fc);
@@ -91,8 +93,8 @@ async function fetchJson(url) {
   }
 }
 
-function buildDeps(host, ctx) {
-  const pointDeps = { fetchJson, loadStaticGeojson: (name) => loadStaticGeojsonFrom(host, name) };
+function buildDeps(origin, ctx) {
+  const pointDeps = { fetchJson, loadStaticGeojson: (name) => loadStaticGeojsonFrom(origin, name) };
   return {
     getDesignations: (lat, lng) => getDesignations(lat, lng, pointDeps),
     getHeritagePoints: (lat, lng) => getHeritagePoints(lat, lng, pointDeps),
@@ -252,7 +254,13 @@ async function dispatch(req, res, route, url, ctx) {
     });
     const write = (ev) => res.write(`data: ${JSON.stringify(ev)}\n\n`);
 
-    const host = req.headers.host ?? "planningsearch-server.vercel.app";
+    // The request's own host, which is right on any deployment — preview,
+    // production or a renamed domain. APP_ORIGIN only covers the case where
+    // there is no Host header at all; a hardcoded domain used to sit here and
+    // went stale the moment the deployment was renamed.
+    const origin = req.headers.host
+      ? `https://${req.headers.host}`
+      : process.env.APP_ORIGIN ?? "";
     const input = {
       lat: Number(project.lat),
       lng: Number(project.lng),
@@ -261,7 +269,7 @@ async function dispatch(req, res, route, url, ctx) {
     };
     let finished = false;
     try {
-      for await (const ev of generateReport(input, buildDeps(host, ctx))) {
+      for await (const ev of generateReport(input, buildDeps(origin, ctx))) {
         if (ev.type === "done") {
           await sql(
             `update preplan_reports set status = 'complete', sections = $2::jsonb, narrative = $3 where id = $1`,
