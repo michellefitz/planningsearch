@@ -154,6 +154,20 @@ export function watchWindowStart(now = new Date()) {
   return new Date(now.getTime() - WATCH_WINDOW_DAYS * 86400_000).toISOString().slice(0, 10);
 }
 
+/**
+ * When the thing we are alerting about actually happened.
+ *
+ * Not the same as when we noticed: a commencement notice filed in March can
+ * reach the register in September, and an email that only says "work has
+ * commenced" invites the reader to assume it started today.
+ */
+export function watchHitDate(app, kind) {
+  if (kind === "commencement") return app.commencement_date ?? null;
+  if (kind === "decision") return app.decision_date ?? null;
+  if (kind === "appeal") return app.appeal_lodged_date ?? app.appeal_decision_date ?? null;
+  return app.received_date ?? null;
+}
+
 /** One human line per hit for the digest email. */
 export function watchHitSummary(app, kind) {
   if (kind === "commencement") return "Work has commenced on site (commencement notice filed)";

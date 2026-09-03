@@ -14,7 +14,7 @@ import { runAgileHarvest } from "./harvest.mjs";
 import { topUpDescriptionSummaries } from "../_ai/topup.mjs";
 import {
   ensureWatchSchema, findWatchHits, MAX_RADIUS_M, MAX_WATCHES_PER_USER,
-  MIN_RADIUS_M, watchHitSummary, watchWindowStart,
+  MIN_RADIUS_M, watchHitDate, watchHitSummary, watchWindowStart,
   DEFAULT_WATCH_KINDS, normaliseWatchKinds,
 } from "./watches.mjs";
 
@@ -615,6 +615,15 @@ document.getElementById("btn").onclick = async function() {
   return sendPrivate(res, 404, { error: "not found" });
 }
 
+/** The date an app_events row is about, as opposed to when it was detected. */
+function eventDate(row, app) {
+  const v = `${row.new_value ?? ""}`;
+  if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+  if (row.field === "commencement_notice") return app?.commencement_date ?? null;
+  if (row.field === "decision" || row.field === "status") return app?.decision_date ?? null;
+  return null;
+}
+
 async function handleCron(req, res, ctx) {
   const secret = process.env.CRON_SECRET;
   if (!verifyBearer(req, secret))
@@ -752,8 +761,11 @@ async function handleCron(req, res, ctx) {
             address: h.app.address_text ?? h.app.planning_reference,
             reference: h.app.planning_reference,
             summary: watchHitSummary(h.app, kind),
+            kind,
+            activity_date: watchHitDate(h.app, kind),
             authority_id: h.app.authority_id,
             description: h.app.description ?? null,
+            summary_text: ctx.bakedSummary?.(h.app.description) ?? null,
             received_date: h.app.received_date ?? null,
             decision_date: h.app.decision_date ?? null,
             status: h.app.status ?? null,
@@ -774,7 +786,7 @@ async function handleCron(req, res, ctx) {
   let emailsSent = 0;
   for (const u of users) {
     const rows = await sql(
-      `select s.authority_id, s.planning_reference, e.summary
+      `select s.authority_id, s.planning_reference, e.summary, e.event_type, e.field, e.new_value
        from saved_apps s
        join app_events e on e.authority_id = s.authority_id
          and e.planning_reference = s.planning_reference
@@ -793,15 +805,24 @@ async function handleCron(req, res, ctx) {
           address: app?.address_text ?? r.planning_reference,
           reference: r.planning_reference,
           url: `${origin}/#app=${encodeURIComponent(r.authority_id)}:${encodeURIComponent(r.planning_reference)}`,
-          summaries: [],
+          activity: [],
           description: app?.description ?? null,
+          summary: ctx.bakedSummary?.(app?.description) ?? null,
           status: app?.status ?? null,
           decision: app?.decision ?? null,
           received_date: app?.received_date ?? null,
           decision_date: app?.decision_date ?? null,
         });
       }
-      byApp.get(key).summaries.push(r.summary);
+      // A date-valued field carries its own date; the rest fall back to the
+      // matching date on the application (a commencement notice appearing is
+      // a different field from the date work started).
+      const app = ctx.findApp(r.authority_id, r.planning_reference);
+      byApp.get(key).activity.push({
+        kind: r.event_type ?? "status",
+        text: r.summary,
+        date: eventDate(r, app),
+      });
     }
     const areaSections = watchNews
       ? [...watchNews.values()].map((wn) => ({

@@ -77,6 +77,8 @@ describe("buildDigestEmail with area sections", () => {
         address: "Main Street",
         reference: "26/123",
         summary: "New planning application",
+        kind: "new",
+        activity_date: "2026-07-08",
         url: "https://example.test/#app=kildare:26%2F123",
       },
     ],
@@ -85,15 +87,20 @@ describe("buildDigestEmail with area sections", () => {
   it("sends an area-only digest with an area subject", () => {
     const mail = buildDigestEmail([], null, [area]);
     expect(mail.subject).toBe("New planning activity in Home");
-    expect(mail.html).toContain("In Home");
-    expect(mail.text).toContain("New planning application: Main Street (26/123)");
+    // The section head names the area; the card leads with what happened.
+    expect(mail.html).toContain("Area alert — Home");
+    expect(mail.html).toContain("New planning application");
+    expect(mail.text).toContain("In Home:");
+    expect(mail.text).toContain("New planning application — 8 Jul 2026");
   });
 
   it("keeps the saved-app subject when both kinds are present", () => {
-    const entry = { address: "1 High St", reference: "26/1", url: "u", summaries: ["Decision made"] };
+    const entry = {
+      address: "1 High St", reference: "26/1", url: "u",
+      activity: [{ kind: "decision", text: "Decision made", date: "2026-03-02" }],
+    };
     const mail = buildDigestEmail([entry], null, [area]);
     expect(mail.subject).toBe("Update on 1 High St");
-    expect(mail.html).toContain("In Home");
   });
 
   it("stays backward-compatible without area sections", () => {

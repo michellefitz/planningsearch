@@ -3213,6 +3213,10 @@ export default async function handler(req, res) {
           (a) => a.authority_id === authorityId && a.planning_reference === reference
         ) ?? null,
       appSummary: (app) => publicApp(app),
+      // The alert emails read better with the plain-English summary than with
+      // the council's own description, which is long, written for a file, and
+      // truncated to fit a card.
+      bakedSummary: (description) => bakedSummary(description),
       fetchAgileDetail,
       mapLiveStatus: (detail) => mapLiveStatus(detail?.status, detail?.decision),
       // For the nightly agile harvest (accounts/harvest.mjs).
