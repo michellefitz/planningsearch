@@ -4,7 +4,17 @@
   "installCommand": "npm install --include=dev",
   "buildCommand": "PLANVIEW_EXPORT_SOURCE=live node scripts/build-vercel.mjs",
   "crons": [
-    { "path": "/api/cron/check-updates", "schedule": "0 7 * * *" },
-    { "path": "/api/cron/refresh-data", "schedule": "30 2 * * *" }
+    {
+      "path": "/api/cron/warm",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/check-updates",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-data",
+      "schedule": "30 2 * * *"
+    }
   ]
 }

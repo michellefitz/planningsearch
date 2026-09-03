@@ -20,6 +20,15 @@ import {
 
 const AGILE = new Set(["dublin-city", "fingal", "dlr", "south-dublin"]);
 
+/**
+ * When this process started, for the warm ping below.
+ *
+ * Module scope, so it is set once per instance rather than per request — a
+ * young value means the request that reported it is the one that started the
+ * process.
+ */
+const BOOTED_AT = Date.now();
+
 function verifyBearer(req, secret) {
   if (!secret) return false;
   const auth = req.headers.authorization ?? "";
@@ -57,7 +66,8 @@ export function isAccountRoute(route) {
     route === "/api/resolve" ||
     route === "/api/alerts/unsubscribe" ||
     route === "/api/cron/check-updates" ||
-    route === "/api/cron/refresh-data"
+    route === "/api/cron/refresh-data" ||
+    route === "/api/cron/warm"
   );
 }
 
@@ -364,6 +374,36 @@ document.getElementById("btn").onclick = async function() {
 <h2 style="color:#17456e;">Alerts turned off</h2>
 <p style="color:#5c6370;line-height:1.6;">You won't get any more update emails from PlanView. Your saved applications are untouched — you can turn alerts back on any time from your <a href="/#account" style="color:#0b62d6;">PlanView account</a>.</p>
 </body></html>`);
+  }
+
+  /**
+   * Keeps an instance alive between real visits.
+   *
+   * Every route in this deployment is served by one function, so any request
+   * keeps the process warm — the point of a dedicated route is that it does
+   * nothing else. Cold, this function spends seconds parsing the register at
+   * module load before it can answer anything; warm, the same search returns
+   * in under half a second. Measured against production: 11.5s then 0.44s.
+   *
+   * Deliberately does NOT touch the lazily-loaded sidecars (boundaries,
+   * extents, summaries). Those are lazy so that a cold start does not pay for
+   * geometry nobody asked for, and pre-loading them here would make every cold
+   * start slower to save a request that may never come.
+   *
+   * This lowers the odds of a cold start rather than removing them: Vercel may
+   * still route a visitor to a new instance or another region.
+   */
+  if (route === "/api/cron/warm") {
+    if (!verifyBearer(req, process.env.CRON_SECRET))
+      return sendPrivate(res, 401, { error: "unauthorized" });
+    const uptimeMs = Date.now() - BOOTED_AT;
+    return sendPrivate(res, 200, {
+      ok: true,
+      // True when this ping is what started the process — i.e. the last one's
+      // instance had already been reclaimed, and the interval is too long.
+      cold: uptimeMs < 5_000,
+      uptime_ms: uptimeMs,
+    });
   }
 
   if (route === "/api/cron/check-updates") return handleCron(req, res, ctx);
