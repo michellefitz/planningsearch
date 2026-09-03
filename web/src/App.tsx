@@ -182,6 +182,25 @@ export default function App() {
   // True while we're applying a URL (initial load or back/forward), so the
   // selection effect doesn't push a duplicate history entry straight back.
   const applyingUrl = useRef(false);
+  /**
+   * Where a deep link points, read once and synchronously at first render.
+   *
+   * It has to be known before any effect runs, because it changes the boot
+   * order. Arriving from an alert email, the sheet used to wait behind three
+   * sequential round-trips — the account check, then resolve, then the detail
+   * — while the initial search and ~1,000 map pins loaded alongside it. You
+   * clicked an address and landed on a map of dots, and the thing you asked
+   * for slid up last.
+   */
+  const deepLink = useRef<{ authorityId: string; reference: string } | null>(
+    (() => {
+      const m = window.location.hash.match(/^#app=([^:]+):(.+)$/);
+      if (m) return { authorityId: decodeURIComponent(m[1]), reference: decodeURIComponent(m[2]) };
+      return parseAppPath(window.location.pathname);
+    })()
+  );
+  /** True from first render until a deep-linked sheet is up, or has failed. */
+  const deepLinkPending = useRef(Boolean(deepLink.current));
   // Desktop sheet close: keep it mounted with a closing class so the slide-out
   // can play, then unmount. Mobile dismiss animates in DetailPanel's drag code.
   const [sheetClosing, setSheetClosing] = useState(false);
@@ -261,10 +280,42 @@ export default function App() {
     []
   );
 
-  // Initial load: recent applications everywhere.
+  // Initial load: recent applications everywhere — unless a deep link is
+  // opening, in which case the effect below runs it once the sheet is up.
   useEffect(() => {
+    if (deepLink.current) return;
     runSearch(EMPTY_SEARCH);
   }, [runSearch]);
+
+  /**
+   * A deep link opens its application first, and the map fills in behind it.
+   *
+   * Deliberately its own effect, ahead of the account check: resolving the
+   * reference needs nothing from the session, so waiting for /api/me only
+   * delayed the one thing the reader actually asked for. The rest of the
+   * register loads after, whether or not this succeeded.
+   */
+  useEffect(() => {
+    const target = deepLink.current;
+    if (!target) return;
+    void (async () => {
+      applyingUrl.current = true;
+      try {
+        const { id } = await api.resolve(target.authorityId, target.reference);
+        await select(id);
+      } catch {
+        setError("That application is no longer in the current dataset.");
+        history.replaceState(null, "", "/");
+      } finally {
+        applyingUrl.current = false;
+        deepLinkPending.current = false;
+        runSearch(EMPTY_SEARCH);
+      }
+    })();
+    // Once, at boot. `select` changes identity with the saved list, and
+    // re-running this would reopen the sheet under someone mid-browse.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Dismiss the account menu the way a menu is expected to go: tap anywhere
   // else, or press Escape.
@@ -469,8 +520,36 @@ export default function App() {
       const url = appPath(d.authority_id, d.planning_reference);
       if (applyingUrl.current) history.replaceState(null, "", url);
       else if (window.location.pathname !== url) history.pushState(null, "", url);
-      if (d.lat != null && d.lng != null)
-        setFlyTo({ lat: d.lat, lng: d.lng, avoidSheet: true });
+      const lat = d.lat;
+      const lng = d.lng;
+      if (lat != null && lng != null) {
+        setFlyTo({ lat, lng, avoidSheet: true });
+        // On a deep link the map has no pins yet — the full set is still
+        // loading behind the sheet. Draw this one immediately, so the map
+        // shows the property being read rather than empty ground, and let the
+        // rest replace it when they land.
+        setMapData((current) =>
+          current
+            ? current
+            : {
+                type: "FeatureCollection",
+                features: [
+                  {
+                    type: "Feature",
+                    geometry: { type: "Point", coordinates: [lng, lat] as [number, number] },
+                    properties: {
+                      id: d.id,
+                      reference: d.planning_reference,
+                      status: d.status,
+                      authority_id: d.authority_id,
+                      address: d.address_text,
+                      is_domestic_guess: Boolean(d.is_domestic_guess),
+                    },
+                  },
+                ],
+              }
+        );
+      }
       const save = savedByKey.get(saveKey(d.authority_id, d.planning_reference));
       if (save?.has_update) {
         accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
@@ -543,38 +622,17 @@ export default function App() {
         setMode("account");
         setAuthNotice("That sign-in link has expired — request a fresh one.");
       }
-      const appMatch = hash.match(/^#app=([^:]+):(.+)$/);
-      if (appMatch) {
-        try {
-          const authorityId = decodeURIComponent(appMatch[1]);
-          const reference = decodeURIComponent(appMatch[2]);
-          const { id } = await api.resolve(authorityId, reference);
-          await select(id);
-          const key = saveKey(authorityId, reference);
-          const save = freshMe.saves.find(
-            (s) => saveKey(s.authority_id, s.planning_reference) === key
-          );
-          if (save?.has_update) {
-            accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
-          }
-        } catch {
-          setError("That application is no longer in the current dataset.");
-        }
-      }
-      // A shared/bookmarked /application/... link resolves on load. The legacy
-      // #app= form (used by digest emails) is rewritten to it above, so the
-      // canonical address is what ends up in the bar either way.
-      const fromPath = parseAppPath(window.location.pathname);
-      if (fromPath && !appMatch) {
-        applyingUrl.current = true;
-        try {
-          const { id } = await api.resolve(fromPath.authorityId, fromPath.reference);
-          await select(id);
-        } catch {
-          setError("That application is no longer in the current dataset.");
-          history.replaceState(null, "", "/");
-        } finally {
-          applyingUrl.current = false;
+      // The deep link itself is opened by its own effect above, before this
+      // one — resolving a reference needs no session. What is left here is the
+      // part that does: clearing the unread mark on a saved application the
+      // reader has now been shown.
+      const target = deepLink.current;
+      if (target) {
+        const save = freshMe.saves.find(
+          (s) => saveKey(s.authority_id, s.planning_reference) === saveKey(target.authorityId, target.reference)
+        );
+        if (save?.has_update) {
+          accountApi.updateSave(save.id, { seen: true }).then(() => refreshMe()).catch(() => {});
         }
       }
       if (hash) history.replaceState(null, "", window.location.pathname);
@@ -966,6 +1024,11 @@ export default function App() {
             onSelect={select}
             onBoundsChange={(bbox) => {
               bboxRef.current = bbox;
+              // The map settling on mount counts as a bounds change, so on a
+              // deep link this fired a full pin fetch alongside the one thing
+              // the reader asked for. Record the viewport, fetch nothing, and
+              // let the effect that opens the sheet start the map afterwards.
+              if (deepLinkPending.current) return;
               // "Limit to current map area" re-runs the whole search; otherwise
               // just the pins follow the viewport.
               if (state.useMapArea) runSearch(state);
