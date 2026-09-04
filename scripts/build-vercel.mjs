@@ -101,14 +101,19 @@ console.log("Assembled .vercel/output (Build Output API).");
 
 // 6. Report what the function actually weighs.
 //
-// The 250 MB cap is on the uncompressed function, enforced by AWS rather than
-// by plan, and every data file inside it scales with the register — the
-// bundle, the boundaries, the extents, the summaries. So this one number
-// decides when the next council can be loaded, and it was not printed
-// anywhere: the individual files were logged during the export, the total
-// never was. See issue #101.
-const FUNCTION_LIMIT_MB = 250;
-const FUNCTION_WARN_MB = 200;
+// Every data file inside the function scales with the register — the bundle,
+// the boundaries, the extents, the summaries. So this one number decides when
+// the next council can be loaded, and it was not printed anywhere: the
+// individual files were logged during the export, the total never was. See
+// issue #101.
+//
+// The uncompressed-function cap is 250 MB by default, but this project runs on
+// Vercel large functions (Fluid + Active CPU), which lifts it to 5 GB. So the
+// report warns as the large-function headroom shrinks and only hard-fails past
+// 5 GB — the point where Vercel itself would reject the upload. It must not
+// fail at 250 MB: the function already ships at ~400 MB and deploys fine.
+const FUNCTION_LIMIT_MB = 5000;
+const FUNCTION_WARN_MB = 4000;
 
 const sizeOf = (p) => {
   const st = fs.statSync(p);
@@ -123,7 +128,10 @@ const totalBytes = entries.reduce((n, e) => n + e.bytes, 0);
 const totalMb = totalBytes / 1024 / 1024;
 const mb = (b) => (b / 1024 / 1024).toFixed(1).padStart(7);
 
-console.log(`\nFunction size: ${totalMb.toFixed(1)} MB of the ${FUNCTION_LIMIT_MB} MB limit`);
+console.log(
+  `\nFunction size: ${totalMb.toFixed(1)} MB ` +
+    `(large-function limit ${FUNCTION_LIMIT_MB} MB; default cap 250 MB is lifted by Fluid)`
+);
 for (const e of entries) {
   if (e.bytes >= 512 * 1024) console.log(`  ${mb(e.bytes)} MB  ${e.name}`);
 }
@@ -132,14 +140,14 @@ if (totalMb > FUNCTION_LIMIT_MB) {
   // Fail here rather than letting Vercel reject the upload: the message there
   // does not say which files grew, and this one does.
   console.error(
-    `\nERROR: ${totalMb.toFixed(1)} MB exceeds the ${FUNCTION_LIMIT_MB} MB function limit — ` +
+    `\nERROR: ${totalMb.toFixed(1)} MB exceeds the ${FUNCTION_LIMIT_MB} MB large-function limit — ` +
       `this deploy would fail. The data files above scale with the register; see issue #101.`
   );
   process.exit(1);
 }
 if (totalMb > FUNCTION_WARN_MB) {
   console.warn(
-    `\nWARNING: ${(FUNCTION_LIMIT_MB - totalMb).toFixed(1)} MB of headroom left. ` +
+    `\nWARNING: ${(FUNCTION_LIMIT_MB - totalMb).toFixed(1)} MB of large-function headroom left. ` +
       `Loading another council adds to every data file above; see issue #101.`
   );
 }
