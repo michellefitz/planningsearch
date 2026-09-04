@@ -2473,6 +2473,8 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     eircode?: string | null;
     officer_name?: string | null;
     submissions_by_date?: string | null;
+    further_info_requested_date?: string | null;
+    further_info_received_date?: string | null;
     status?: string | null;
     status_raw?: string | null;
     status_label?: string | null;
@@ -2530,9 +2532,20 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     !CLOSED.has(liveStatus ?? d.status);
   // Published where the council publishes one, derived from the statutory five
   // weeks where it does not — see submissionsDeadline.
-  const submissions = submissionsDeadline(d, enrich?.submissions_by_date);
+  // Kildare's further-information dates live on its detail page, not in the
+  // register (its history comes from an ArcGIS backfill with no FI field), so
+  // enrichment supplies them a moment after the sheet paints. Fold them in
+  // wherever the FI round is read, falling back to whatever the record holds.
+  const dFi: AppDetail = {
+    ...d,
+    further_info_requested_date:
+      d.further_info_requested_date ?? enrich?.further_info_requested_date ?? null,
+    further_info_received_date:
+      d.further_info_received_date ?? enrich?.further_info_received_date ?? null,
+  };
+  const submissions = submissionsDeadline(dFi, enrich?.submissions_by_date);
   const submissionsBy = submissions?.date ?? null;
-  const timeline = buildTimeline(d, enrich?.submissions_by_date, liveStatus, conditions);
+  const timeline = buildTimeline(dFi, enrich?.submissions_by_date, liveStatus, conditions);
   /**
    * Whether the council asked this applicant for more, ever.
    *
@@ -2550,9 +2563,13 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     // grew a "Further information requested" heading — 4034/22, decided in
     // July 2022, read as still awaiting information four years later.
     Boolean(conditions?.items.some((i) => i.code === "D")) ||
-    d.status === "further_info" ||
-    Boolean(d.further_info_requested_date);
-  const askedForMore =
+    dFi.status === "further_info" ||
+    Boolean(dFi.further_info_requested_date);
+  // The register's own signal, kept separate from the enrichment-revealed one:
+  // this drives the effect below, and if it flipped when enrichment arrived it
+  // would re-run the whole pipeline (which resets `enrich`) in a loop. The
+  // enrichment-revealed date is fetched by its own effect instead.
+  const askedForMoreBaked =
     d.status === "further_info" || Boolean(d.further_info_requested_date);
   // Who owns the "Informative" items — see sectionCodes.
   const codes = sectionCodes(conditions?.decision ?? d.decision, hasFurtherInfo);
@@ -2724,7 +2741,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
      * by neither path. The server decides where to read it from; the sheet's
      * job is only to ask.
      */
-    if (askedForMore) {
+    if (askedForMoreBaked) {
       setAskedLoading(true);
       api
         .furtherInfoSummary(d.id)
@@ -2788,7 +2805,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
             // Only when the register gave no date to go on — otherwise the
             // fetch above has already asked for exactly this.
             if (
-              !askedForMore &&
+              !askedForMoreBaked &&
               (res.conditions.further_info ||
                 res.conditions.items.some((i) => i.code === "D" || i.code === "I"))
             ) {
@@ -2846,8 +2863,42 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
     d.agent_name,
     d.decision,
     hasConditionsSource,
-    askedForMore,
+    askedForMoreBaked,
   ]);
+
+  // The request-summary fetch, for the case the register had no date to go on.
+  //
+  // Kildare's further-information date is not in the register (its history
+  // comes from an ArcGIS backfill that carries no FI field) — enrichment reads
+  // it live off the detail page. The effect above keys on the *baked* signal,
+  // so it never fired here; this one runs once enrichment reveals the date,
+  // without resetting `enrich` (which would loop). Skipped when the register
+  // already had the date, so the two never both fetch.
+  useEffect(() => {
+    if (askedForMoreBaked || !enrich?.further_info_requested_date) return;
+    let cancelled = false;
+    setAskedLoading(true);
+    api
+      .furtherInfoSummary(d.id)
+      .then((r) => {
+        if (cancelled) return;
+        setAskedSummary(r.summary ?? null);
+        setAskedReason({
+          reason: r.summary ? null : r.reason ?? null,
+          document: r.source_document
+            ? { title: r.source_document, index: r.source_document_index ?? -1 }
+            : null,
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setAskedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.id, askedForMoreBaked, enrich?.further_info_requested_date]);
 
   const aiSummary = d.ai_summary ?? enrich?.ai_summary ?? null;
   const applicant = d.applicant_name ?? enrich?.applicant_name ?? null;
@@ -3130,7 +3181,7 @@ export default function DetailPanel({ detail: d, meta, onClose, onSelectRelated,
           was worried about, and reading it after the outcome loses that. */}
       {hasFurtherInfo && (
         <FurtherInfoSection
-          detail={d}
+          detail={dFi}
           conditions={conditions}
           conditionsLoading={conditionsLoading}
           askedSummary={askedSummary}

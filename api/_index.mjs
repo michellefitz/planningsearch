@@ -616,6 +616,46 @@ const countObjectionFiles = (files) => files.filter((f) => OBJECTION_TITLE_RE.te
    from it entirely; eplanning.ie detail pages publish both (agent = usually
    the architect, in a hidden "Agent Details" div). Cached per instance. */
 const PARTIES_CACHE = new Map();
+/* Further-information dates read live from an eplanning detail page. The dates
+   are on the Details tab of the same page parties/related already read; most
+   Kildare history comes from the ArcGIS backfill, whose service carries no
+   further-information field, so the register is blank for those records and the
+   only place the FI round survives is this page. Cached per instance. */
+const EPLANNING_FI_CACHE = new Map();
+
+/**
+ * The "Further Info Requested" / "Further Info Received" dates from an
+ * eplanning detail page (`<th>Further Info Requested:</th><td>11/04/2002</td>`).
+ * Both null when the application had no further-information round.
+ */
+function parseEplanningFurtherInfoDates(html) {
+  const iso = (label) => {
+    const re = new RegExp(`<th[^>]*>\\s*${label}\\s*:?\\s*</th>\\s*<td[^>]*>([\\s\\S]*?)</td>`, "i");
+    const m = html.match(re);
+    const dm = m && stripTags(m[1]).match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    return dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : null;
+  };
+  return { requested: iso("Further Info Requested"), received: iso("Further Info Received") };
+}
+
+async function fetchEplanningFurtherInfo(sourceUrl) {
+  const none = { requested: null, received: null };
+  if (!sourceUrl || !/eplanning\.ie\/.+AppFileRefDetails/i.test(sourceUrl)) return none;
+  if (EPLANNING_FI_CACHE.has(sourceUrl)) return EPLANNING_FI_CACHE.get(sourceUrl);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch(sourceUrl, { signal: controller.signal, headers: UA_HEADERS });
+    if (!res.ok) return none;
+    const fi = parseEplanningFurtherInfoDates(await res.text());
+    EPLANNING_FI_CACHE.set(sourceUrl, fi);
+    return fi;
+  } catch {
+    return none;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function parseEplanningParties(html) {
   const applicantM = html.match(/Applicant name:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
@@ -3848,7 +3888,16 @@ const readableReason = (doc, content) => {
      */
     // Answered and decided both count: what the council asked for is the
     // clearest published record of what the planner was worried about.
-    if (app.status !== "further_info" && !app.further_info_requested_date) {
+    //
+    // The eplanning register is blank for the ArcGIS-backfilled history, so the
+    // request date — the anchor for finding the letter among a hundred badly
+    // named documents — is read live off the detail page when it is missing.
+    // A no-op for every other council: fetchEplanningFurtherInfo returns null
+    // unless the source URL is an eplanning AppFileRefDetails page.
+    const fiRequestedDate =
+      app.further_info_requested_date ??
+      (app.source_url ? (await fetchEplanningFurtherInfo(app.source_url)).requested : null);
+    if (app.status !== "further_info" && !fiRequestedDate) {
       return send(res, 200, { supported: true, summary: null });
     }
     const listUrl = scannedFilesUrl(app.authority_id, app.source_url, app.planning_reference);
@@ -3858,7 +3907,7 @@ const readableReason = (doc, content) => {
       return send(res, 200, {
         supported: true,
         ...(await withDocumentIndex(app, stored, (fs) =>
-          findFurtherInfoDocIndex(fs, app.further_info_requested_date)
+          findFurtherInfoDocIndex(fs, fiRequestedDate)
         )),
       });
     if (!(await aiDailyCapCheck(req, res))) return;
@@ -3866,7 +3915,7 @@ const readableReason = (doc, content) => {
     // The register's own record of when it asked — on Dublin City that is the
     // only thing separating the request from the decision, since both are
     // filed as "Decision Notices".
-    const index = files ? findFurtherInfoDocIndex(files, app.further_info_requested_date) : -1;
+    const index = files ? findFurtherInfoDocIndex(files, fiRequestedDate) : -1;
     const empty = { supported: true, summary: null, source_document: null, source_document_index: null };
     if (index < 0) return send(res, 200, empty);
     const doc = await fetchScannedDocument(listUrl, index, 10_000_000);
@@ -4333,12 +4382,18 @@ const readableReason = (doc, content) => {
     // portal, so we summarise after that fetch (below) — otherwise the summary
     // is built from the truncated national text.
     const isAgile = app.authority_id in AGILE_CLIENT_BY_AUTHORITY;
-    const [detail, eplanningParties, quickSummary, citedUrls] = await Promise.all([
+    const [detail, eplanningParties, eplanningFi, quickSummary, citedUrls] = await Promise.all([
       isAgile
         ? fetchAgileDetail(app.authority_id, app.source_url, app.planning_reference, debug)
         : null,
       !isAgile && !(app.applicant_name && app.agent_name) && app.source_url
         ? fetchEplanningParties(app.source_url)
+        : null,
+      // eplanning records the FI round on the detail page; the register is
+      // blank for the ArcGIS-backfilled history, so read it here — only when
+      // the register does not already carry the dates.
+      !isAgile && !app.further_info_requested_date && app.source_url
+        ? fetchEplanningFurtherInfo(app.source_url)
         : null,
       isAgile ? null : summariseDescription(description, app.application_type, summaryTrace),
       resolveCitedUrls(app),
@@ -4414,6 +4469,11 @@ const readableReason = (doc, content) => {
       // the national dataset leaves the column empty for these councils, so an
       // application open for submissions showed no deadline and no countdown.
       submissions_by_date: detail?.submissionsBy ?? null,
+      // Read live from the eplanning detail page when the register is blank —
+      // so a decided Kildare application still shows the request was made and
+      // when it was answered.
+      further_info_requested_date: app.further_info_requested_date ?? eplanningFi?.requested ?? null,
+      further_info_received_date: app.further_info_received_date ?? eplanningFi?.received ?? null,
       // Present only when the live portal outcome supersedes the baked status,
       // so the panel can correct the badge.
       status: useLiveStatus ? liveStatus : null,
