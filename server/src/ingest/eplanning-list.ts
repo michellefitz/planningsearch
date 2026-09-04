@@ -84,6 +84,9 @@ export interface EplanningListItem {
   applicationTypeRaw: string | null;
   /** From the detail page: deadline for submissions/observations, ISO. */
   submissionsBy: string | null;
+  /** From the detail page: further-information request/receipt dates, ISO. */
+  furtherInfoRequested: string | null;
+  furtherInfoReceived: string | null;
 }
 
 /**
@@ -116,6 +119,8 @@ export function parseEplanningList(html: string): EplanningListItem[] {
       lng: null,
       applicationTypeRaw: null,
       submissionsBy: null,
+      furtherInfoRequested: null,
+      furtherInfoReceived: null,
     });
   }
   return out;
@@ -157,6 +162,36 @@ export function parseSubmissionsBy(html: string): string | null {
   const raw = detailField(html, "Submissions By");
   const m = raw?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+}
+
+/**
+ * The register's own record of a further-information round, from the Details
+ * tab's "Further Info Requested" / "Further Info Received" fields.
+ *
+ * eplanning records this structurally — 471 Easton Road, Leixlip (02159)
+ * carries "Further Info Requested: 11/04/2002" and "Further Info Received:
+ * 22/10/2002" — so we do not have to infer an FI round from the scanned,
+ * inconsistently-named document list. The request date is the strong signal
+ * the detail view uses to go and find the request letter, and both dates drive
+ * the further-information timeline on the sheet; without them, a decided
+ * Kildare application showed no trace of the request at all.
+ *
+ * The single top-level dates are enough here. (The page also has a fuller
+ * "Further Information Details" table with any second-round clarification; that
+ * is a later refinement, not needed to populate the register.)
+ */
+export function parseFurtherInfoDates(html: string): {
+  requested: string | null;
+  received: string | null;
+} {
+  const iso = (raw: string | null): string | null => {
+    const m = raw?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+  };
+  return {
+    requested: iso(detailField(html, "Further Info Requested")),
+    received: iso(detailField(html, "Further Info Received")),
+  };
 }
 
 /**
@@ -229,6 +264,10 @@ export interface EplanningDetail {
   applicationTypeRaw: string | null;
   /** Deadline for submissions/observations, ISO. */
   submissionsBy: string | null;
+  /** Date the council requested further information, ISO; null if none. */
+  furtherInfoRequested: string | null;
+  /** Date the applicant's further information was received, ISO; null if none. */
+  furtherInfoReceived: string | null;
 }
 
 /**
@@ -242,6 +281,8 @@ const EMPTY_DETAIL: EplanningDetail = {
   description: null,
   applicationTypeRaw: null,
   submissionsBy: null,
+  furtherInfoRequested: null,
+  furtherInfoReceived: null,
 };
 
 /**
@@ -268,11 +309,14 @@ export async function fetchDetail(id: string, cookies: string): Promise<Eplannin
       });
       if (res.ok) {
         const html = await res.text();
+        const fi = parseFurtherInfoDates(html);
         return {
           coords: parseSiteLocation(html),
           description: parseFullDescription(html),
           applicationTypeRaw: parseApplicationTypeRaw(html),
           submissionsBy: parseSubmissionsBy(html),
+          furtherInfoRequested: fi.requested,
+          furtherInfoReceived: fi.received,
         };
       }
       // 4xx is an answer — the page is not coming, so stop asking.
@@ -388,6 +432,8 @@ export async function fetchKildareRecent(
     }
     item.applicationTypeRaw = detail.applicationTypeRaw;
     item.submissionsBy = detail.submissionsBy;
+    item.furtherInfoRequested = detail.furtherInfoRequested;
+    item.furtherInfoReceived = detail.furtherInfoReceived;
   });
   log(
     `  eplanning Kildare received: located ${located}/${items.length} on the map, ` +
@@ -420,8 +466,10 @@ export function eplanningItemToRecord(item: EplanningListItem, now: string): App
     status_raw: item.statusText,
     received_date: item.receivedDate,
     validated_date: null,
-    further_info_requested_date: null,
-    further_info_received_date: null,
+    // From the detail page's Details tab — the register's own record of an FI
+    // round, so a decided Kildare application still shows the request was made.
+    further_info_requested_date: item.furtherInfoRequested,
+    further_info_received_date: item.furtherInfoReceived,
     decision_due_date: item.decisionDueDate,
     submissions_by_date: item.submissionsBy,
     // The list carries only a decision code, not the outcome text — leave the

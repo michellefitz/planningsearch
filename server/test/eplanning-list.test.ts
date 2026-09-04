@@ -5,6 +5,7 @@ import {
   parseApplicationTypeRaw,
   parseEplanningList,
   parseFullDescription,
+  parseFurtherInfoDates,
   parseSiteLocation,
   parseSubmissionsBy,
   parseTotalPages,
@@ -139,6 +140,12 @@ const DETAILS_HTML = `
     <th valign="top" align="right">Submissions By: </th>
     <td> 16/07/2026</td>
   </tr>
+  <tr>
+    <th valign="top" align="right">Further Info Requested: </th>
+    <td>11/04/2002</td>
+    <th valign="top" align="right">Further Info Received: </th>
+    <td>22/10/2002</td>
+  </tr>
 </table>`;
 
 describe("parseApplicationTypeRaw", () => {
@@ -158,6 +165,23 @@ describe("parseSubmissionsBy", () => {
 
   it("returns null when the cell is empty", () => {
     expect(parseSubmissionsBy("<th>Submissions By: </th><td> </td>")).toBeNull();
+  });
+});
+
+describe("parseFurtherInfoDates", () => {
+  it("reads the further-information request and receipt dates as ISO", () => {
+    expect(parseFurtherInfoDates(DETAILS_HTML)).toEqual({
+      requested: "2002-04-11",
+      received: "2002-10-22",
+    });
+  });
+
+  it("returns nulls when the application had no further-information round", () => {
+    const noFi = `<table><tr>
+      <th valign="top" align="right">Further Info Requested: </th><td></td>
+      <th valign="top" align="right">Further Info Received: </th><td></td>
+    </tr></table>`;
+    expect(parseFurtherInfoDates(noFi)).toEqual({ requested: null, received: null });
   });
 });
 
@@ -213,6 +237,16 @@ describe("eplanningItemToRecord", () => {
       "2026-07-24T00:00:00Z"
     );
     expect(rec.submissions_by_date).toBe("2026-07-16");
+  });
+
+  it("carries the further-information dates onto the record", () => {
+    const [row] = parseEplanningList(HTML);
+    const rec = eplanningItemToRecord(
+      { ...row, furtherInfoRequested: "2002-04-11", furtherInfoReceived: "2002-10-22" },
+      "2026-07-24T00:00:00Z"
+    );
+    expect(rec.further_info_requested_date).toBe("2002-04-11");
+    expect(rec.further_info_received_date).toBe("2002-10-22");
   });
 });
 
