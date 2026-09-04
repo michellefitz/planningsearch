@@ -1,4 +1,13 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   collectAppRefs,
   streamAgent,
@@ -9,9 +18,19 @@ import {
 import { renderMarkdown as renderText } from "../markdown";
 import { StatusBadge } from "./ResultsList";
 import ChatStats, { type CountResult } from "./ChatStats";
-import { ChevronRightIcon } from "./icons";
+import { ChevronRightIcon, PlusIcon, HistoryIcon, XIcon } from "./icons";
 import { posthog } from "../posthog";
 import { Waiting } from "../loading";
+import {
+  loadThreads,
+  saveThread,
+  deleteThread,
+  deriveTitle,
+  newThreadId,
+  relativeTime,
+  type ChatThread,
+  type StoredMessage,
+} from "../chatThreads";
 
 const ChatMap = lazy(() => import("./ChatMap"));
 
@@ -21,12 +40,9 @@ interface Props {
   onAppsReferenced: (apps: AgentAppRef[]) => void;
 }
 
-interface DisplayMessage {
-  role: "user" | "assistant";
-  content: string;
-  error?: boolean;
-  stats?: CountResult[];
-}
+// The on-screen message and the stored message are the same shape — a thread
+// restored from history renders exactly as it did live.
+type DisplayMessage = StoredMessage;
 
 // Chat cards carry only the agent's slim app summary, which has no display
 // name for the council — five tenants, so a local map beats a meta fetch.
@@ -238,7 +254,17 @@ function AssistantMessage({
 }
 
 export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }: Props) {
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  // Load the inbox once, synchronously, and reopen the most recent thread —
+  // returning to Ask lands you back in the conversation you left, not a blank
+  // panel (#94).
+  const boot = useRef<ChatThread[] | null>(null);
+  if (boot.current === null) boot.current = loadThreads();
+  const last = boot.current[0] ?? null;
+
+  const [messages, setMessages] = useState<DisplayMessage[]>(() => last?.messages ?? []);
+  const [threadId, setThreadId] = useState<string>(() => last?.id ?? newThreadId());
+  const [threads, setThreads] = useState<ChatThread[]>(() => boot.current ?? []);
+  const [showHistory, setShowHistory] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -248,8 +274,38 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
      before it emits a single tool call, and that whole time the panel showed
      an ellipsis on a disabled button and nothing else. */
   const [answering, setAnswering] = useState(false);
-  const appRefs = useRef(new Map<number, AgentAppRef>());
+  const appRefs = useRef(new Map<number, AgentAppRef>((last?.apps ?? []).map((a) => [a.id, a])));
   const pendingStats = useRef<CountResult[]>([]);
+
+  // Persistence works off refs so the save/unmount paths always see the latest
+  // without re-subscribing. threadId/createdAt identify the open thread;
+  // messagesRef mirrors the rendered messages; justLoaded suppresses the save
+  // that a hydrate or a thread-open would otherwise trigger, so merely opening
+  // a past chat does not reorder the inbox.
+  const threadIdRef = useRef(threadId);
+  const createdAtRef = useRef(last?.createdAt ?? Date.now());
+  const messagesRef = useRef(messages);
+  const justLoadedRef = useRef(true);
+  useEffect(() => {
+    messagesRef.current = messages;
+    threadIdRef.current = threadId;
+  }, [messages, threadId]);
+
+  // Write the open thread to the inbox, returning the refreshed list (or null
+  // when there is nothing worth keeping). Refs only, so it is safe to call
+  // from an unmount cleanup.
+  const writeCurrent = useCallback((): ChatThread[] | null => {
+    const msgs = messagesRef.current;
+    if (msgs.length === 0) return null;
+    return saveThread({
+      id: threadIdRef.current,
+      title: deriveTitle(msgs),
+      createdAt: createdAtRef.current,
+      updatedAt: Date.now(),
+      messages: msgs,
+      apps: [...appRefs.current.values()],
+    });
+  }, []);
 
   const threadRef = useRef<HTMLDivElement>(null);
   // Pinned to the bottom? Set false the moment the user scrolls up, so the
@@ -310,6 +366,97 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
   useEffect(() => {
     if (stickRef.current) scrollToBottom();
   }, [status, messages.length, scrollToBottom]);
+
+  // On first mount, put the restored thread's apps back on the map.
+  useEffect(() => {
+    if (last?.apps?.length) onAppsReferenced(last.apps);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Save when a turn settles. Skipped while busy (the drip is still running)
+  // and skipped once right after a hydrate or thread-open, so updatedAt only
+  // moves on real new activity — not on merely visiting the panel.
+  useEffect(() => {
+    if (justLoadedRef.current) {
+      justLoadedRef.current = false;
+      return;
+    }
+    if (busy || messages.length === 0) return;
+    const next = writeCurrent();
+    if (next) setThreads(next);
+  }, [messages, busy, writeCurrent]);
+
+  // Leaving Ask unmounts the panel — flush the current thread on the way out
+  // so an answer finished moments before navigating is not lost.
+  useEffect(() => () => void writeCurrent(), [writeCurrent]);
+
+  // Clear the panel to a fresh, empty thread. persistFirst keeps the outgoing
+  // conversation in the inbox (New chat); deleting the open thread skips it.
+  const resetToNew = useCallback(
+    (persistFirst: boolean) => {
+      if (persistFirst) {
+        const next = writeCurrent();
+        if (next) setThreads(next);
+      }
+      stopReveal();
+      targetRef.current = "";
+      shownRef.current = 0;
+      replyIndexRef.current = null;
+      pendingStats.current = [];
+      appRefs.current = new Map();
+      const id = newThreadId();
+      threadIdRef.current = id;
+      createdAtRef.current = Date.now();
+      justLoadedRef.current = true;
+      setThreadId(id);
+      setMessages([]);
+      setShowHistory(false);
+      setBusy(false);
+      setStatus(null);
+      setAnswering(false);
+      onAppsReferenced([]);
+    },
+    [onAppsReferenced, stopReveal, writeCurrent]
+  );
+
+  const newChat = useCallback(() => resetToNew(true), [resetToNew]);
+
+  // Reopen a stored thread: rebuild the app-card map, restore the pins, and
+  // drop the reader at the foot of the conversation.
+  const openThread = useCallback(
+    (t: ChatThread) => {
+      const next = writeCurrent();
+      if (next) setThreads(next);
+      stopReveal();
+      targetRef.current = "";
+      shownRef.current = 0;
+      replyIndexRef.current = null;
+      pendingStats.current = [];
+      appRefs.current = new Map(t.apps.map((a) => [a.id, a]));
+      threadIdRef.current = t.id;
+      createdAtRef.current = t.createdAt;
+      justLoadedRef.current = true;
+      setThreadId(t.id);
+      setMessages(t.messages);
+      setShowHistory(false);
+      setBusy(false);
+      setStatus(null);
+      setAnswering(false);
+      onAppsReferenced(t.apps);
+      stickRef.current = true;
+      requestAnimationFrame(() => scrollToBottom());
+    },
+    [onAppsReferenced, scrollToBottom, stopReveal, writeCurrent]
+  );
+
+  const removeThread = useCallback(
+    (id: string, e: ReactMouseEvent) => {
+      e.stopPropagation();
+      setThreads(deleteThread(id));
+      if (id === threadIdRef.current) resetToNew(false);
+    },
+    [resetToNew]
+  );
 
   const send = useCallback(async (prefill?: string) => {
     const q = (prefill ?? input).trim();
@@ -406,13 +553,123 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
     }
   }, [input, busy, messages, onAppsReferenced, ensureReveal, scrollToBottom, setReplyContent, stopReveal]);
 
+  const currentTitle = messages.length ? deriveTitle(messages) : "New chat";
+
   return (
     <div className="chat-panel">
+      <div className="chat-head">
+        <div className="chat-head-title" title={currentTitle}>
+          {currentTitle}
+        </div>
+        <div className="chat-head-actions">
+          <button
+            type="button"
+            className="chat-head-btn"
+            onClick={() => setShowHistory((v) => !v)}
+            aria-pressed={showHistory}
+            disabled={threads.length === 0}
+          >
+            <HistoryIcon />
+            <span className="chat-head-label">History</span>
+            {threads.length > 0 && <span className="chat-head-count">{threads.length}</span>}
+          </button>
+          <button
+            type="button"
+            className="chat-head-btn chat-head-new"
+            onClick={newChat}
+            disabled={messages.length === 0 && !busy}
+            aria-label="Start a new chat"
+          >
+            <PlusIcon />
+            <span className="chat-head-label">New</span>
+          </button>
+        </div>
+      </div>
+
+      {showHistory && (
+        <div className="chat-history">
+          <div className="chat-history-head">
+            <span>Past chats</span>
+            <button
+              type="button"
+              className="chat-head-btn"
+              onClick={() => setShowHistory(false)}
+              aria-label="Close history"
+            >
+              <XIcon />
+            </button>
+          </div>
+          {threads.length === 0 ? (
+            <p className="chat-history-empty">No past chats yet.</p>
+          ) : (
+            <ul className="chat-history-list">
+              {threads.map((t) => {
+                const qs = t.messages.filter((m) => m.role === "user").length;
+                return (
+                  <li
+                    key={t.id}
+                    className={`chat-history-row${t.id === threadId ? " is-current" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="chat-history-open"
+                      onClick={() => openThread(t)}
+                    >
+                      <span className="chat-history-title">{t.title}</span>
+                      <span className="chat-history-meta">
+                        {relativeTime(t.updatedAt)} · {qs} question{qs === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-history-del"
+                      onClick={(e) => removeThread(t.id, e)}
+                      aria-label={`Delete chat: ${t.title}`}
+                    >
+                      <XIcon />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {!showHistory && (
       <div className="chat-thread" ref={threadRef} onScroll={onThreadScroll}>
         {messages.length === 0 && (
           <div className="chat-empty">
             <p>Ask about planning in your area.</p>
             <p className="chat-beta">Early beta — answers are generated from planning register data and may contain errors.</p>
+            {threads.length > 0 && (
+              <div className="chat-recent">
+                <div className="chat-recent-head">Recent chats</div>
+                <ul>
+                  {threads.slice(0, 4).map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        className="chat-recent-item"
+                        onClick={() => openThread(t)}
+                      >
+                        <span className="chat-recent-title">{t.title}</span>
+                        <span className="chat-recent-when">{relativeTime(t.updatedAt)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {threads.length > 4 && (
+                  <button
+                    type="button"
+                    className="chat-recent-all"
+                    onClick={() => setShowHistory(true)}
+                  >
+                    See all {threads.length}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
         {(() => {
@@ -466,7 +723,8 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
           />
         )}
       </div>
-      {messages.length === 0 && !busy && (
+      )}
+      {!showHistory && messages.length === 0 && !busy && (
         <div className="chat-suggestions">
           {EXAMPLES.map((ex) => (
             <button key={ex} type="button" className="chat-suggestion" onClick={() => send(ex)}>
@@ -475,6 +733,7 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
           ))}
         </div>
       )}
+      {!showHistory && (
       <form
         className="chat-input-row"
         onSubmit={(e) => {
@@ -494,9 +753,12 @@ export default function ChatPanel({ onSelectApp, onHoverApp, onAppsReferenced }:
           {busy ? "…" : "Ask"}
         </button>
       </form>
-      <p className="chat-disclaimer">
-        Shows what the planning register records — not advice or a prediction.
-      </p>
+      )}
+      {!showHistory && (
+        <p className="chat-disclaimer">
+          Shows what the planning register records — not advice or a prediction.
+        </p>
+      )}
     </div>
   );
 }

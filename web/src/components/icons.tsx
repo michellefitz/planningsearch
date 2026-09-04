@@ -37,6 +37,25 @@ export function PencilIcon({ size = 12 }: { size?: number }) {
   );
 }
 
+/** A plus in a square — start a fresh chat. */
+export function PlusIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
 /** A clock with an anticlockwise arrow — the other applications on this site,
     which are almost always the ones that came before it. */
 export function HistoryIcon({ size = 12 }: { size?: number }) {
