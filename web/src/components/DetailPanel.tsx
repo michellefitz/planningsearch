@@ -711,7 +711,7 @@ function EnvironmentalAssessment({ fields }: { fields: Array<{ label: string; va
 
 type AppealConditions = {
   conditions: Array<{ number: number | null; title: string; text: string }>;
-  reasons: Array<{ number: number | null; text: string }>;
+  reasons: Array<{ number: number | null; title?: string; text: string }>;
 };
 
 type SummaryState =
@@ -779,9 +779,12 @@ function DocumentRef({
 function ExtractedConditions({
   conditions,
   anchored = false,
+  fallbackLabel = "Condition",
 }: {
-  conditions: Array<{ number: number | null; title: string; text: string }>;
+  conditions: Array<{ number: number | null; title?: string; text: string }>;
   anchored?: boolean;
+  /** The heading used for a row the model returned no title for. */
+  fallbackLabel?: string;
 }) {
   return (
     <>
@@ -795,7 +798,7 @@ function ExtractedConditions({
           >
             <summary>
               <span className="condition-num">{num}</span>
-              {c.title || `Condition ${num}`}
+              {c.title || `${fallbackLabel} ${num}`}
             </summary>
             {c.text && <p className="condition-text">{c.text}</p>}
           </details>
@@ -998,7 +1001,7 @@ type DecisionOrderState =
       phase: "loaded";
       summary: string | null;
       conditions: Array<{ number: number | null; title: string; text: string }>;
-      reasons: Array<{ number: number | null; text: string }>;
+      reasons: Array<{ number: number | null; title?: string; text: string }>;
       highlights: ConditionHighlight[] | null;
       documents: SourceDocument[];
     };
@@ -1093,18 +1096,26 @@ function DecisionOrderSummary({ detail: d }: { detail: AppDetail }) {
               summary; the full order is a click away in the documents. */}
           {/* Red is reserved for refusals — a granted order's summary sits in
               the standard blue AI-summary box like every other summary. */}
-          {state.summary ? (
+          {state.summary && (
             <p className={`ai-summary${isRefusal ? " refusal-summary" : ""}`}>✦ {state.summary}</p>
-          ) : (
-            state.reasons.length > 0 && (
-              <div className={`ai-summary${isRefusal ? " refusal-summary" : ""}`}>
-                <ul className="decision-list">
-                  {state.reasons.map((r, i) => (
-                    <li key={i}>{r.text}</li>
-                  ))}
-                </ul>
-              </div>
-            )
+          )}
+          {/* The reasons themselves, as scannable titled rows — the same
+              accordions the conditions get. The summary above is the readable
+              overview; these let a reader find the ground they care about and
+              open just that one, rather than the whole wording being dumped
+              under the summary (why it used to be hidden when a summary was
+              present) or cut to its first few words with no label at all. */}
+          {state.reasons.length > 0 && (
+            <div className="condition-group">
+              <h4>
+                {isRefusal ? "Reasons for refusal" : "Reasons & considerations"}{" "}
+                <span className="count">{state.reasons.length}</span>
+              </h4>
+              {isRefusal && (
+                <p className="condition-blurb">The grounds given for refusal.</p>
+              )}
+              <ExtractedConditions conditions={state.reasons} fallbackLabel="Reason" />
+            </div>
           )}
           {state.conditions.length > 0 && (
             <div className="condition-group">

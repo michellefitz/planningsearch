@@ -532,7 +532,7 @@ export const api = {
       /** The schedule attached to a grant on appeal — what the applicant has
        *  to build to, and often the changes that turned a refusal around. */
       conditions?: Array<{ number: number | null; title: string; text: string }>;
-      reasons?: Array<{ number: number | null; text: string }>;
+      reasons?: Array<{ number: number | null; title?: string; text: string }>;
     }>(`/api/applications/${id}/appeal-summary`, T.reading),
   decisionSummary: (id: number) =>
     getJson<{
@@ -544,7 +544,7 @@ export const api = {
        *  schedule of their own. */
       source_documents?: SourceDocument[];
       conditions?: Array<{ number: number | null; title: string; text: string }>;
-      reasons?: Array<{ number: number | null; text: string }>;
+      reasons?: Array<{ number: number | null; title?: string; text: string }>;
       /** The same notable-conditions read the councils with a conditions API
        *  get — these come from the order we just extracted instead. */
       highlights?: ConditionHighlight[] | null;

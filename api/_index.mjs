@@ -1618,14 +1618,18 @@ const DECISION_EXTRACT_PROMPT =
   "You read an Irish council planning decision order and extract it as JSON for a public planning " +
   "viewer. Return ONLY a JSON object — no prose, no Markdown fences — with exactly this shape:\n" +
   '{"summary": string, "conditions": [{"number": number|null, "title": string, "text": string}], ' +
-  '"reasons": [{"number": number|null, "text": string}]}\n' +
+  '"reasons": [{"number": number|null, "title": string, "text": string}]}\n' +
   '- summary: one or two plain-English sentences a regular person understands. If REFUSED, begin ' +
   '"Refused because" and give the real problems (overlooking, traffic, drainage, out of character…), ' +
   "not policy citations. If GRANTED, say so and flag whether the conditions are routine or onerous.\n" +
   "- conditions: every CONDITION OF GRANT. number = its number; title = a short (max 8 words) " +
   'plain-English label of what it controls (e.g. "Construction hours", "Development contribution", ' +
   '"Materials and finishes", "Landscaping"); text = the condition wording, lightly trimmed.\n' +
-  "- reasons: every REASON FOR REFUSAL (number + wording).\n" +
+  "- reasons: every REASON FOR REFUSAL. number = its number; title = a short (max 6 words) " +
+  "plain-English label of the ground, so a reader can scan the list — name the concern, not the " +
+  'instrument (e.g. "Green belt / rural zoning", "Traffic hazard at junction", "Substandard access ' +
+  'road", "No demonstrated rural housing need", "Inadequate drainage information", "Injurious to ' +
+  'visual amenity"); text = the reason wording, lightly trimmed.\n' +
   "If granted, reasons is []. If refused, conditions is []. Use only what the order states — never invent items.";
 
 function parseJsonLoose(raw) {
@@ -1742,8 +1746,8 @@ async function extractDecisionDocument(pages, decision) {
     : [];
   const reasons = Array.isArray(parsed.reasons)
     ? parsed.reasons
-        .map((r) => ({ number: ovNum((r ?? {}).number), text: ovClip((r ?? {}).text, 1200) }))
-        .filter((r) => r.text)
+        .map((r) => ({ number: ovNum((r ?? {}).number), title: ovClip((r ?? {}).title, 80), text: ovClip((r ?? {}).text, 1200) }))
+        .filter((r) => r.title || r.text)
         .slice(0, 40)
     : [];
   if (!summary && conditions.length === 0 && reasons.length === 0) return null;
