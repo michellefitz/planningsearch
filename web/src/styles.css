@@ -6823,7 +6823,9 @@ p.loading-line {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(23, 25, 30, 0.45);
+  /* The reference keeps the live map visible behind the card, so the scrim is
+     light rather than a dim-out. */
+  background: rgba(18, 33, 55, 0.14);
   display: grid;
   place-items: center;
   padding: 1rem;
@@ -6835,12 +6837,14 @@ p.loading-line {
 }
 
 .welcome-modal {
+  --wm-navy: #12294d;
+  --wm-green: #2ea36a;
   background: var(--surface);
-  border-radius: var(--r-lg);
-  box-shadow: 0 8px 40px rgba(23, 25, 30, 0.2);
-  max-width: 480px;
+  border-radius: 24px;
+  box-shadow: 0 18px 50px rgba(18, 33, 55, 0.28);
   width: 100%;
-  padding: 1.75rem 2rem 1.5rem;
+  max-width: 400px;
+  padding: 1.05rem 1.35rem 1.2rem;
   position: relative;
   animation: welcome-up 260ms var(--ease);
   display: flex;
@@ -6848,14 +6852,33 @@ p.loading-line {
 }
 
 @keyframes welcome-up {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(14px); }
 }
 
+/* Top row: segmented progress + close */
+.wm-top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.wm-segments {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+.wm-segment {
+  height: 5px;
+  width: 30px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background 200ms ease;
+}
+.wm-segment-on {
+  background: var(--wm-navy);
+}
 .welcome-close {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  z-index: 1;
+  flex-shrink: 0;
   border: 0;
   background: var(--surface-2);
   color: var(--ink-2);
@@ -6873,126 +6896,258 @@ p.loading-line {
 }
 
 .welcome-slide {
+  display: flex;
+  flex-direction: column;
   animation: welcome-slide-in 250ms var(--ease);
 }
-
 @keyframes welcome-slide-in {
   from { opacity: 0; transform: translateX(16px); }
 }
 
-.welcome-illustration {
+/* Screen 1 illustration (self-contained SVG) */
+.wm-illustration {
   width: 100%;
-  height: 180px;
+  height: auto;
   display: block;
   margin-bottom: 1rem;
-  background: var(--surface-2);
-  border-radius: var(--r-md);
 }
 
 .welcome-modal h2 {
-  font-size: 1.15rem;
-  font-weight: 650;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.12;
   letter-spacing: -0.02em;
-  color: var(--ink);
-  margin: 0 0 0.5rem;
+  color: var(--wm-navy);
+  margin: 0 0 0.6rem;
 }
-
 .welcome-modal p {
-  font-size: 0.88rem;
-  line-height: 1.6;
+  font-size: 0.95rem;
+  line-height: 1.55;
   color: var(--ink-2);
   margin: 0;
 }
 
+/* Screen 2 + 3: a scene = quiet map with something over it */
+.wm-scene {
+  position: relative;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+.wm-scene-short {
+  aspect-ratio: 340 / 128;
+  margin-top: 0.9rem;
+  margin-bottom: 0;
+}
+.wm-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Screen 2 property card — in normal flow so the scene grows to fit it (never
+   clips a row); the map fills behind and shows through the right margin. */
+.wm-appcard {
+  position: relative;
+  margin: 1.1rem 22% 1.1rem 7%;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(18, 33, 55, 0.18);
+  padding: 0.7rem 0.8rem;
+}
+.wm-appcard-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: space-between;
+}
+.wm-appcard-addr {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--wm-navy);
+}
+.wm-badge {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #157347;
+  background: #e4f5ec;
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+}
+.wm-appcard-meta {
+  font-size: 0.62rem;
+  color: var(--ink-3);
+  margin-top: 0.15rem;
+}
+.wm-appcard-desc {
+  font-size: 0.64rem;
+  line-height: 1.4;
+  color: var(--ink-2);
+  margin-top: 0.35rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--line);
+}
+.wm-appcard-rows {
+  display: flex;
+  flex-direction: column;
+}
+.wm-appcard-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.34rem 0;
+}
+.wm-appcard-row + .wm-appcard-row {
+  border-top: 1px solid var(--surface-3);
+}
+.wm-row-icon {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  color: var(--wm-navy);
+}
+.wm-row-label {
+  flex: 1;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--wm-navy);
+}
+
+/* Screen 3 feature list */
+.wm-features {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 0.1rem;
+}
+.wm-feature {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+}
+.wm-feature-icon {
+  flex-shrink: 0;
+  width: 2.6rem;
+  height: 2.6rem;
+  display: grid;
+  place-items: center;
+  background: #e9eef6;
+  border-radius: 14px;
+}
+.wm-feature div {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.12rem;
+}
+.wm-feature strong {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--wm-navy);
+}
+.wm-feature span {
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+
+/* Screen 3 "new application" badge + pin over the map */
+.wm-badge-pin {
+  position: absolute;
+  right: 12%;
+  bottom: 6%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.wm-newbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--wm-navy);
+  color: #ffffff;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(18, 33, 55, 0.3);
+  white-space: nowrap;
+}
+.wm-pin-line {
+  width: 34px;
+  height: 38px;
+  margin-top: -2px;
+}
+
+/* Footer */
 .welcome-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
 }
-
 .welcome-dots {
   display: flex;
+  align-items: center;
   gap: 0.4rem;
 }
-
 .welcome-dot {
   all: unset;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
   background: var(--line-strong);
   cursor: pointer;
-  transition: background 150ms ease;
+  transition: background 150ms ease, width 150ms ease;
 }
-
 .welcome-dot-active {
-  background: var(--ink);
+  width: 20px;
+  background: var(--wm-navy);
 }
-
 .welcome-nav {
   display: flex;
   gap: 0.5rem;
 }
-
-.welcome-back {
-  background: var(--surface-2);
+.wm-back {
+  background: #ffffff;
   color: var(--ink-2);
   border: 1px solid var(--line-strong);
-  padding: 0.4rem 1rem;
-  border-radius: var(--r-md);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-.welcome-back:hover {
-  background: var(--surface-3);
-}
-
-.welcome-next,
-.welcome-go {
-  padding: 0.4rem 1.2rem;
-  font-size: 0.85rem;
-  border-radius: var(--r-md);
-}
-
-.welcome-features {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 0.25rem;
-}
-
-.welcome-feature {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-}
-
-.welcome-feature-icon {
-  flex-shrink: 0;
-  width: 2.25rem;
-  height: 2.25rem;
-  display: grid;
-  place-items: center;
-  background: var(--action-tint);
-  border-radius: var(--r-md);
-}
-
-.welcome-feature div {
-  display: flex;
-  flex-direction: column;
-}
-
-.welcome-feature strong {
-  font-size: 0.88rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--ink);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.wm-back:hover {
+  background: var(--surface-2);
+}
+.wm-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--action);
+  color: #ffffff;
+  border: 0;
+  padding: 0.5rem 1.15rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.wm-primary:hover {
+  background: #0a55bb;
 }
 
-.welcome-feature span {
-  font-size: 0.82rem;
-  color: var(--ink-2);
-  line-height: 1.5;
+@media (max-width: 767px) {
+  .welcome-modal {
+    max-width: 420px;
+  }
+  .welcome-modal h2 {
+    font-size: 1.4rem;
+  }
 }
