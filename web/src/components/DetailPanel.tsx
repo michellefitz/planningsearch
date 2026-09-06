@@ -2368,7 +2368,19 @@ function useScrollAnchor(ref: React.RefObject<HTMLElement | null>) {
         const delta = now - prev;
         if (delta <= 0) continue;
         const childTop = child.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
-        if (childTop < el.scrollTop) {
+        // Compensate only when the growth happened ENTIRELY above the viewport —
+        // an async section loading off-screen, which would otherwise shove the
+        // reading position down. The test is the child's bottom *before* it grew
+        // (childTop + prev): if the whole child sat above the fold, the new
+        // content is off-screen above, so hold the reading position.
+        //
+        // When the child straddles or is within the viewport — the reader has
+        // opened an accordion (a condition, a further-information item) inside a
+        // section they are looking at — the growth is at or below the fold, so
+        // leaving the scroll alone lets it open downwards under a heading that
+        // stays put, instead of the section's growth yanking that heading up
+        // off the top of the screen.
+        if (childTop + prev <= el.scrollTop) {
           adjust += delta;
         }
       }
