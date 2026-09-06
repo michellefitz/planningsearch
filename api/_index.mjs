@@ -657,6 +657,42 @@ async function fetchEplanningFurtherInfo(sourceUrl) {
   }
 }
 
+/** Statuses at which the further-information round is over for good. */
+const FI_SETTLED_STATUS = new Set(["granted", "refused", "invalid", "withdrawn"]);
+
+/**
+ * The further-information dates for one application, cached across sessions.
+ *
+ * Wraps the live read (above) with the durable Neon cache the AI summaries
+ * use, so the second person to open an application — in any session, on any
+ * instance — reads the dates back from the database rather than re-fetching the
+ * council page.
+ *
+ * Persisted only when the file has settled: a decided application's FI round is
+ * complete and its dates never change, so it is safe to remember forever
+ * (including a permanent "no round ever happened"). A still-live application
+ * can gain a received date, or a first request, later — so those are read live
+ * each time rather than frozen. The in-process map in fetchEplanningFurtherInfo
+ * still spares repeated reads within one warm instance.
+ */
+async function resolveEplanningFurtherInfo(app) {
+  const none = { requested: null, received: null };
+  if (!app?.source_url || !/eplanning\.ie\/.+AppFileRefDetails/i.test(app.source_url)) return none;
+  const settled =
+    FI_SETTLED_STATUS.has(String(app.status ?? "")) || Boolean(app.decision_date);
+  if (settled) {
+    const hit = await aiCacheGet(AI_CACHE_KINDS.EPLANNING_FI, app.authority_id, app.planning_reference);
+    if (hit !== undefined) return hit ?? none;
+  }
+  const fi = await fetchEplanningFurtherInfo(app.source_url);
+  if (settled) {
+    // Store even {null, null}: on a decided file that is the permanent fact
+    // that no further information was ever sought.
+    await aiCachePut(AI_CACHE_KINDS.EPLANNING_FI, app.authority_id, app.planning_reference, fi);
+  }
+  return fi;
+}
+
 function parseEplanningParties(html) {
   const applicantM = html.match(/Applicant name:\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
   const applicant = applicantM ? decodeEntities(stripTags(applicantM[1])) || null : null;
@@ -3895,8 +3931,7 @@ const readableReason = (doc, content) => {
     // A no-op for every other council: fetchEplanningFurtherInfo returns null
     // unless the source URL is an eplanning AppFileRefDetails page.
     const fiRequestedDate =
-      app.further_info_requested_date ??
-      (app.source_url ? (await fetchEplanningFurtherInfo(app.source_url)).requested : null);
+      app.further_info_requested_date ?? (await resolveEplanningFurtherInfo(app)).requested;
     if (app.status !== "further_info" && !fiRequestedDate) {
       return send(res, 200, { supported: true, summary: null });
     }
@@ -4391,9 +4426,10 @@ const readableReason = (doc, content) => {
         : null,
       // eplanning records the FI round on the detail page; the register is
       // blank for the ArcGIS-backfilled history, so read it here — only when
-      // the register does not already carry the dates.
-      !isAgile && !app.further_info_requested_date && app.source_url
-        ? fetchEplanningFurtherInfo(app.source_url)
+      // the register does not already carry the dates. Durable across sessions
+      // once the file has settled.
+      !isAgile && !app.further_info_requested_date
+        ? resolveEplanningFurtherInfo(app)
         : null,
       isAgile ? null : summariseDescription(description, app.application_type, summaryTrace),
       resolveCitedUrls(app),

@@ -42,6 +42,11 @@ export const AI_CACHE_KINDS = Object.freeze({
   DECISION: "decision_extract",
   FURTHER_INFO: "further_info_summary",
   TITLES: "condition_titles",
+  // Not model output, but the same "read once off the council portal, reuse
+  // forever" shape: the further-information request/received dates read live
+  // off an eplanning detail page, which the register does not carry for
+  // Kildare's backfilled history. Stored only for settled (decided) files.
+  EPLANNING_FI: "eplanning_fi_dates",
 });
 
 let schemaReady = null;
